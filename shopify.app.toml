@@ -2,7 +2,7 @@
 
 client_id = "1758d63a004d7f7d99afe5bf334d1f48"
 name = "location-stock-indicator"
-application_url = "https://example.com"
+application_url = "https://location-stock-indicator.onrender.com"
 embedded = true
 
 [build]
@@ -24,7 +24,7 @@ api_version = "2026-01"
 scopes = "read_products,write_products,read_inventory,read_locations,write_app_proxy"
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [ "https://location-stock-indicator.onrender.com/api/auth" ]
 
 [app_proxy]
 url = "/apps/location-stock"
