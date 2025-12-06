@@ -1,0 +1,311 @@
+{% comment %}
+  Theme app extension block: Location stock indicator
+  - 商品ページ用ブロック
+  - 実際の UI と JS は snippets/location-stock-indicator.liquid に委譲
+{% endcomment %}
+
+{% if product %}
+  {% render 'location-stock-indicator',
+    product: product,
+    config: block.settings,
+    root_id: block.id
+  %}
+{% else %}
+  <p>このブロックは商品ページでのみ表示されます。</p>
+{% endif %}
+
+{% schema %}
+{
+  "name": "Location stock indicator",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading_text",
+      "label": "タイトル",
+      "default": "各店舗の在庫状況",
+      "info": "空欄のままにするとタイトルを表示しません。"
+    },
+    {
+      "type": "select",
+      "id": "heading_align",
+      "label": "タイトルの揃え",
+      "default": "left",
+      "options": [
+        { "value": "left", "label": "左寄せ" },
+        { "value": "center", "label": "中央" },
+        { "value": "right", "label": "右寄せ" }
+      ]
+    },
+    {
+      "type": "select",
+      "id": "layout_type",
+      "label": "レイアウト",
+      "default": "list",
+      "options": [
+        { "value": "table", "label": "表（テーブル）" },
+        { "value": "list", "label": "リスト（1行）" },
+        { "value": "stacked", "label": "2行（ロケーション名＋在庫）" }
+      ]
+    },
+    {
+      "type": "select",
+      "id": "location_align",
+      "label": "ロケーション名の揃え",
+      "default": "left",
+      "options": [
+        { "value": "left", "label": "左寄せ" },
+        { "value": "center", "label": "中央" },
+        { "value": "right", "label": "右寄せ" }
+      ]
+    },
+    {
+      "type": "select",
+      "id": "status_align",
+      "label": "在庫表示の揃え",
+      "default": "right",
+      "options": [
+        { "value": "left", "label": "左寄せ" },
+        { "value": "center", "label": "中央" },
+        { "value": "right", "label": "右寄せ" }
+      ]
+    },
+
+    {
+      "type": "select",
+      "id": "font_size",
+      "label": "文字サイズ",
+      "default": "medium",
+      "options": [
+        { "value": "small", "label": "小さめ" },
+        { "value": "medium", "label": "標準" },
+        { "value": "large", "label": "大きめ" }
+      ]
+    },
+
+    {
+      "type": "range",
+      "id": "margin_top",
+      "label": "上マージン（px）",
+      "min": 0,
+      "max": 80,
+      "step": 2,
+      "default": 0
+    },
+    {
+      "type": "range",
+      "id": "margin_bottom",
+      "label": "下マージン（px）",
+      "min": 0,
+      "max": 80,
+      "step": 2,
+      "default": 16
+    },
+
+    {
+      "type": "range",
+      "id": "content_max_width",
+      "label": "最大幅（px）",
+      "info": "0 にすると横幅いっぱい（100%）で表示します。",
+      "min": 0,
+      "max": 1200,
+      "step": 20,
+      "default": 600
+    },
+    {
+      "type": "select",
+      "id": "content_align",
+      "label": "ブロック全体の配置",
+      "default": "left",
+      "options": [
+        { "value": "left", "label": "左寄せ" },
+        { "value": "center", "label": "中央寄せ" },
+        { "value": "right", "label": "右寄せ" }
+      ]
+    },
+
+    {
+      "type": "range",
+      "id": "heading_margin_bottom",
+      "label": "タイトル下マージン（px）",
+      "min": 0,
+      "max": 40,
+      "step": 2,
+      "default": 8
+    },
+
+    {
+      "type": "checkbox",
+      "id": "show_legend",
+      "label": "凡例を表示する",
+      "default": true
+    },
+    {
+      "type": "select",
+      "id": "legend_position",
+      "label": "凡例の表示位置",
+      "default": "bottom",
+      "options": [
+        { "value": "top", "label": "リストの上" },
+        { "value": "bottom", "label": "リストの下" }
+      ]
+    },
+    {
+      "type": "select",
+      "id": "legend_align",
+      "label": "凡例の揃え",
+      "default": "left",
+      "options": [
+        { "value": "left", "label": "左寄せ" },
+        { "value": "center", "label": "中央" },
+        { "value": "right", "label": "右寄せ" }
+      ]
+    },
+
+    {
+      "type": "checkbox",
+      "id": "show_notice",
+      "label": "注意書きを表示する（文言はアプリ側で設定）",
+      "default": false
+    },
+    {
+      "type": "select",
+      "id": "notice_position",
+      "label": "注意書きの位置",
+      "default": "bottom",
+      "options": [
+        { "value": "top", "label": "リストの上" },
+        { "value": "bottom", "label": "リストの下" }
+      ]
+    },
+    {
+      "type": "select",
+      "id": "notice_align",
+      "label": "注意書きの揃え",
+      "default": "left",
+      "options": [
+        { "value": "left", "label": "左寄せ" },
+        { "value": "center", "label": "中央" },
+        { "value": "right", "label": "右寄せ" }
+      ]
+    },
+    {
+      "type": "range",
+      "id": "notice_margin",
+      "label": "注意書きとリストの間隔（px）",
+      "min": 0,
+      "max": 40,
+      "step": 2,
+      "default": 8
+    },
+
+    {
+      "type": "text",
+      "id": "list_separator",
+      "label": "リスト表示時の区切り文字（ロケーション名と在庫の間）",
+      "default": "： ",
+      "info": "例: 「： 」「 / 」など。レイアウトが「リスト」のときに使われます。"
+    },
+    {
+      "type": "range",
+      "id": "row_padding_y",
+      "label": "行の上下余白（px）",
+      "min": 0,
+      "max": 32,
+      "step": 2,
+      "default": 8
+    },
+    {
+      "type": "range",
+      "id": "row_padding_x",
+      "label": "行の左右余白（px）",
+      "min": 0,
+      "max": 32,
+      "step": 2,
+      "default": 12
+    },
+
+    {
+      "type": "select",
+      "id": "border_style",
+      "label": "枠線のスタイル",
+      "default": "rows",
+      "options": [
+        { "value": "none", "label": "枠線なし" },
+        { "value": "rows", "label": "行ごとのみ" },
+        { "value": "full", "label": "外枠＋行ごと" }
+      ]
+    },
+    {
+      "type": "range",
+      "id": "border_width",
+      "label": "枠線の太さ（px）",
+      "min": 0,
+      "max": 5,
+      "step": 1,
+      "default": 1
+    },
+    {
+      "type": "color",
+      "id": "border_color",
+      "label": "枠線の色",
+      "default": "#e3e3e3"
+    },
+
+    {
+      "type": "color",
+      "id": "heading_color",
+      "label": "タイトルの色"
+    },
+    {
+      "type": "color",
+      "id": "legend_color",
+      "label": "凡例の色"
+    },
+    {
+      "type": "color",
+      "id": "notice_color",
+      "label": "注意書きの色"
+    },
+    {
+      "type": "color",
+      "id": "status_text_color",
+      "label": "在庫ステータス（行内テキスト）の色"
+    },
+
+    {
+      "type": "color",
+      "id": "in_stock_color",
+      "label": "在庫ありマークの色（◯）"
+    },
+    {
+      "type": "color",
+      "id": "low_stock_color",
+      "label": "残りわずかマークの色（△）"
+    },
+    {
+      "type": "color",
+      "id": "out_of_stock_color",
+      "label": "在庫なしマークの色（✕）"
+    },
+
+    {
+      "type": "range",
+      "id": "location_col_width",
+      "label": "テーブルレイアウト時のロケーション列の幅（%）",
+      "min": 30,
+      "max": 80,
+      "step": 5,
+      "default": 70
+    },
+
+    {
+      "type": "textarea",
+      "id": "custom_css",
+      "label": "追加CSS",
+      "default": "/* custom CSS */",
+      "info": "#location-stock-indicator-{{ block.id }} をルートにしてスタイルを上書きできます。"
+    }
+  ]
+}
+{% endschema %}

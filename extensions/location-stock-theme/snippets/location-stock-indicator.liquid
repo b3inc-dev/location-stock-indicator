@@ -1,0 +1,907 @@
+{%- comment -%}
+  Snippet: location-stock-indicator
+  使い方例：
+  {% render 'location-stock-indicator',
+    product: product,
+    config: section.settings,
+    root_id: section.id
+  %}
+{%- endcomment -%}
+
+{% if product %}
+  {% liquid
+    # 呼び出し元から設定を受け取る
+    assign s = config | default: section.settings
+    assign root_id = root_id | default: section.id
+
+    assign border_color = s.border_color | default: 'rgba(0,0,0,0.08)'
+    assign border_width = s.border_width | default: 1
+
+    assign content_align = s.content_align | default: 'left'
+    assign heading_align = s.heading_align | default: 'left'
+    assign location_align = s.location_align | default: 'left'
+    assign status_align = s.status_align | default: 'right'
+
+    assign row_padding_y = s.row_padding_y | default: 8
+    assign row_padding_x = s.row_padding_x | default: 12
+  %}
+
+  <div
+    id="location-stock-indicator-{{ root_id }}"
+    class="location-stock-indicator"
+    data-variant-id="{{ product.selected_or_first_available_variant.id }}"
+    style="
+      margin-top: {{ s.margin_top | default: 0 }}px;
+      margin-bottom: {{ s.margin_bottom | default: 0 }}px;
+    "
+  >
+    <div class="location-stock-indicator__inner">
+      {% if s.heading_text != blank %}
+        {% assign heading_tag = 'h3' %}
+        {% assign heading_class = 'location-stock-indicator__heading' %}
+
+        <{{ heading_tag }} class="{{ heading_class }}">
+          {{ s.heading_text }}
+        </{{ heading_tag }}>
+      {% endif %}
+
+      {%- comment -%}
+        凡例（上側）
+        legend_position == 'top' のとき、リストより上に表示
+        ※ 実際の文言は JS（settings.symbol*/label*）側で上書き
+      {%- endcomment -%}
+      {% if s.show_legend and s.legend_position == 'top' %}
+        <div
+          class="location-stock-indicator__legend
+                 location-stock-indicator__legend--{{ s.legend_align }}
+                 location-stock-indicator__legend--position-top"
+        ></div>
+      {% endif %}
+
+      {%- comment -%}
+        注意書き（上側）
+        notice_position == 'top' のとき、リストより上に表示。
+        文言自体は JS 側で app 設定に上書きされる（settings.noticeText）
+      {%- endcomment -%}
+      {% if s.show_notice and s.notice_position == 'top' %}
+        <div class="location-stock-indicator__notice location-stock-indicator__notice--top location-stock-indicator__notice--align-{{ s.notice_align | default: 'left' }}">
+        </div>
+      {% endif %}
+
+      {%- comment -%}
+        在庫リスト本体（JS で UL / TABLE が入る）
+      {%- endcomment -%}
+      <div class="location-stock-indicator__body location-stock-indicator__message--loading">
+        在庫を読み込み中...
+      </div>
+
+      {%- comment -%}
+        凡例（下側）
+        legend_position が 'top' 以外（= 'bottom' or 未設定）のとき、リストの下に表示
+      {%- endcomment -%}
+      {% if s.show_legend and s.legend_position != 'top' %}
+        <div
+          class="location-stock-indicator__legend
+                 location-stock-indicator__legend--{{ s.legend_align }}
+                 location-stock-indicator__legend--position-bottom"
+        ></div>
+      {% endif %}
+
+      {%- comment -%}
+        注意書き（下側）
+        文言は app 側の notice 設定で上書き
+      {%- endcomment -%}
+      {% if s.show_notice and s.notice_position == 'bottom' %}
+        <div class="location-stock-indicator__notice location-stock-indicator__notice--bottom location-stock-indicator__notice--align-{{ s.notice_align | default: 'left' }}">
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <style>
+    /* セクション全体のベーススタイル */
+    #location-stock-indicator-{{ root_id }} {
+      {% if s.font_size == 'small' %}
+        font-size: 0.9em;
+      {% elsif s.font_size == 'large' %}
+        font-size: 1.1em;
+      {% else %}
+        font-size: 1em;
+      {% endif %}
+    }
+
+    /* 中身コンテナ：max-width + 左/中央/右配置 */
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__inner {
+      max-width:
+        {% if s.content_max_width and s.content_max_width > 0 %}
+          {{ s.content_max_width }}px
+        {% else %}
+          100%
+        {% endif %};
+      {% if content_align == 'left' %}
+        margin-left: 0;
+        margin-right: auto;
+      {% elsif content_align == 'right' %}
+        margin-left: auto;
+        margin-right: 0;
+      {% else %}
+        margin-left: auto;
+        margin-right: auto;
+      {% endif %}
+    }
+
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__heading {
+      margin-bottom: {{ s.heading_margin_bottom | default: 8 }}px;
+      font-weight: 600;
+      font-size: 1.1em;
+      text-align: {{ heading_align }};
+    }
+
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__body {
+      font-size: 0.95em;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__body.location-stock-indicator__message--loading {
+      opacity: 0.8;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__body.location-stock-indicator__message--error {
+      color: #b00020;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__body.location-stock-indicator__message--empty {
+      opacity: 0.8;
+    }
+
+    /* 凡例 */
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__legend {
+      font-size: 0.8em;
+      opacity: 0.8;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__legend--position-top {
+      margin-bottom: 8px;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__legend--position-bottom {
+      margin-top: 8px;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__legend--left {
+      text-align: left;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__legend--center {
+      text-align: center;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__legend--right {
+      text-align: right;
+    }
+
+    /* 注意書き */
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__notice {
+      font-size: 0.8em;
+      opacity: 0.8;
+      line-height: 1.5;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__notice--top {
+      margin-bottom: {{ s.notice_margin | default: 8 }}px;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__notice--bottom {
+      margin-top: {{ s.notice_margin | default: 8 }}px;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__notice--align-left {
+      text-align: left;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__notice--align-center {
+      text-align: center;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__notice--align-right {
+      text-align: right;
+    }
+
+    /* リストレイアウト */
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      {% if s.border_style == 'full' %}
+        border: {{ border_width }}px solid {{ border_color }};
+        border-radius: 4px;
+      {% endif %}
+    }
+
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__item {
+      display: block;
+      padding: {{ row_padding_y }}px {{ row_padding_x }}px;
+      border-bottom:
+        {% if s.border_style == 'rows' or s.border_style == 'full' %}
+          {{ border_width }}px solid {{ border_color }}
+        {% else %}
+          none
+        {% endif %};
+    }
+
+    /* 「外枠＋行ごと」のときは最後の行だけ下線を消して二重線を防ぐ */
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__item:last-child {
+      {% if s.border_style == 'full' %}
+        border-bottom: none;
+      {% endif %}
+    }
+
+    /* スタックレイアウト用（2行表示） */
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__stacked-name {
+      font-weight: 500;
+      text-align: {{ location_align }};
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__stacked-status {
+      margin-top: 0.15rem;
+      font-size: 0.9em;
+      opacity: 0.95;
+      text-align: {{ status_align }};
+    }
+
+    /* テーブルレイアウト */
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__table {
+      width: 100%;
+      border-collapse: collapse;
+      {% if s.border_style == 'full' %}
+        border: {{ border_width }}px solid {{ border_color }};
+        border-radius: 4px;
+      {% endif %}
+    }
+
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__table td {
+      padding: {{ row_padding_y }}px {{ row_padding_x }}px;
+      border-bottom:
+        {% if s.border_style == 'rows' or s.border_style == 'full' %}
+          {{ border_width }}px solid {{ border_color }}
+        {% else %}
+          none
+        {% endif %};
+      vertical-align: top;
+    }
+
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__table td + td {
+      {% if s.border_style == 'full' %}
+        border-left: {{ border_width }}px solid {{ border_color }};
+      {% endif %}
+    }
+
+    /* ロケーション名・ステータスの共通スタイル（テキスト揃え） */
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__location {
+      text-align: {{ location_align }};
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__status {
+      text-align: {{ status_align }};
+    }
+
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__status-symbol {
+      font-weight: 700;
+      margin-right: 0.1rem;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__status-label {
+      margin-left: 0.15rem;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__qty {
+      opacity: 0.9;
+    }
+
+    {% if s.heading_color != blank %}
+      #location-stock-indicator-{{ root_id }} .location-stock-indicator__heading {
+        color: {{ s.heading_color }};
+      }
+    {% endif %}
+    {% if s.legend_color != blank %}
+      #location-stock-indicator-{{ root_id }} .location-stock-indicator__legend {
+        color: {{ s.legend_color }};
+      }
+    {% endif %}
+    {% if s.notice_color != blank %}
+      #location-stock-indicator-{{ root_id }} .location-stock-indicator__notice {
+        color: {{ s.notice_color }};
+      }
+    {% endif %}
+    {% if s.status_text_color != blank %}
+      #location-stock-indicator-{{ root_id }} .location-stock-indicator__status {
+        color: {{ s.status_text_color }};
+      }
+    {% endif %}
+
+    {{ s.custom_css }}
+  </style>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      var root = document.getElementById("location-stock-indicator-{{ root_id }}");
+      if (!root) return;
+
+      var bodyEl = root.querySelector(".location-stock-indicator__body");
+
+      function setMessage(type, text) {
+        bodyEl.classList.remove(
+          "location-stock-indicator__message--loading",
+          "location-stock-indicator__message--error",
+          "location-stock-indicator__message--empty"
+        );
+
+        if (type) {
+          bodyEl.classList.add("location-stock-indicator__message--" + type);
+        }
+
+        bodyEl.textContent = text || "";
+      }
+
+      var settings = {
+        // ▼ ロジック系（＝アプリ側 config がマスター）
+        outOfStockMax: 0,
+        inStockMin: 5,
+
+        // 在庫数表示ルール
+        showQuantity: true,
+        showQuantityLabel: true,
+        quantityLabel: "在庫",
+        quantityWrapperBefore: "(",
+        quantityWrapperAfter: ")",
+        // symbol_only / symbol_and_quantity / symbol_quantity_label / quantity_only / quantity_label
+        rowContentMode: "symbol_and_quantity",
+
+        // ラベル
+        labelInStock: "在庫あり",
+        labelLowStock: "残りわずか",
+        labelOutOfStock: "在庫なし",
+
+        // ▼ メッセージ系（アプリ側で上書き）
+        loadingMessage: "在庫を読み込み中...",
+        emptyMessage: "現在、この商品の店舗在庫はありません。",
+        errorMessage: "在庫情報の取得に失敗しました。時間をおいて再度お試しください。",
+
+        // ▼ レイアウト・並び順
+        layoutType: {{ s.layout_type | json }}, // table / list / stacked
+        sortBy: "config_order",
+
+        // ▼ ロケーション表示ルール
+        locationsMode: "all",
+        usePublicLocationName: false,
+
+        // ▼ クリックアクション
+        clickAction: "none",
+        mapUrlTemplate: "https://maps.google.com/?q={location_name}",
+        urlTemplate: "/pages/store-{location_id}",
+
+        // ▼ カラー・幅などの見た目（テーマ側）
+        inStockColor: {{ s.in_stock_color | json }},
+        lowStockColor: {{ s.low_stock_color | json }},
+        outOfStockColor: {{ s.out_of_stock_color | json }},
+        locationColWidth: {{ s.location_col_width | default: 70 | json }},
+
+        // 在庫マーク（アプリ側 config があればそちらが優先）
+        symbolInStock: "◯",
+        symbolLowStock: "△",
+        symbolOutOfStock: "✕",
+
+        // リスト表示時の区切り
+        listSeparator: {{ s.list_separator | default: "： " | json }},
+
+        // ▼ 注意書き（位置や表示フラグはテーマ側、文言は app 側）
+        showNotice: {{ s.show_notice | json }},
+        noticePosition: {{ s.notice_position | default: 'bottom' | json }},
+        noticeText: "",
+        noticeAlign: {{ s.notice_align | default: 'left' | json }},
+        noticeMargin: {{ s.notice_margin | default: 8 | json }},
+
+        // ▼ 将来拡張
+        groupByRegion: false,
+        regionAccordionEnabled: false,
+        nearbyFirstEnabled: false,
+        nearbyOtherCollapsible: false,
+        showOrderPickButton: false,
+        orderPickButtonLabel: "この店舗で受け取る"
+      };
+
+      // 凡例テキストの更新
+      function updateLegendElements() {
+        var legends = root.querySelectorAll(".location-stock-indicator__legend");
+        if (!legends.length) return;
+
+        var text =
+          settings.symbolInStock + " " + (settings.labelInStock || "") +
+          " / " +
+          settings.symbolLowStock + " " + (settings.labelLowStock || "") +
+          " / " +
+          settings.symbolOutOfStock + " " + (settings.labelOutOfStock || "");
+
+        legends.forEach(function (el) {
+          el.textContent = text;
+        });
+      }
+
+      // 注意書きテキストの更新
+      function updateNoticeElements() {
+        var notices = root.querySelectorAll(".location-stock-indicator__notice");
+        if (!notices.length) return;
+
+        var text = settings.noticeText || "";
+        notices.forEach(function (el) {
+          el.textContent = text;
+        });
+      }
+
+      // 在庫数から マーク & ラベルを決定
+      function getStatusSymbolAndLabel(qty) {
+        var outMax = settings.outOfStockMax;
+        var inMin = settings.inStockMin;
+
+        var symbol, label;
+
+        if (qty <= outMax) {
+          symbol = settings.symbolOutOfStock;
+          label = settings.labelOutOfStock;
+        } else if (qty >= inMin) {
+          symbol = settings.symbolInStock;
+          label = settings.labelInStock;
+        } else {
+          symbol = settings.symbolLowStock;
+          label = settings.labelLowStock;
+        }
+
+        return { symbol: symbol, label: label };
+      }
+
+      // 在庫数部分の HTML を組み立て
+      function buildQuantityHtml(qty) {
+        if (!settings.showQuantity) return "";
+        var inner = "";
+
+        if (settings.showQuantityLabel && settings.quantityLabel) {
+          inner = settings.quantityLabel + " " + qty;
+        } else {
+          inner = qty;
+        }
+
+        var before = settings.quantityWrapperBefore || "";
+        var after = settings.quantityWrapperAfter || "";
+
+        return (
+          '<span class="location-stock-indicator__qty">' +
+            before + inner + after +
+          "</span>"
+        );
+      }
+
+      // クリックアクション用
+      function applyClickAction(location, displayName) {
+        var name = displayName || location.locationName || "";
+
+        if (settings.clickAction === "open_map") {
+          var url = settings.mapUrlTemplate.replace("{location_name}", encodeURIComponent(name));
+          return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + name + '</a>';
+        }
+
+        if (settings.clickAction === "open_url") {
+          var url = settings.urlTemplate
+            .replace("{location_id}", encodeURIComponent(location.id || ""))
+            .replace("{location_name}", encodeURIComponent(name));
+          return '<a href="' + url + '">' + name + '</a>';
+        }
+
+        return name;
+      }
+
+      // ロケーションの絞り込み
+      function filterLocations(stocks) {
+        var mode = settings.locationsMode;
+
+        if (mode === "online_only") {
+          return stocks.filter(function (s) {
+            return !!s.fulfillOnline || !!s.fulfillOnlineOrders || !!s.fulfillsOnlineOrders;
+          });
+        }
+
+        if (mode === "custom_from_app") {
+          return stocks.filter(function (s) {
+            return !!s.fromConfig;
+          });
+        }
+
+        return stocks;
+      }
+
+      // 並び順
+      function sortLocations(stocks) {
+        var sortBy = settings.sortBy || "config_order";
+
+        if (
+          sortBy === "config_order" ||
+          sortBy === "none" ||
+          !sortBy
+        ) {
+          return stocks;
+        }
+
+        var arr = stocks.slice();
+
+        if (sortBy === "location_name_asc") {
+          arr.sort(function (a, b) {
+            var an = a.displayName || a.locationName || "";
+            var bn = b.displayName || b.locationName || "";
+            return an.localeCompare(bn);
+          });
+        } else if (sortBy === "quantity_desc") {
+          arr.sort(function (a, b) {
+            return (b.quantity || 0) - (a.quantity || 0);
+          });
+        } else if (sortBy === "quantity_asc") {
+          arr.sort(function (a, b) {
+            return (a.quantity || 0) - (b.quantity || 0);
+          });
+        }
+
+        return arr;
+      }
+
+      // マーク＋在庫数＋ラベルの HTML
+      function buildStatusHtml(item, status) {
+        var color = null;
+        if (status.symbol === settings.symbolInStock && settings.inStockColor) color = settings.inStockColor;
+        if (status.symbol === settings.symbolLowStock && settings.lowStockColor) color = settings.lowStockColor;
+        if (status.symbol === settings.symbolOutOfStock && settings.outOfStockColor) color = settings.outOfStockColor;
+
+        var symbolHtml =
+          '<span class="location-stock-indicator__status-symbol"' +
+          (color ? ' style="color:' + color + ';"' : '') +
+          ">" +
+          status.symbol +
+          "</span>";
+
+        var qtyHtml = buildQuantityHtml(item.quantity || 0);
+        var parts = [];
+
+        if (settings.rowContentMode === "symbol_only") {
+          parts.push(symbolHtml);
+        } else if (settings.rowContentMode === "symbol_and_quantity") {
+          parts.push(symbolHtml);
+          if (qtyHtml) parts.push(" " + qtyHtml);
+        } else if (settings.rowContentMode === "symbol_quantity_label") {
+          parts.push(symbolHtml);
+          if (qtyHtml) parts.push(" " + qtyHtml);
+          if (status.label) {
+            parts.push(
+              ' <span class="location-stock-indicator__status-label">' +
+                status.label +
+                "</span>"
+            );
+          }
+        } else if (settings.rowContentMode === "quantity_only") {
+          if (qtyHtml) parts.push(qtyHtml);
+        } else if (settings.rowContentMode === "quantity_label") {
+          if (qtyHtml) parts.push(qtyHtml);
+          if (status.label) {
+            parts.push(
+              ' <span class="location-stock-indicator__status-label">' +
+                status.label +
+                "</span>"
+            );
+          }
+        }
+
+        return parts.join("");
+      }
+
+      // 描画
+      function renderStocks(stocks) {
+        bodyEl.classList.remove(
+          "location-stock-indicator__message--loading",
+          "location-stock-indicator__message--error",
+          "location-stock-indicator__message--empty"
+        );
+
+        stocks = filterLocations(stocks);
+        stocks = sortLocations(stocks);
+
+        if (!stocks || !stocks.length) {
+          setMessage("empty", settings.emptyMessage);
+          return;
+        }
+
+        var html = "";
+
+        if (settings.layoutType === "table") {
+          var locWidth = settings.locationColWidth || 70;
+          var statusWidth = 100 - locWidth;
+
+          html += '<table class="location-stock-indicator__table"><tbody>';
+          stocks.forEach(function (item) {
+            var status = getStatusSymbolAndLabel(item.quantity || 0);
+            var name = item.displayName || item.locationName || "";
+            var nameHtml = applyClickAction(item, name);
+
+            html += "<tr>";
+            html +=
+              '<td class="location-stock-indicator__location" style="width:' +
+              locWidth +
+              '%;">' +
+              nameHtml +
+              "</td>";
+            html +=
+              '<td class="location-stock-indicator__status" style="width:' +
+              statusWidth +
+              '%;">' +
+              buildStatusHtml(item, status) +
+              "</td>";
+            html += "</tr>";
+          });
+          html += "</tbody></table>";
+        } else {
+          html += '<ul class="location-stock-indicator__list">';
+          stocks.forEach(function (item) {
+            var status = getStatusSymbolAndLabel(item.quantity || 0);
+            var name = item.displayName || item.locationName || "";
+            var nameHtml = applyClickAction(item, name);
+
+            var rowHtml = "";
+
+            if (settings.layoutType === "stacked") {
+              rowHtml =
+                '<div class="location-stock-indicator__stacked-name">' +
+                nameHtml +
+                "</div>" +
+                '<div class="location-stock-indicator__stacked-status">' +
+                buildStatusHtml(item, status) +
+                "</div>";
+            } else {
+              var sep = settings.listSeparator || "： ";
+              rowHtml =
+                '<span class="location-stock-indicator__location">' +
+                nameHtml +
+                "</span>" +
+                sep +
+                '<span class="location-stock-indicator__status">' +
+                buildStatusHtml(item, status) +
+                "</span>";
+            }
+
+            html +=
+              '<li class="location-stock-indicator__item">' +
+              rowHtml +
+              "</li>";
+          });
+          html += "</ul>";
+        }
+
+        bodyEl.innerHTML = html;
+      }
+
+      // App Proxy 経由で在庫取得
+      function fetchStocks(variantId) {
+        setMessage("loading", settings.loadingMessage);
+
+        fetch("/apps/location-stock?variant_id=" + encodeURIComponent(variantId))
+          .then(function (res) {
+            if (!res.ok) {
+              throw new Error("HTTP " + res.status);
+            }
+            return res.json();
+          })
+          .then(function (data) {
+            if (!data) {
+              setMessage("error", settings.errorMessage);
+              return;
+            }
+
+            var appConfig = data.config || {};
+
+            // 閾値
+            if (appConfig.thresholds) {
+              if (typeof appConfig.thresholds.outOfStockMax === "number") {
+                settings.outOfStockMax = appConfig.thresholds.outOfStockMax;
+              }
+              if (typeof appConfig.thresholds.inStockMin === "number") {
+                settings.inStockMin = appConfig.thresholds.inStockMin;
+              }
+            }
+
+            // 在庫数表示ルール
+            if (appConfig.quantity) {
+              var q = appConfig.quantity;
+              if (typeof q.quantityLabel === "string") {
+                settings.quantityLabel = q.quantityLabel;
+              }
+              if (typeof q.wrapperBefore === "string") {
+                settings.quantityWrapperBefore = q.wrapperBefore;
+              }
+              if (typeof q.wrapperAfter === "string") {
+                settings.quantityWrapperAfter = q.wrapperAfter;
+              }
+              if (typeof q.showQuantity === "boolean") {
+                settings.showQuantity = q.showQuantity;
+              }
+              if (typeof q.showQuantityLabel === "boolean") {
+                settings.showQuantityLabel = q.showQuantityLabel;
+              }
+              if (typeof q.rowContentMode === "string") {
+                settings.rowContentMode = q.rowContentMode;
+              }
+            }
+
+            // マーク
+            if (appConfig.symbols) {
+              var sy = appConfig.symbols;
+              if (typeof sy.inStock === "string") {
+                settings.symbolInStock = sy.inStock;
+              }
+              if (typeof sy.lowStock === "string") {
+                settings.symbolLowStock = sy.lowStock;
+              }
+              if (typeof sy.outOfStock === "string") {
+                settings.symbolOutOfStock = sy.outOfStock;
+              }
+            }
+
+            // ラベル
+            if (appConfig.labels) {
+              var lb = appConfig.labels;
+              if (typeof lb.inStock === "string") {
+                settings.labelInStock = lb.inStock;
+              }
+              if (typeof lb.lowStock === "string") {
+                settings.labelLowStock = lb.lowStock;
+              }
+              if (typeof lb.outOfStock === "string") {
+                settings.labelOutOfStock = lb.outOfStock;
+              }
+            }
+
+            // メッセージ文言
+            if (appConfig.messages) {
+              var m = appConfig.messages;
+              if (typeof m.loading === "string") {
+                settings.loadingMessage = m.loading;
+              }
+              if (typeof m.empty === "string") {
+                settings.emptyMessage = m.empty;
+              }
+              if (typeof m.error === "string") {
+                settings.errorMessage = m.error;
+              }
+            }
+
+            // グローバル注意書き
+            if (
+              appConfig.notice &&
+              typeof appConfig.notice.text === "string" &&
+              appConfig.notice.text !== ""
+            ) {
+              settings.noticeText = appConfig.notice.text;
+            }
+
+            // 並び順
+            if (appConfig.sort && typeof appConfig.sort.mode === "string") {
+              settings.sortBy = appConfig.sort.mode;
+            }
+
+            // ロケーション表示ルール
+            if (appConfig.locations) {
+              var locConf = appConfig.locations;
+              if (typeof locConf.mode === "string") {
+                settings.locationsMode = locConf.mode;
+              }
+              if (typeof locConf.usePublicName === "boolean") {
+                settings.usePublicLocationName = locConf.usePublicName;
+              }
+            }
+
+            // クリックアクション
+            if (appConfig.click) {
+              var click = appConfig.click;
+              if (typeof click.action === "string") {
+                settings.clickAction = click.action;
+              }
+              if (typeof click.mapUrlTemplate === "string") {
+                settings.mapUrlTemplate = click.mapUrlTemplate;
+              }
+              if (typeof click.urlTemplate === "string") {
+                settings.urlTemplate = click.urlTemplate;
+              }
+            }
+
+            // 将来拡張
+            if (appConfig.future) {
+              var f = appConfig.future;
+              if (typeof f.groupByRegion === "boolean") {
+                settings.groupByRegion = f.groupByRegion;
+              }
+              if (typeof f.regionAccordionEnabled === "boolean") {
+                settings.regionAccordionEnabled = f.regionAccordionEnabled;
+              }
+              if (typeof f.nearbyFirstEnabled === "boolean") {
+                settings.nearbyFirstEnabled = f.nearbyFirstEnabled;
+              }
+              if (typeof f.nearbyOtherCollapsible === "boolean") {
+                settings.nearbyOtherCollapsible = f.nearbyOtherCollapsible;
+              }
+              if (typeof f.showOrderPickButton === "boolean") {
+                settings.showOrderPickButton = f.showOrderPickButton;
+              }
+              if (typeof f.orderPickButtonLabel === "string") {
+                settings.orderPickButtonLabel = f.orderPickButtonLabel;
+              }
+            }
+
+            // 凡例・注意書きを app 設定で更新
+            updateLegendElements();
+            updateNoticeElements();
+
+            var stocks = null;
+
+            // 新形式
+            if (Array.isArray(data.stocks)) {
+              stocks = data.stocks;
+            } else if (Array.isArray(data.locations)) {
+              // 旧形式互換
+              stocks = data.locations.map(function (loc) {
+                var quantity =
+                  typeof loc.quantity === "number"
+                    ? loc.quantity
+                    : typeof loc.available === "number"
+                    ? loc.available
+                    : 0;
+
+                return {
+                  locationId: loc.locationId || loc.id || null,
+                  locationName: loc.locationName || loc.name || "Unknown location",
+                  fulfillsOnlineOrders:
+                    !!loc.fulfillOnline ||
+                    !!loc.fulfillOnlineOrders ||
+                    !!loc.fulfillsOnlineOrders,
+                  quantity: quantity
+                };
+              });
+            }
+
+            if (!Array.isArray(stocks) || !stocks.length) {
+              setMessage("empty", settings.emptyMessage);
+              return;
+            }
+
+            renderStocks(stocks);
+          })
+          .catch(function () {
+            setMessage("error", settings.errorMessage);
+          });
+      }
+
+      // 初期の凡例・注意書き（app 側にまだ notice が無い場合は空）
+      updateLegendElements();
+      updateNoticeElements();
+
+      // ▼ バリアント切替
+      var lastVariantId = null;
+
+      function updateStocksByVariantId(variantId) {
+        if (!variantId) return;
+        if (variantId === lastVariantId) return;
+
+        lastVariantId = variantId;
+        root.dataset.variantId = variantId;
+        fetchStocks(variantId);
+      }
+
+      // 初期表示
+      var initialVariantId = root.dataset.variantId;
+      if (initialVariantId) {
+        updateStocksByVariantId(initialVariantId);
+      }
+
+      // Dawn 等の variant:change
+      document.addEventListener("variant:change", function (event) {
+        var variant = event.detail && event.detail.variant;
+        if (!variant || !variant.id) return;
+        updateStocksByVariantId(variant.id);
+      });
+
+      // input[name="id"] 監視
+      var variantIdInput = document.querySelector('form[action^="/cart/add"] [name="id"]');
+      if (variantIdInput) {
+        variantIdInput.addEventListener("change", function () {
+          updateStocksByVariantId(this.value);
+        });
+      }
+    });
+  </script>
+{% else %}
+  <p>このセクションは商品ページでのみ表示されます。</p>
+{% endif %}

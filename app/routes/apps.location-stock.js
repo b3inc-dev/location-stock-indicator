@@ -145,6 +145,216 @@ function applyConfigToStocks(stocks, config) {
   return decorated;
 }
 
+// メタフィールドの JSON から「グローバル設定 config」を組み立てる
+// - 足りないところはデフォルトで補完
+// - thresholds / quantity / symbols / labels / locations / click / future / sort / messages / notice
+function buildGlobalConfig(raw) {
+  const defaultConfig = {
+    thresholds: {
+      outOfStockMax: 0,
+      inStockMin: 5,
+    },
+    quantity: {
+      showQuantity: true,
+      showQuantityLabel: true,
+      quantityLabel: "在庫",
+      wrapperBefore: "(",
+      wrapperAfter: ")",
+      rowContentMode: "symbol_and_quantity",
+    },
+    symbols: {
+      inStock: "◯",
+      lowStock: "△",
+      outOfStock: "✕",
+    },
+    labels: {
+      inStock: "在庫あり",
+      lowStock: "残りわずか",
+      outOfStock: "在庫なし",
+    },
+    locations: {
+      mode: "all",          // all / online_only / custom_from_app
+      usePublicName: false, // メタフィールド publicName を使うかどうか
+    },
+    click: {
+      action: "none", // none / open_map / open_url
+      mapUrlTemplate: "https://maps.google.com/?q={location_name}",
+      urlTemplate: "/pages/store-{location_id}",
+    },
+    future: {
+      groupByRegion: false,
+      regionAccordionEnabled: false,
+      nearbyFirstEnabled: false,
+      nearbyOtherCollapsible: false,
+      showOrderPickButton: false,
+      orderPickButtonLabel: "この店舗で受け取る",
+    },
+    sort: {
+      mode: "none", // none / location_name_asc / quantity_desc / quantity_asc
+    },
+    messages: {
+      loading: "在庫を読み込み中...",
+      empty: "現在、この商品の店舗在庫はありません。",
+      error: "在庫情報の取得に失敗しました。時間をおいて再度お試しください。",
+    },
+  };
+
+  const safe = raw && typeof raw === "object" ? raw : {};
+
+  // thresholds
+  const thresholdsRaw = safe.thresholds || {};
+  const thresholds = {
+    outOfStockMax:
+      typeof thresholdsRaw.outOfStockMax === "number"
+        ? thresholdsRaw.outOfStockMax
+        : defaultConfig.thresholds.outOfStockMax,
+    inStockMin:
+      typeof thresholdsRaw.inStockMin === "number"
+        ? thresholdsRaw.inStockMin
+        : defaultConfig.thresholds.inStockMin,
+  };
+
+  // quantity
+  const quantityRaw = safe.quantity || {};
+  const quantity = { ...defaultConfig.quantity };
+  if (typeof quantityRaw.showQuantity === "boolean") {
+    quantity.showQuantity = quantityRaw.showQuantity;
+  }
+  if (typeof quantityRaw.showQuantityLabel === "boolean") {
+    quantity.showQuantityLabel = quantityRaw.showQuantityLabel;
+  }
+  if (typeof quantityRaw.quantityLabel === "string") {
+    quantity.quantityLabel = quantityRaw.quantityLabel;
+  }
+  if (typeof quantityRaw.wrapperBefore === "string") {
+    quantity.wrapperBefore = quantityRaw.wrapperBefore;
+  }
+  if (typeof quantityRaw.wrapperAfter === "string") {
+    quantity.wrapperAfter = quantityRaw.wrapperAfter;
+  }
+  if (typeof quantityRaw.rowContentMode === "string") {
+    quantity.rowContentMode = quantityRaw.rowContentMode;
+  }
+
+  // symbols
+  const symbolsRaw = safe.symbols || {};
+  const symbols = { ...defaultConfig.symbols };
+  if (typeof symbolsRaw.inStock === "string") {
+    symbols.inStock = symbolsRaw.inStock;
+  }
+  if (typeof symbolsRaw.lowStock === "string") {
+    symbols.lowStock = symbolsRaw.lowStock;
+  }
+  if (typeof symbolsRaw.outOfStock === "string") {
+    symbols.outOfStock = symbolsRaw.outOfStock;
+  }
+
+  // labels
+  const labelsRaw = safe.labels || {};
+  const labels = { ...defaultConfig.labels };
+  if (typeof labelsRaw.inStock === "string") {
+    labels.inStock = labelsRaw.inStock;
+  }
+  if (typeof labelsRaw.lowStock === "string") {
+    labels.lowStock = labelsRaw.lowStock;
+  }
+  if (typeof labelsRaw.outOfStock === "string") {
+    labels.outOfStock = labelsRaw.outOfStock;
+  }
+
+  // locations（表示ルール）
+  const locations = {
+    mode:
+      typeof safe.locationsMode === "string"
+        ? safe.locationsMode
+        : defaultConfig.locations.mode,
+    usePublicName:
+      typeof safe.usePublicName === "boolean"
+        ? safe.usePublicName
+        : defaultConfig.locations.usePublicName,
+  };
+
+  // click
+  const clickRaw = safe.click || {};
+  const click = { ...defaultConfig.click };
+  if (typeof clickRaw.action === "string") {
+    click.action = clickRaw.action;
+  }
+  if (typeof clickRaw.mapUrlTemplate === "string") {
+    click.mapUrlTemplate = clickRaw.mapUrlTemplate;
+  }
+  if (typeof clickRaw.urlTemplate === "string") {
+    click.urlTemplate = clickRaw.urlTemplate;
+  }
+
+  // future
+  const futureRaw = safe.future || {};
+  const future = { ...defaultConfig.future };
+  if (typeof futureRaw.groupByRegion === "boolean") {
+    future.groupByRegion = futureRaw.groupByRegion;
+  }
+  if (typeof futureRaw.regionAccordionEnabled === "boolean") {
+    future.regionAccordionEnabled = futureRaw.regionAccordionEnabled;
+  }
+  if (typeof futureRaw.nearbyFirstEnabled === "boolean") {
+    future.nearbyFirstEnabled = futureRaw.nearbyFirstEnabled;
+  }
+  if (typeof futureRaw.nearbyOtherCollapsible === "boolean") {
+    future.nearbyOtherCollapsible = futureRaw.nearbyOtherCollapsible;
+  }
+  if (typeof futureRaw.showOrderPickButton === "boolean") {
+    future.showOrderPickButton = futureRaw.showOrderPickButton;
+  }
+  if (typeof futureRaw.orderPickButtonLabel === "string") {
+    future.orderPickButtonLabel = futureRaw.orderPickButtonLabel;
+  }
+
+  // sort
+  const sortRaw = safe.sort || {};
+  const sort = {
+    mode:
+      typeof sortRaw.mode === "string"
+        ? sortRaw.mode
+        : defaultConfig.sort.mode,
+  };
+
+  // messages（メッセージ文言）
+  const messagesRaw = safe.messages || {};
+  const messages = { ...defaultConfig.messages };
+  if (typeof messagesRaw.loading === "string") {
+    messages.loading = messagesRaw.loading;
+  }
+  if (typeof messagesRaw.empty === "string") {
+    messages.empty = messagesRaw.empty;
+  }
+  if (typeof messagesRaw.error === "string") {
+    messages.error = messagesRaw.error;
+  }
+
+  // notice（共通注意書き）
+  let notice = null;
+  if (
+    safe.notice &&
+    typeof safe.notice.text === "string" &&
+    safe.notice.text.trim() !== ""
+  ) {
+    notice = { text: safe.notice.text };
+  }
+
+  return {
+    thresholds,
+    quantity,
+    symbols,
+    labels,
+    locations,
+    click,
+    future,
+    sort,
+    messages,
+    notice,
+  };
+}
+
 export async function loader({ request }) {
   try {
     const { admin } = await shopify.authenticate.public.appProxy(request);
@@ -180,6 +390,7 @@ export async function loader({ request }) {
         variantId,
         variantTitle: variant?.title ?? null,
         stocks: [],
+        config: buildGlobalConfig(null),
       });
     }
 
@@ -201,21 +412,26 @@ export async function loader({ request }) {
     });
 
     // メタフィールド JSON をパース
-    let config = null;
+    let rawConfig = null;
     if (metafieldValue) {
       try {
-        config = JSON.parse(metafieldValue);
+        rawConfig = JSON.parse(metafieldValue);
       } catch (e) {
         console.error("Failed to parse location_stock.config JSON:", e);
       }
     }
 
-    const stocks = applyConfigToStocks(baseStocks, config);
+    // ロケーション装飾
+    const stocks = applyConfigToStocks(baseStocks, rawConfig || {});
+
+    // グローバル設定（config）を構築
+    const globalConfig = buildGlobalConfig(rawConfig || {});
 
     return successJson({
       variantId,
       variantTitle: variant.title,
       stocks,
+      config: globalConfig,
     });
   } catch (error) {
     console.error("location-stock loader error:", error);
