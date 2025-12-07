@@ -207,6 +207,31 @@
       "info": "例: 「： 」「 / 」など。レイアウトが「リスト」のときに使われます。"
     },
     {
+      "type": "checkbox",
+      "id": "show_quantity",
+      "label": "在庫数を表示する",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_quantity_label",
+      "label": "在庫数のラベル（「在庫」など）を表示する",
+      "default": true
+    },
+    {
+      "type": "select",
+      "id": "row_content_mode",
+      "label": "行内の表示内容",
+      "default": "symbol_and_quantity",
+      "options": [
+        { "value": "symbol_only", "label": "マークのみ（◯△✕）" },
+        { "value": "symbol_and_quantity", "label": "マーク＋在庫数" },
+        { "value": "symbol_quantity_label", "label": "マーク＋在庫数＋ラベル" },
+        { "value": "quantity_only", "label": "在庫数のみ" },
+        { "value": "quantity_label", "label": "在庫数＋ラベル" }
+      ]
+    },
+    {
       "type": "range",
       "id": "row_padding_y",
       "label": "行の上下余白（px）",

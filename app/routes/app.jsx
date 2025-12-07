@@ -18,11 +18,16 @@ export default function App() {
   return (
     <AppProvider embedded apiKey={apiKey}>
       <s-app-nav>
+        {/* ホーム（カード 2 枚の画面） */}
         <s-link href="/app">Home</s-link>
-        <s-link href="/app/additional">Additional page</s-link>
-        {/* ロケーション在庫設定ページへのリンクを追加 */}
+
+        {/* ロケーション在庫設定 */}
         <s-link href="/app/locations">ロケーション在庫設定</s-link>
+
+        {/* 在庫表示のグローバル設定 */}
+        <s-link href="/app/settings">在庫表示のグローバル設定</s-link>
       </s-app-nav>
+
       <Outlet />
     </AppProvider>
   );

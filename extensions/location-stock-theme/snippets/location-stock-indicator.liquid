@@ -330,14 +330,15 @@
         outOfStockMax: 0,
         inStockMin: 5,
 
-        // 在庫数表示ルール
-        showQuantity: true,
-        showQuantityLabel: true,
+        // 在庫数表示ルール（表示／非表示・構成はテーマ側がマスター）
+        showQuantity: {{ s.show_quantity | default: true | json }},
+        showQuantityLabel: {{ s.show_quantity_label | default: true | json }},
         quantityLabel: "在庫",
         quantityWrapperBefore: "(",
         quantityWrapperAfter: ")",
         // symbol_only / symbol_and_quantity / symbol_quantity_label / quantity_only / quantity_label
-        rowContentMode: "symbol_and_quantity",
+        rowContentMode: {{ s.row_content_mode | default: 'symbol_and_quantity' | json }},
+
 
         // ラベル
         labelInStock: "在庫あり",
@@ -695,6 +696,8 @@
             }
 
             // 在庫数表示ルール
+            // 文言だけアプリ側をマスターにして、
+            // 「表示／非表示・構成」はテーマ設定を優先する
             if (appConfig.quantity) {
               var q = appConfig.quantity;
               if (typeof q.quantityLabel === "string") {
@@ -706,15 +709,8 @@
               if (typeof q.wrapperAfter === "string") {
                 settings.quantityWrapperAfter = q.wrapperAfter;
               }
-              if (typeof q.showQuantity === "boolean") {
-                settings.showQuantity = q.showQuantity;
-              }
-              if (typeof q.showQuantityLabel === "boolean") {
-                settings.showQuantityLabel = q.showQuantityLabel;
-              }
-              if (typeof q.rowContentMode === "string") {
-                settings.rowContentMode = q.rowContentMode;
-              }
+              // showQuantity / showQuantityLabel / rowContentMode は
+              // テーマ側がマスターなのでここでは上書きしない
             }
 
             // マーク
