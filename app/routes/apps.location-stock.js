@@ -357,7 +357,20 @@ function buildGlobalConfig(raw) {
 
 export async function loader({ request }) {
   try {
-    const { admin } = await shopify.authenticate.public.appProxy(request);
+    const auth = await shopify.authenticate.public.appProxy(request);
+    const { admin, session } = auth || {};
+
+    if (!admin) {
+      console.error("Admin client is undefined in app proxy loader", {
+        shop: session?.shop,
+        sessionType: session?.isOnline ? "online" : "offline",
+      });
+
+      return errorJson(
+        "missing_admin_client",
+        "管理画面 API クライアントの初期化に失敗しました。アプリの設定（APIキーなど）を確認してください。"
+      );
+    }
 
     const url = new URL(request.url);
     const variantId = url.searchParams.get("variant_id");

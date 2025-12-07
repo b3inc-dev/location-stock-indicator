@@ -330,15 +330,12 @@
         outOfStockMax: 0,
         inStockMin: 5,
 
-        // 在庫数表示ルール（表示／非表示・構成はテーマ側がマスター）
-        showQuantity: {{ s.show_quantity | default: true | json }},
-        showQuantityLabel: {{ s.show_quantity_label | default: true | json }},
+        // 在庫表示レイアウト（テーマ側がマスター）
+        // symbol_only / symbol_and_quantity / symbol_quantity_label / quantity_only / quantity_label
+        rowContentMode: {{ s.row_content_mode | default: 'symbol_and_quantity' | json }},
         quantityLabel: "在庫",
         quantityWrapperBefore: "(",
         quantityWrapperAfter: ")",
-        // symbol_only / symbol_and_quantity / symbol_quantity_label / quantity_only / quantity_label
-        rowContentMode: {{ s.row_content_mode | default: 'symbol_and_quantity' | json }},
-
 
         // ラベル
         labelInStock: "在庫あり",
@@ -444,12 +441,29 @@
 
       // 在庫数部分の HTML を組み立て
       function buildQuantityHtml(qty) {
-        if (!settings.showQuantity) return "";
-        var inner = "";
+        var mode = settings.rowContentMode;
 
-        if (settings.showQuantityLabel && settings.quantityLabel) {
+        // 数量を一切表示しないモード
+        if (mode === "symbol_only") {
+          return "";
+        }
+
+        // 数量を表示するモードだけ通す
+        var useQty =
+          mode === "symbol_and_quantity" ||
+          mode === "symbol_quantity_label" ||
+          mode === "quantity_only" ||
+          mode === "quantity_label";
+
+        if (!useQty) return "";
+
+        var inner;
+
+        // 「在庫数＋ラベル」のときだけ quantityLabel を付ける
+        if (mode === "quantity_label" && settings.quantityLabel) {
           inner = settings.quantityLabel + " " + qty;
         } else {
+          // それ以外は数字だけ
           inner = qty;
         }
 
@@ -549,34 +563,38 @@
           "</span>";
 
         var qtyHtml = buildQuantityHtml(item.quantity || 0);
+        var labelHtml = status.label
+          ? ' <span class="location-stock-indicator__status-label">' +
+              status.label +
+            "</span>"
+          : "";
+
+        var mode = settings.rowContentMode;
         var parts = [];
 
-        if (settings.rowContentMode === "symbol_only") {
+        if (mode === "symbol_only") {
+          // マークのみ
           parts.push(symbolHtml);
-        } else if (settings.rowContentMode === "symbol_and_quantity") {
+        } else if (mode === "symbol_and_quantity") {
+          // マーク＋数
           parts.push(symbolHtml);
           if (qtyHtml) parts.push(" " + qtyHtml);
-        } else if (settings.rowContentMode === "symbol_quantity_label") {
+        } else if (mode === "symbol_quantity_label") {
+          // マーク＋数＋ステータスラベル
           parts.push(symbolHtml);
           if (qtyHtml) parts.push(" " + qtyHtml);
-          if (status.label) {
-            parts.push(
-              ' <span class="location-stock-indicator__status-label">' +
-                status.label +
-                "</span>"
-            );
-          }
-        } else if (settings.rowContentMode === "quantity_only") {
+          if (labelHtml) parts.push(" " + labelHtml);
+        } else if (mode === "quantity_only") {
+          // 数のみ
           if (qtyHtml) parts.push(qtyHtml);
-        } else if (settings.rowContentMode === "quantity_label") {
+        } else if (mode === "quantity_label") {
+          // 在庫ラベル付き数＋ステータスラベル
           if (qtyHtml) parts.push(qtyHtml);
-          if (status.label) {
-            parts.push(
-              ' <span class="location-stock-indicator__status-label">' +
-                status.label +
-                "</span>"
-            );
-          }
+          if (labelHtml) parts.push(" " + labelHtml);
+        } else {
+          // 想定外は symbol_and_quantity 扱い
+          parts.push(symbolHtml);
+          if (qtyHtml) parts.push(" " + qtyHtml);
         }
 
         return parts.join("");
@@ -696,8 +714,6 @@
             }
 
             // 在庫数表示ルール
-            // 文言だけアプリ側をマスターにして、
-            // 「表示／非表示・構成」はテーマ設定を優先する
             if (appConfig.quantity) {
               var q = appConfig.quantity;
               if (typeof q.quantityLabel === "string") {
@@ -709,8 +725,6 @@
               if (typeof q.wrapperAfter === "string") {
                 settings.quantityWrapperAfter = q.wrapperAfter;
               }
-              // showQuantity / showQuantityLabel / rowContentMode は
-              // テーマ側がマスターなのでここでは上書きしない
             }
 
             // マーク
