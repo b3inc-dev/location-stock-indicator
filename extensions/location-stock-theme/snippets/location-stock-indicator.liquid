@@ -193,6 +193,12 @@
       text-align: right;
     }
 
+    /* メッセージ文言・注意書きで改行（\n）を反映する */
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__body,
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__notice {
+      white-space: pre-line;
+    }
+
     /* リストレイアウト */
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__list {
       list-style: none;
@@ -696,7 +702,12 @@
             return res.json();
           })
           .then(function (data) {
-            if (!data) {
+            if (!data || data.ok === false) {
+              console.error(
+                "[location-stock] API error",
+                data && data.error,
+                data && data.message
+              );
               setMessage("error", settings.errorMessage);
               return;
             }
@@ -869,7 +880,8 @@
 
             renderStocks(stocks);
           })
-          .catch(function () {
+          .catch(function (err) {
+            console.error("[location-stock] fetch error", err);
             setMessage("error", settings.errorMessage);
           });
       }
