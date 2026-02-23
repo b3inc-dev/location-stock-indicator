@@ -2,7 +2,7 @@
 # https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "61b474b801b754166b12f0b9cd07f450"
-name = "location-stock-indicator-ciara"
+name = "Location Stock - Ciara"
 application_url = "https://location-stock-indicator-ciara.onrender.com"
 embedded = true
 

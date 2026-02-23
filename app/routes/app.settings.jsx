@@ -1,11 +1,7 @@
 // app/routes/app.settings.jsx
 
-import {
-  useLoaderData,
-  useActionData,
-  Form,
-  Link,
-} from "react-router";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { useLoaderData, useFetcher } from "react-router";
 import { authenticate } from "../shopify.server";
 
 // shop の location_stock.config を読むクエリ
@@ -404,853 +400,433 @@ export async function action({ request }) {
   }
 }
 
+const inputBaseStyle = {
+  width: "100%",
+  padding: "6px 8px",
+  fontSize: 14,
+  borderRadius: 4,
+  border: "1px solid #c9cccf",
+  boxSizing: "border-box",
+};
+
+const textareaBaseStyle = {
+  ...inputBaseStyle,
+  minHeight: 60,
+  resize: "vertical",
+};
+
+const selectBaseStyle = { ...inputBaseStyle, background: "#fff" };
+
 /**
- * /app/settings の画面
+ * /app/settings の画面（POS Stock 同様：各セクション左＝タイトル＋説明のみ、右＝カード、固定フッターで破棄・保存）
  */
 export default function AppSettings() {
   const loaderData = useLoaderData();
-  const actionData = useActionData();
+  const fetcher = useFetcher();
 
-  const effectiveSymbols = actionData?.symbols || loaderData.symbols;
-  const effectiveSortMode =
-    actionData?.sortMode || loaderData.sortMode;
-  const effectiveClick =
-    actionData?.click || loaderData.click;
-  const effectiveQuantityTexts =
-    actionData?.quantityTexts || loaderData.quantityTexts;
-  const effectiveLabels =
-    actionData?.labels || loaderData.labels;
-  const effectiveMessages =
-    actionData?.messages || loaderData.messages;
-  const effectiveNotice =
-    actionData?.notice || loaderData.notice;
+  const [initial, setInitial] = useState(() => ({
+    symbols: loaderData.symbols,
+    sortMode: loaderData.sortMode,
+    click: loaderData.click,
+    quantityTexts: loaderData.quantityTexts,
+    labels: loaderData.labels,
+    messages: loaderData.messages,
+    notice: loaderData.notice,
+  }));
 
-  const formKey = JSON.stringify({
-    symbols: effectiveSymbols,
-    sortMode: effectiveSortMode,
-    click: effectiveClick,
-    quantityTexts: effectiveQuantityTexts,
-    labels: effectiveLabels,
-    messages: effectiveMessages,
-    notice: effectiveNotice,
-  });
+  const [state, setState] = useState(initial);
+  const [showSavedFeedback, setShowSavedFeedback] = useState(false);
+  const lastAppliedFetcherDataRef = useRef(null);
 
-  const inputBaseStyle = {
-    width: "100%",
-    padding: "6px 8px",
-    fontSize: "0.9rem",
-    borderRadius: "4px",
-    border: "1px solid #d0d5dd",
-    boxSizing: "border-box",
+  // 保存成功時に state と initial を両方更新（同じ fetcher.data で二重適用しない）
+  useEffect(() => {
+    if (!fetcher.data || fetcher.data.ok !== true || !fetcher.data.symbols) return;
+    if (lastAppliedFetcherDataRef.current === fetcher.data) return;
+    lastAppliedFetcherDataRef.current = fetcher.data;
+    const next = {
+      symbols: fetcher.data.symbols,
+      sortMode: fetcher.data.sortMode,
+      click: fetcher.data.click,
+      quantityTexts: fetcher.data.quantityTexts,
+      labels: fetcher.data.labels,
+      messages: fetcher.data.messages,
+      notice: fetcher.data.notice,
+    };
+    setState(next);
+    setInitial(next);
+    setShowSavedFeedback(true);
+  }, [fetcher.data]);
+
+  // 保存完了メッセージを約3秒表示してから非表示
+  useEffect(() => {
+    if (!showSavedFeedback) return;
+    const t = setTimeout(() => setShowSavedFeedback(false), 3000);
+    return () => clearTimeout(t);
+  }, [showSavedFeedback]);
+
+  const isDirty = useMemo(
+    () => JSON.stringify(state) !== JSON.stringify(initial),
+    [state, initial]
+  );
+
+  const saving = fetcher.state !== "idle";
+  const saveOk = fetcher.data && fetcher.data.ok === true;
+  const saveErr = fetcher.data && fetcher.data.ok === false ? fetcher.data.error : null;
+
+  const handleDiscard = () => setState(initial);
+  const handleSave = () => {
+    const fd = new FormData();
+    fd.set("symbol_in_stock", state.symbols.inStock);
+    fd.set("symbol_low_stock", state.symbols.lowStock);
+    fd.set("symbol_out_of_stock", state.symbols.outOfStock);
+    fd.set("sort_mode", state.sortMode);
+    fd.set("click_action", state.click.action);
+    fd.set("map_url_template", state.click.mapUrlTemplate);
+    fd.set("url_template", state.click.urlTemplate);
+    fd.set("quantity_label", state.quantityTexts.label);
+    fd.set("quantity_wrapper_before", state.quantityTexts.wrapperBefore);
+    fd.set("quantity_wrapper_after", state.quantityTexts.wrapperAfter);
+    fd.set("label_in_stock", state.labels.inStock);
+    fd.set("label_low_stock", state.labels.lowStock);
+    fd.set("label_out_of_stock", state.labels.outOfStock);
+    fd.set("message_loading", state.messages.loading);
+    fd.set("message_empty", state.messages.empty);
+    fd.set("message_error", state.messages.error);
+    fd.set("notice_text", state.notice.text);
+    fetcher.submit(fd, { method: "post" });
   };
 
-  const textareaBaseStyle = {
-    ...inputBaseStyle,
-    minHeight: "60px",
-    resize: "vertical",
-  };
-
-  const selectBaseStyle = {
-    ...inputBaseStyle,
-    background: "#fff",
-  };
+  // 「保存しました」は showSavedFeedback のときだけ表示。ここでは送信中・未保存・エラーのみ
+  const footerStatusText = saveErr
+    ? `保存エラー: ${saveErr}`
+    : saving
+      ? "保存中..."
+      : isDirty
+        ? "未保存の変更があります"
+        : "";
 
   return (
-    <div style={{ padding: "24px", maxWidth: "960px" }}>
-      <h1 style={{ fontSize: "1.6rem", marginBottom: "0.75rem" }}>
-        グローバル設定（location_stock.config）
-      </h1>
-
-      <p
-        style={{
-          marginBottom: "0.75rem",
-          color: "#4a4a4a",
-          fontSize: "0.95rem",
-        }}
-      >
-        ここで設定した値は、すべての商品ページの在庫表示に共通で使われます。
-      </p>
-      <p
-        style={{
-          marginBottom: "1.5rem",
-          color: "#6b6b6b",
-          fontSize: "0.85rem",
-        }}
-      >
-        文言や在庫マークなどのロジック系はアプリ側で、見た目やレイアウトはテーマ側の
-        App Block で調整します。
-      </p>
-
-      {actionData?.ok && (
-        <div
-          style={{
-            marginBottom: "16px",
-            padding: "10px 12px",
-            borderRadius: "6px",
-            border: "1px solid #c6f2d5",
-            background: "#f1fff7",
-            color: "#0b6b3a",
-            fontSize: "0.9rem",
-          }}
-        >
-          設定を保存しました。
-        </div>
-      )}
-
-      {actionData && actionData.ok === false && actionData.error && (
-        <div
-          style={{
-            marginBottom: "16px",
-            padding: "10px 12px",
-            borderRadius: "6px",
-            border: "1px solid #f5c2c0",
-            background: "#fff4f4",
-            color: "#b3261e",
-            whiteSpace: "pre-wrap",
-            fontSize: "0.9rem",
-          }}
-        >
-          保存時にエラーが発生しました：
-          <br />
-          {actionData.error}
-        </div>
-      )}
-
-      <Form method="post" key={formKey}>
-        {/* 1段目：在庫マーク／並び順 */}
+    <s-page heading="在庫表示設定">
+      <div style={{ padding: "16px", maxWidth: "1200px", paddingBottom: "88px" }}>
+        {/* セクション：在庫マーク — 左（タイトル＋説明のみ）/ 右（カード） */}
         <div
           style={{
             display: "flex",
+            gap: "24px",
+            alignItems: "flex-start",
             flexWrap: "wrap",
-            gap: "20px",
             marginBottom: "24px",
           }}
         >
-          {/* 左カラム：在庫マーク */}
-          <div
-            style={{
-              flex: "1 1 260px",
-              padding: "16px 18px",
-              borderRadius: "8px",
-              border: "1px solid #e1e3e5",
-              background: "#fff",
-            }}
-          >
-            <h2
-              style={{
-                fontSize: "1.05rem",
-                margin: "0 0 0.75rem",
-                fontWeight: 600,
-              }}
-            >
+          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>
               在庫マーク
-            </h2>
-
-            <p
-              style={{
-                margin: "0 0 0.75rem",
-                fontSize: "0.85rem",
-                color: "#555",
-              }}
-            >
-              商品ページの在庫表示と凡例に使うマークをまとめて変更します。
-              顔文字や絵文字（例: 😊 / ⚠️ / ❌）も利用できます。
-            </p>
-
-            <div style={{ marginBottom: "0.75rem" }}>
-              <label
-                htmlFor="symbol_in_stock"
-                style={{
-                  display: "block",
-                  fontSize: "0.85rem",
-                  fontWeight: 600,
-                  marginBottom: "0.25rem",
-                }}
-              >
-                在庫ありマーク
-              </label>
-              <input
-                id="symbol_in_stock"
-                name="symbol_in_stock"
-                type="text"
-                defaultValue={effectiveSymbols.inStock}
-                style={inputBaseStyle}
-              />
             </div>
-
-            <div style={{ marginBottom: "0.75rem" }}>
-              <label
-                htmlFor="symbol_low_stock"
-                style={{
-                  display: "block",
-                  fontSize: "0.85rem",
-                  fontWeight: 600,
-                  marginBottom: "0.25rem",
-                }}
-              >
-                低在庫マーク
-              </label>
-              <input
-                id="symbol_low_stock"
-                name="symbol_low_stock"
-                type="text"
-                defaultValue={effectiveSymbols.lowStock}
-                style={inputBaseStyle}
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="symbol_out_of_stock"
-                style={{
-                  display: "block",
-                  fontSize: "0.85rem",
-                  fontWeight: 600,
-                  marginBottom: "0.25rem",
-                }}
-              >
-                在庫なしマーク
-              </label>
-              <input
-                id="symbol_out_of_stock"
-                name="symbol_out_of_stock"
-                type="text"
-                defaultValue={effectiveSymbols.outOfStock}
-                style={inputBaseStyle}
-              />
+            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
+              商品ページの在庫表示と凡例に使うマークをまとめて変更します。顔文字や絵文字（例: 😊 / ⚠️ / ❌）も利用できます。
             </div>
           </div>
-
-          {/* 右カラム：並び順 */}
-          <div
-            style={{
-              flex: "1 1 260px",
-              padding: "16px 18px",
-              borderRadius: "8px",
-              border: "1px solid #e1e3e5",
-              background: "#fff",
-            }}
-          >
-            <h2
+          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+            <div
               style={{
-                fontSize: "1.05rem",
-                margin: "0 0 0.75rem",
-                fontWeight: 600,
+                background: "#ffffff",
+                borderRadius: 12,
+                boxShadow: "0 0 0 1px #e1e3e5",
+                padding: 16,
               }}
             >
-              並び順（sort.mode）
-            </h2>
+              <div style={{ marginBottom: "12px" }}>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫ありマーク</label>
+                <input
+                  type="text"
+                  value={state.symbols.inStock}
+                  onChange={(e) => setState((s) => ({ ...s, symbols: { ...s.symbols, inStock: e.target.value } }))}
+                  style={inputBaseStyle}
+                />
+              </div>
+              <div style={{ marginBottom: "12px" }}>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>低在庫マーク</label>
+                <input
+                  type="text"
+                  value={state.symbols.lowStock}
+                  onChange={(e) => setState((s) => ({ ...s, symbols: { ...s.symbols, lowStock: e.target.value } }))}
+                  style={inputBaseStyle}
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫なしマーク</label>
+                <input
+                  type="text"
+                  value={state.symbols.outOfStock}
+                  onChange={(e) => setState((s) => ({ ...s, symbols: { ...s.symbols, outOfStock: e.target.value } }))}
+                  style={inputBaseStyle}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
 
-            <p
-              style={{
-                margin: "0 0 0.75rem",
-                fontSize: "0.85rem",
-                color: "#555",
-              }}
-            >
-              在庫リスト全体の並び順をアプリ側で一括制御します。
-            </p>
-
-            <div style={{ marginBottom: "0.75rem" }}>
-              <label
-                htmlFor="sort_mode"
-                style={{
-                  display: "block",
-                  fontSize: "0.85rem",
-                  fontWeight: 600,
-                  marginBottom: "0.25rem",
-                }}
-              >
-                並び順モード
-              </label>
+        {/* セクション：並び順 */}
+        <div
+          style={{
+            display: "flex",
+            gap: "24px",
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+            marginBottom: "24px",
+          }}
+        >
+          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>並び順（sort.mode）</div>
+            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
+              在庫リスト全体の並び順をアプリ側で一括制御します。テーマ側の sort 設定はここで指定した値がそのままフロントの並び順に使われます。
+            </div>
+          </div>
+          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+            <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
+              <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>並び順モード</label>
               <select
-                id="sort_mode"
-                name="sort_mode"
-                defaultValue={effectiveSortMode}
+                value={state.sortMode}
+                onChange={(e) => setState((s) => ({ ...s, sortMode: e.target.value }))}
                 style={selectBaseStyle}
               >
-                <option value="none">
-                  変更しない（config.sort を使わない）
-                </option>
-                <option value="location_name_asc">
-                  ロケーション名 昇順（A→Z）
-                </option>
-                <option value="quantity_desc">
-                  在庫数の多い順（desc）
-                </option>
-                <option value="quantity_asc">
-                  在庫数の少ない順（asc）
-                </option>
+                <option value="none">変更しない（config.sort を使わない）</option>
+                <option value="location_name_asc">ロケーション名 昇順（A→Z）</option>
+                <option value="quantity_desc">在庫数の多い順（desc）</option>
+                <option value="quantity_asc">在庫数の少ない順（asc）</option>
               </select>
             </div>
-
-            <p
-              style={{
-                margin: 0,
-                fontSize: "0.8rem",
-                color: "#777",
-              }}
-            >
-              ※ テーマ側の sort 設定は削除済みなので、ここで指定した値がそのまま
-              フロントの並び順に使われます。
-            </p>
           </div>
         </div>
 
-        {/* 2段目：在庫数テキスト／ステータスラベル */}
+        {/* セクション：在庫数のテキスト・単位 */}
         <div
           style={{
             display: "flex",
+            gap: "24px",
+            alignItems: "flex-start",
             flexWrap: "wrap",
-            gap: "20px",
             marginBottom: "24px",
           }}
         >
-          {/* 左：在庫数テキスト・単位 */}
-          <div
-            style={{
-              flex: "1 1 260px",
-              padding: "16px 18px",
-              borderRadius: "8px",
-              border: "1px solid #e1e3e5",
-              background: "#fff",
-            }}
-          >
-            <h2
-              style={{
-                fontSize: "1.05rem",
-                margin: "0 0 0.75rem",
-                fontWeight: 600,
-              }}
-            >
-              在庫数のテキスト・単位
-            </h2>
-
-            <p
-              style={{
-                margin: "0 0 0.75rem",
-                fontSize: "0.85rem",
-                color: "#555",
-              }}
-            >
-              在庫数の前後につけるラベルやカッコ、単位を設定します。
-              表示／非表示や構成（マークのみ、数量のみなど）はテーマ側の
-              App Block で制御します。
-            </p>
-
-            <div style={{ marginBottom: "0.75rem" }}>
-              <label
-                htmlFor="quantity_label"
-                style={{
-                  display: "block",
-                  fontSize: "0.85rem",
-                  fontWeight: 600,
-                  marginBottom: "0.25rem",
-                }}
-              >
-                在庫数ラベル
-              </label>
-              <input
-                id="quantity_label"
-                name="quantity_label"
-                type="text"
-                defaultValue={effectiveQuantityTexts.label}
-                placeholder="例: 在庫"
-                style={inputBaseStyle}
-              />
-            </div>
-
-            <div style={{ display: "flex", gap: "8px" }}>
-              <div style={{ flex: "1 1 0" }}>
-                <label
-                  htmlFor="quantity_wrapper_before"
-                  style={{
-                    display: "block",
-                    fontSize: "0.85rem",
-                    fontWeight: 600,
-                    marginBottom: "0.25rem",
-                  }}
-                >
-                  前に付ける文字
-                </label>
-                <input
-                  id="quantity_wrapper_before"
-                  name="quantity_wrapper_before"
-                  type="text"
-                  defaultValue={effectiveQuantityTexts.wrapperBefore}
-                  placeholder="例: ("
-                  style={inputBaseStyle}
-                />
-              </div>
-              <div style={{ flex: "1 1 0" }}>
-                <label
-                  htmlFor="quantity_wrapper_after"
-                  style={{
-                    display: "block",
-                    fontSize: "0.85rem",
-                    fontWeight: 600,
-                    marginBottom: "0.25rem",
-                  }}
-                >
-                  後ろに付ける文字
-                </label>
-                <input
-                  id="quantity_wrapper_after"
-                  name="quantity_wrapper_after"
-                  type="text"
-                  defaultValue={effectiveQuantityTexts.wrapperAfter}
-                  placeholder="例: )"
-                  style={inputBaseStyle}
-                />
-              </div>
+          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>在庫数のテキスト・単位</div>
+            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
+              在庫数の前後につけるラベルやカッコ、単位を設定します。表示／非表示や構成（マークのみ、数量のみなど）はテーマ側の App Block で制御します。
             </div>
           </div>
-
-          {/* 右：在庫ステータスラベル */}
-          <div
-            style={{
-              flex: "1 1 260px",
-              padding: "16px 18px",
-              borderRadius: "8px",
-              border: "1px solid #e1e3e5",
-              background: "#fff",
-            }}
-          >
-            <h2
-              style={{
-                fontSize: "1.05rem",
-                margin: "0 0 0.75rem",
-                fontWeight: 600,
-              }}
-            >
-              在庫ステータスのラベル
-            </h2>
-
-            <p
-              style={{
-                margin: "0 0 0.75rem",
-                fontSize: "0.85rem",
-                color: "#555",
-              }}
-            >
-              在庫マークと一緒に表示するステータスラベルを設定します。
-              凡例と在庫リストの両方でこのラベルが使われます（テーマ側で上書きしない限り）。
-            </p>
-
-            <div style={{ marginBottom: "0.75rem" }}>
-              <label
-                htmlFor="label_in_stock"
-                style={{
-                  display: "block",
-                  fontSize: "0.85rem",
-                  fontWeight: 600,
-                  marginBottom: "0.25rem",
-                }}
-              >
-                在庫ありラベル
-              </label>
-              <input
-                id="label_in_stock"
-                name="label_in_stock"
-                type="text"
-                defaultValue={effectiveLabels.inStock}
-                placeholder="例: 在庫あり"
-                style={inputBaseStyle}
-              />
-            </div>
-
-            <div style={{ marginBottom: "0.75rem" }}>
-              <label
-                htmlFor="label_low_stock"
-                style={{
-                  display: "block",
-                  fontSize: "0.85rem",
-                  fontWeight: 600,
-                  marginBottom: "0.25rem",
-                }}
-              >
-                残りわずかラベル
-              </label>
-              <input
-                id="label_low_stock"
-                name="label_low_stock"
-                type="text"
-                defaultValue={effectiveLabels.lowStock}
-                placeholder="例: 残りわずか"
-                style={inputBaseStyle}
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="label_out_of_stock"
-                style={{
-                  display: "block",
-                  fontSize: "0.85rem",
-                  fontWeight: 600,
-                  marginBottom: "0.25rem",
-                }}
-              >
-                在庫なしラベル
-              </label>
-              <input
-                id="label_out_of_stock"
-                name="label_out_of_stock"
-                type="text"
-                defaultValue={effectiveLabels.outOfStock}
-                placeholder="例: 在庫なし"
-                style={inputBaseStyle}
-              />
+          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+            <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
+              <div style={{ marginBottom: "12px" }}>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫数ラベル</label>
+                <input type="text" value={state.quantityTexts.label} onChange={(e) => setState((s) => ({ ...s, quantityTexts: { ...s.quantityTexts, label: e.target.value } }))} placeholder="例: 在庫" style={inputBaseStyle} />
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ flex: "1 1 0" }}>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>前に付ける文字</label>
+                  <input type="text" value={state.quantityTexts.wrapperBefore} onChange={(e) => setState((s) => ({ ...s, quantityTexts: { ...s.quantityTexts, wrapperBefore: e.target.value } }))} placeholder="例: (" style={inputBaseStyle} />
+                </div>
+                <div style={{ flex: "1 1 0" }}>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>後ろに付ける文字</label>
+                  <input type="text" value={state.quantityTexts.wrapperAfter} onChange={(e) => setState((s) => ({ ...s, quantityTexts: { ...s.quantityTexts, wrapperAfter: e.target.value } }))} placeholder="例: )" style={inputBaseStyle} />
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* 3段目：メッセージ文言／注意書き */}
+        {/* セクション：在庫ステータスのラベル */}
         <div
           style={{
             display: "flex",
+            gap: "24px",
+            alignItems: "flex-start",
             flexWrap: "wrap",
-            gap: "20px",
             marginBottom: "24px",
           }}
         >
-          {/* 左：メッセージ文言 */}
-          <div
-            style={{
-              flex: "1 1 260px",
-              padding: "16px 18px",
-              borderRadius: "8px",
-              border: "1px solid #e1e3e5",
-              background: "#fff",
-            }}
-          >
-            <h2
-              style={{
-                fontSize: "1.05rem",
-                margin: "0 0 0.75rem",
-                fontWeight: 600,
-              }}
-            >
-              メッセージ文言
-            </h2>
-
-            <p
-              style={{
-                margin: "0 0 0.75rem",
-                fontSize: "0.85rem",
-                color: "#555",
-              }}
-            >
-              読み込み中・在庫なし・エラー時に表示するメッセージを設定します。
-              空欄の場合はアプリのデフォルト文言が使われます。
-            </p>
-
-            <div style={{ marginBottom: "0.75rem" }}>
-              <label
-                htmlFor="message_loading"
-                style={{
-                  display: "block",
-                  fontSize: "0.85rem",
-                  fontWeight: 600,
-                  marginBottom: "0.25rem",
-                }}
-              >
-                読み込み中メッセージ
-              </label>
-              <textarea
-                id="message_loading"
-                name="message_loading"
-                defaultValue={effectiveMessages.loading}
-                style={textareaBaseStyle}
-              />
-            </div>
-
-            <div style={{ marginBottom: "0.75rem" }}>
-              <label
-                htmlFor="message_empty"
-                style={{
-                  display: "block",
-                  fontSize: "0.85rem",
-                  fontWeight: 600,
-                  marginBottom: "0.25rem",
-                }}
-              >
-                在庫なしメッセージ
-              </label>
-              <textarea
-                id="message_empty"
-                name="message_empty"
-                defaultValue={effectiveMessages.empty}
-                style={textareaBaseStyle}
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="message_error"
-                style={{
-                  display: "block",
-                  fontSize: "0.85rem",
-                  fontWeight: 600,
-                  marginBottom: "0.25rem",
-                }}
-              >
-                エラーメッセージ
-              </label>
-              <textarea
-                id="message_error"
-                name="message_error"
-                defaultValue={effectiveMessages.error}
-                style={textareaBaseStyle}
-              />
+          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>在庫ステータスのラベル</div>
+            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
+              在庫マークと一緒に表示するステータスラベルを設定します。凡例と在庫リストの両方でこのラベルが使われます。
             </div>
           </div>
+          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+            <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
+              <div style={{ marginBottom: "12px" }}>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫ありラベル</label>
+                <input type="text" value={state.labels.inStock} onChange={(e) => setState((s) => ({ ...s, labels: { ...s.labels, inStock: e.target.value } }))} placeholder="例: 在庫あり" style={inputBaseStyle} />
+              </div>
+              <div style={{ marginBottom: "12px" }}>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>残りわずかラベル</label>
+                <input type="text" value={state.labels.lowStock} onChange={(e) => setState((s) => ({ ...s, labels: { ...s.labels, lowStock: e.target.value } }))} placeholder="例: 残りわずか" style={inputBaseStyle} />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫なしラベル</label>
+                <input type="text" value={state.labels.outOfStock} onChange={(e) => setState((s) => ({ ...s, labels: { ...s.labels, outOfStock: e.target.value } }))} placeholder="例: 在庫なし" style={inputBaseStyle} />
+              </div>
+            </div>
+          </div>
+        </div>
 
-          {/* 右：注意書き */}
-          <div
-            style={{
-              flex: "1 1 260px",
-              padding: "16px 18px",
-              borderRadius: "8px",
-              border: "1px solid #e1e3e5",
-              background: "#fff",
-            }}
-          >
-            <h2
-              style={{
-                fontSize: "1.05rem",
-                margin: "0 0 0.75rem",
-                fontWeight: 600,
-              }}
-            >
-              注意書き
-            </h2>
+        {/* セクション：メッセージ文言 */}
+        <div
+          style={{
+            display: "flex",
+            gap: "24px",
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+            marginBottom: "24px",
+          }}
+        >
+          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>メッセージ文言</div>
+            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
+              読み込み中・在庫なし・エラー時に表示するメッセージを設定します。空欄の場合はアプリのデフォルト文言が使われます。
+            </div>
+          </div>
+          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+            <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
+              <div style={{ marginBottom: "12px" }}>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>読み込み中メッセージ</label>
+                <textarea value={state.messages.loading} onChange={(e) => setState((s) => ({ ...s, messages: { ...s.messages, loading: e.target.value } }))} style={textareaBaseStyle} />
+              </div>
+              <div style={{ marginBottom: "12px" }}>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫なしメッセージ</label>
+                <textarea value={state.messages.empty} onChange={(e) => setState((s) => ({ ...s, messages: { ...s.messages, empty: e.target.value } }))} style={textareaBaseStyle} />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>エラーメッセージ</label>
+                <textarea value={state.messages.error} onChange={(e) => setState((s) => ({ ...s, messages: { ...s.messages, error: e.target.value } }))} style={textareaBaseStyle} />
+              </div>
+            </div>
+          </div>
+        </div>
 
-            <p
-              style={{
-                margin: "0 0 0.75rem",
-                fontSize: "0.85rem",
-                color: "#555",
-              }}
-            >
+        {/* セクション：注意書き */}
+        <div
+          style={{
+            display: "flex",
+            gap: "24px",
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+            marginBottom: "24px",
+          }}
+        >
+          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>注意書き</div>
+            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
               すべての商品ページで共通して表示したい注意書きがあれば設定します。
-            </p>
-
-            <label
-              htmlFor="message_error"
-              style={{
-                display: "block",
-                fontSize: "0.85rem",
-                fontWeight: 600,
-                marginBottom: "0.25rem",
-              }}
-            >
-              注意書きテキスト
-            </label>
-            <textarea
-              id="notice_text"
-              name="notice_text"
-              defaultValue={effectiveNotice.text}
-              style={textareaBaseStyle}
-              placeholder="例: 在庫は店舗間で移動する場合があります。ご来店前に店舗へ在庫をご確認ください。"
-            />
+            </div>
+          </div>
+          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+            <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
+              <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>注意書きテキスト</label>
+              <textarea value={state.notice.text} onChange={(e) => setState((s) => ({ ...s, notice: { ...s.notice, text: e.target.value } }))} style={textareaBaseStyle} placeholder="例: 在庫は店舗間で移動する場合があります。ご来店前に店舗へ在庫をご確認ください。" />
+            </div>
           </div>
         </div>
 
-        {/* クリックアクション */}
-        <div
-          style={{
-            marginBottom: "24px",
-            padding: "16px 18px",
-            borderRadius: "8px",
-            border: "1px solid #e1e3e5",
-            background: "#fff",
-          }}
-        >
-          <h2
-            style={{
-              fontSize: "1.05rem",
-              margin: "0 0 0.75rem",
-              fontWeight: 600,
-            }}
-          >
-            ロケーション名クリック時の動作
-          </h2>
-
-          <p
-            style={{
-              margin: "0 0 0.75rem",
-              fontSize: "0.85rem",
-              color: "#555",
-            }}
-          >
-            在庫リスト内のロケーション名をクリックしたときの動作を設定します。
-            クリックで Google マップを開いたり、任意のストアページに遷移させることができます。
-          </p>
-
-          <div style={{ marginBottom: "0.75rem" }}>
-            <label
-              htmlFor="click_action"
-              style={{
-                display: "block",
-                fontSize: "0.85rem",
-                fontWeight: 600,
-                marginBottom: "0.25rem",
-              }}
-            >
-              クリック時の動作
-            </label>
-            <select
-              id="click_action"
-              name="click_action"
-              defaultValue={effectiveClick.action}
-              style={selectBaseStyle}
-            >
-              <option value="none">何もしない（テキストのまま）</option>
-              <option value="open_map">
-                Google マップを開く（open_map）
-              </option>
-              <option value="open_url">
-                任意の URL に遷移（open_url）
-              </option>
-            </select>
-          </div>
-
-          <div style={{ marginBottom: "0.75rem" }}>
-            <label
-              htmlFor="map_url_template"
-              style={{
-                display: "block",
-                fontSize: "0.85rem",
-                fontWeight: 600,
-                marginBottom: "0.25rem",
-              }}
-            >
-              マップ URL テンプレート（open_map のとき）
-            </label>
-            <input
-              id="map_url_template"
-              name="map_url_template"
-              type="text"
-              defaultValue={effectiveClick.mapUrlTemplate}
-              style={inputBaseStyle}
-            />
-            <p
-              style={{
-                margin: "0.25rem 0 0",
-                fontSize: "0.8rem",
-                color: "#777",
-              }}
-            >
-              例: https://maps.google.com/?q=&#123;location_name&#125; など。
-              &#123;location_name&#125; の部分がロケーション名で置き換えられます。
-            </p>
-          </div>
-
-          <div>
-            <label
-              htmlFor="url_template"
-              style={{
-                display: "block",
-                fontSize: "0.85rem",
-                fontWeight: 600,
-                marginBottom: "0.25rem",
-              }}
-            >
-              任意 URL テンプレート（open_url のとき）
-            </label>
-            <input
-              id="url_template"
-              name="url_template"
-              type="text"
-              defaultValue={effectiveClick.urlTemplate}
-              style={inputBaseStyle}
-            />
-            <p
-              style={{
-                margin: "0.25rem 0 0",
-                fontSize: "0.8rem",
-                color: "#777",
-              }}
-            >
-              例: /pages/store-&#123;location_id&#125; など。
-              &#123;location_id&#125; はロケーションの ID、&#123;location_name&#125; はロケーション名で置き換えられます。
-            </p>
-          </div>
-        </div>
-
-        <div style={{ marginBottom: "24px" }}>
-          <button
-            type="submit"
-            style={{
-              padding: "0.55rem 1.4rem",
-              borderRadius: "4px",
-              border: "none",
-              background: "#008060",
-              color: "#fff",
-              fontSize: "0.95rem",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            設定を保存する
-          </button>
-          <span
-            style={{
-              marginLeft: "12px",
-              fontSize: "0.8rem",
-              color: "#777",
-            }}
-          >
-            保存後は商品ページをリロードして表示を確認してください。
-          </span>
-        </div>
-      </Form>
-
-      <div
-        style={{
-          padding: "14px 16px",
-          borderRadius: "8px",
-          border: "1px dashed #d0d5dd",
-          background: "#f9fafb",
-          fontSize: "0.8rem",
-          color: "#555",
-        }}
-      >
+        {/* セクション：ロケーション名クリック時の動作 */}
         <div
           style={{
             display: "flex",
-            justifyContent: "space-between",
-            marginBottom: "6px",
+            gap: "24px",
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+            marginBottom: "24px",
           }}
         >
-          <span>現在の raw config（参考用）</span>
-          <Link
-            to="/app"
-            style={{
-              fontSize: "0.8rem",
-              textDecoration: "none",
-              color: "#0b6b3a",
-              fontWeight: 600,
-            }}
-          >
-            ← Home に戻る
-          </Link>
+          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>ロケーション名クリック時の動作</div>
+            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
+              在庫リスト内のロケーション名をクリックしたときの動作を設定します。クリックで Google マップを開いたり、任意のストアページに遷移させることができます。
+            </div>
+          </div>
+          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+            <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
+              <div style={{ marginBottom: "12px" }}>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>クリック時の動作</label>
+                <select value={state.click.action} onChange={(e) => setState((s) => ({ ...s, click: { ...s.click, action: e.target.value } }))} style={selectBaseStyle}>
+                  <option value="none">何もしない（テキストのまま）</option>
+                  <option value="open_map">Google マップを開く（open_map）</option>
+                  <option value="open_url">任意の URL に遷移（open_url）</option>
+                </select>
+              </div>
+              <div style={{ marginBottom: "12px" }}>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>マップ URL テンプレート（open_map のとき）</label>
+                <input type="text" value={state.click.mapUrlTemplate} onChange={(e) => setState((s) => ({ ...s, click: { ...s.click, mapUrlTemplate: e.target.value } }))} style={inputBaseStyle} />
+                <p style={{ margin: "4px 0 0", fontSize: 13, color: "#6d7175" }}>例: https://maps.google.com/?q=&#123;location_name&#125; など。&#123;location_name&#125; の部分がロケーション名で置き換えられます。</p>
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>任意 URL テンプレート（open_url のとき）</label>
+                <input type="text" value={state.click.urlTemplate} onChange={(e) => setState((s) => ({ ...s, click: { ...s.click, urlTemplate: e.target.value } }))} style={inputBaseStyle} />
+                <p style={{ margin: "4px 0 0", fontSize: 13, color: "#6d7175" }}>例: /pages/store-&#123;location_id&#125; など。&#123;location_id&#125; はロケーションの ID、&#123;location_name&#125; はロケーション名で置き換えられます。</p>
+              </div>
+            </div>
+          </div>
         </div>
-        <pre
+      </div>
+
+      {/* 固定フッター：変更時または保存直後（「保存しました」を約3秒表示） */}
+      {(isDirty || showSavedFeedback) && (
+        <div
           style={{
-            margin: 0,
-            maxHeight: "240px",
-            overflow: "auto",
+            position: "fixed",
+            bottom: 0,
+            left: 0,
+            right: 0,
             background: "#fff",
-            borderRadius: "4px",
-            padding: "8px 10px",
-            border: "1px solid #e1e3e5",
+            borderTop: "1px solid #e1e3e5",
+            padding: "12px 24px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            boxShadow: "0 -2px 6px rgba(0,0,0,0.06)",
+            zIndex: 100,
           }}
         >
-{JSON.stringify(loaderData.rawConfig, null, 2)}
-        </pre>
-      </div>
-    </div>
+          <span style={{ fontSize: 14, color: "#6d7175" }}>
+            {showSavedFeedback && !isDirty ? "保存しました" : footerStatusText}
+          </span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              onClick={handleDiscard}
+              disabled={saving || (showSavedFeedback && !isDirty)}
+              style={{
+                padding: "8px 16px",
+                borderRadius: 6,
+                border: "1px solid #c9cccf",
+                background: "#fff",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: saving || (showSavedFeedback && !isDirty) ? "not-allowed" : "pointer",
+                color: "#202223",
+              }}
+            >
+              破棄
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || (showSavedFeedback && !isDirty)}
+              style={{
+                padding: "8px 16px",
+                borderRadius: 6,
+                border: "none",
+                background: "#2c6ecb",
+                color: "#fff",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: saving || (showSavedFeedback && !isDirty) ? "not-allowed" : "pointer",
+              }}
+            >
+              {saving ? "保存中..." : "保存"}
+            </button>
+          </div>
+        </div>
+      )}
+    </s-page>
   );
 }
