@@ -41,13 +41,12 @@ const SET_LOCATION_STOCK_CONFIG_MUTATION = `#graphql
  * loader:
  * 現在の config から
  * - symbols.inStock / lowStock / outOfStock
- * - sort.mode
  * - click.*
  * - quantity の文言（label / wrapper）
  * - labels.*
  * - messages.*
  * - notice.text
- * を抜き出して UI に渡す
+ * を抜き出して UI に渡す（並び順はロケーション設定で編集）
  */
 export async function loader({ request }) {
   const { admin, session } = await authenticate.admin(request);
@@ -77,15 +76,24 @@ export async function loader({ request }) {
     }
   }
 
+  // 閾値（在庫ステータス判定）
+  const thresholds = {
+    outOfStockMax:
+      typeof rawConfig?.thresholds?.outOfStockMax === "number"
+        ? rawConfig.thresholds.outOfStockMax
+        : 0,
+    inStockMin:
+      typeof rawConfig?.thresholds?.inStockMin === "number"
+        ? rawConfig.thresholds.inStockMin
+        : 5,
+  };
+
   // 在庫マーク
   const symbols = {
     inStock: rawConfig?.symbols?.inStock ?? "◯",
     lowStock: rawConfig?.symbols?.lowStock ?? "△",
     outOfStock: rawConfig?.symbols?.outOfStock ?? "✕",
   };
-
-  // 並び順
-  const sortMode = rawConfig?.sort?.mode ?? "none";
 
   // クリック設定
   const click = {
@@ -131,8 +139,8 @@ export async function loader({ request }) {
 
   return {
     shop: session.shop,
+    thresholds,
     symbols,
-    sortMode,
     click,
     quantityTexts,
     labels,
@@ -145,17 +153,28 @@ export async function loader({ request }) {
 /**
  * action: フォーム送信された値で
  * - symbols.xxx
- * - sort.mode
  * - click.*
  * - quantity の文言
  * - labels.*
  * - messages.*
  * - notice.text
- * だけを上書きして config を保存
+ * だけを上書きして config を保存（並び順・上部固定はロケーション設定で編集）
  */
 export async function action({ request }) {
   const { admin } = await authenticate.admin(request);
   const formData = await request.formData();
+
+  // 閾値
+  const outOfStockMaxRaw = formData.get("threshold_out_of_stock_max");
+  const inStockMinRaw = formData.get("threshold_in_stock_min");
+  const outOfStockMax = Number.parseInt(String(outOfStockMaxRaw ?? ""), 10);
+  const inStockMin = Number.parseInt(String(inStockMinRaw ?? ""), 10);
+  const thresholdOutOfStockMax = Number.isFinite(outOfStockMax)
+    ? Math.max(0, outOfStockMax)
+    : 0;
+  const thresholdInStockMin = Number.isFinite(inStockMin)
+    ? Math.max(0, inStockMin)
+    : 5;
 
   // 在庫マーク
   const symbolInStock =
@@ -164,10 +183,6 @@ export async function action({ request }) {
     (formData.get("symbol_low_stock") || "").toString() || "△";
   const symbolOutOfStock =
     (formData.get("symbol_out_of_stock") || "").toString() || "✕";
-
-  // 並び順
-  const sortMode =
-    (formData.get("sort_mode") || "").toString() || "none";
 
   // クリックアクション
   const clickAction =
@@ -254,6 +269,12 @@ export async function action({ request }) {
     // 既存設定を保ちつつ、一部だけ上書き
     const nextConfig = {
       ...rawConfig,
+      // 閾値
+      thresholds: {
+        ...(rawConfig.thresholds || {}),
+        outOfStockMax: thresholdOutOfStockMax,
+        inStockMin: thresholdInStockMin,
+      },
       // 在庫マーク
       symbols: {
         ...(rawConfig.symbols || {}),
@@ -261,12 +282,7 @@ export async function action({ request }) {
         lowStock: symbolLowStock,
         outOfStock: symbolOutOfStock,
       },
-      // 並び順
-      sort: {
-        ...(rawConfig.sort || {}),
-        mode: sortMode,
-      },
-      // クリック設定
+      // クリック設定（並び順はロケーション設定で編集するためここでは上書きしない）
       click: {
         ...(rawConfig.click || {}),
         action: clickAction,
@@ -343,6 +359,11 @@ export async function action({ request }) {
     }
 
     // フロント側で即座に反映できるよう、更新後の値も返す
+    const thresholds = {
+      outOfStockMax: nextConfig.thresholds.outOfStockMax,
+      inStockMin: nextConfig.thresholds.inStockMin,
+    };
+
     const symbols = {
       inStock: nextConfig.symbols.inStock,
       lowStock: nextConfig.symbols.lowStock,
@@ -379,8 +400,8 @@ export async function action({ request }) {
 
     return {
       ok: true,
+      thresholds,
       symbols,
-      sortMode,
       click,
       quantityTexts,
       labels,
@@ -425,8 +446,8 @@ export default function AppSettings() {
   const fetcher = useFetcher();
 
   const [initial, setInitial] = useState(() => ({
+    thresholds: loaderData.thresholds ?? { outOfStockMax: 0, inStockMin: 5 },
     symbols: loaderData.symbols,
-    sortMode: loaderData.sortMode,
     click: loaderData.click,
     quantityTexts: loaderData.quantityTexts,
     labels: loaderData.labels,
@@ -444,8 +465,8 @@ export default function AppSettings() {
     if (lastAppliedFetcherDataRef.current === fetcher.data) return;
     lastAppliedFetcherDataRef.current = fetcher.data;
     const next = {
+      thresholds: fetcher.data.thresholds ?? initial.thresholds,
       symbols: fetcher.data.symbols,
-      sortMode: fetcher.data.sortMode,
       click: fetcher.data.click,
       quantityTexts: fetcher.data.quantityTexts,
       labels: fetcher.data.labels,
@@ -476,10 +497,11 @@ export default function AppSettings() {
   const handleDiscard = () => setState(initial);
   const handleSave = () => {
     const fd = new FormData();
+    fd.set("threshold_out_of_stock_max", String(state.thresholds.outOfStockMax));
+    fd.set("threshold_in_stock_min", String(state.thresholds.inStockMin));
     fd.set("symbol_in_stock", state.symbols.inStock);
     fd.set("symbol_low_stock", state.symbols.lowStock);
     fd.set("symbol_out_of_stock", state.symbols.outOfStock);
-    fd.set("sort_mode", state.sortMode);
     fd.set("click_action", state.click.action);
     fd.set("map_url_template", state.click.mapUrlTemplate);
     fd.set("url_template", state.click.urlTemplate);
@@ -508,6 +530,73 @@ export default function AppSettings() {
   return (
     <s-page heading="在庫表示設定">
       <div style={{ padding: "16px", maxWidth: "1200px", paddingBottom: "88px" }}>
+        {/* セクション：閾値 — 一番上 */}
+        <div
+          style={{
+            display: "flex",
+            gap: "24px",
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+            marginBottom: "24px",
+          }}
+        >
+          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>
+              閾値
+            </div>
+            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
+              在庫数を「在庫なし」「残りわずか」「在庫あり」のどれとみなすかの境界を設定します。この値以下を在庫なし、この値以上を在庫ありとし、その間は残りわずかになります。
+            </div>
+          </div>
+          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+            <div
+              style={{
+                background: "#ffffff",
+                borderRadius: 12,
+                boxShadow: "0 0 0 1px #e1e3e5",
+                padding: 16,
+              }}
+            >
+              <div style={{ marginBottom: "12px" }}>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>
+                  この値以下を「在庫なし」とする（outOfStockMax）
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={state.thresholds.outOfStockMax}
+                  onChange={(e) => {
+                    const v = e.target.value === "" ? 0 : Math.max(0, Number.parseInt(e.target.value, 10) || 0);
+                    setState((s) => ({
+                      ...s,
+                      thresholds: { ...s.thresholds, outOfStockMax: Number.isFinite(v) ? v : 0 },
+                    }));
+                  }}
+                  style={inputBaseStyle}
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>
+                  この値以上を「在庫あり」とする（inStockMin）
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={state.thresholds.inStockMin}
+                  onChange={(e) => {
+                    const v = e.target.value === "" ? 5 : Math.max(0, Number.parseInt(e.target.value, 10) || 5);
+                    setState((s) => ({
+                      ...s,
+                      thresholds: { ...s.thresholds, inStockMin: Number.isFinite(v) ? v : 5 },
+                    }));
+                  }}
+                  style={inputBaseStyle}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* セクション：在庫マーク — 左（タイトル＋説明のみ）/ 右（カード） */}
         <div
           style={{
@@ -562,39 +651,6 @@ export default function AppSettings() {
                   style={inputBaseStyle}
                 />
               </div>
-            </div>
-          </div>
-        </div>
-
-        {/* セクション：並び順 */}
-        <div
-          style={{
-            display: "flex",
-            gap: "24px",
-            alignItems: "flex-start",
-            flexWrap: "wrap",
-            marginBottom: "24px",
-          }}
-        >
-          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>並び順（sort.mode）</div>
-            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
-              在庫リスト全体の並び順をアプリ側で一括制御します。テーマ側の sort 設定はここで指定した値がそのままフロントの並び順に使われます。
-            </div>
-          </div>
-          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
-            <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
-              <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>並び順モード</label>
-              <select
-                value={state.sortMode}
-                onChange={(e) => setState((s) => ({ ...s, sortMode: e.target.value }))}
-                style={selectBaseStyle}
-              >
-                <option value="none">変更しない（config.sort を使わない）</option>
-                <option value="location_name_asc">ロケーション名 昇順（A→Z）</option>
-                <option value="quantity_desc">在庫数の多い順（desc）</option>
-                <option value="quantity_asc">在庫数の少ない順（asc）</option>
-              </select>
             </div>
           </div>
         </div>

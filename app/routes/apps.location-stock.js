@@ -341,6 +341,12 @@ function buildGlobalConfig(raw) {
     notice = { text: safe.notice.text };
   }
 
+  // 上部固定（1 ロケーションだけ先頭に表示）
+  const pinnedLocationId =
+    typeof safe.pinnedLocationId === "string" && safe.pinnedLocationId.trim() !== ""
+      ? safe.pinnedLocationId.trim()
+      : null;
+
   return {
     thresholds,
     quantity,
@@ -352,6 +358,7 @@ function buildGlobalConfig(raw) {
     sort,
     messages,
     notice,
+    pinnedLocationId,
   };
 }
 

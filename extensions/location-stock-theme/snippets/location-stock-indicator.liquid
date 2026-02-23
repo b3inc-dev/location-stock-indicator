@@ -353,9 +353,10 @@
         emptyMessage: "現在、この商品の店舗在庫はありません。",
         errorMessage: "在庫情報の取得に失敗しました。時間をおいて再度お試しください。",
 
-        // ▼ レイアウト・並び順
+        // ▼ レイアウト・並び順・上部固定
         layoutType: {{ s.layout_type | json }}, // table / list / stacked
         sortBy: "config_order",
+        pinnedLocationId: null,
 
         // ▼ ロケーション表示ルール
         locationsMode: "all",
@@ -521,37 +522,50 @@
         return stocks;
       }
 
-      // 並び順
+      // 並び順（上部固定: pinnedLocationId のロケーションを先頭にし、残りを sortBy でソート）
       function sortLocations(stocks) {
         var sortBy = settings.sortBy || "config_order";
+        var pinnedId = settings.pinnedLocationId || null;
+
+        var pinned = null;
+        var rest = stocks ? stocks.slice() : [];
+        if (pinnedId && rest.length) {
+          for (var i = 0; i < rest.length; i++) {
+            if (rest[i].locationId === pinnedId) {
+              pinned = rest[i];
+              rest.splice(i, 1);
+              break;
+            }
+          }
+        }
 
         if (
           sortBy === "config_order" ||
           sortBy === "none" ||
           !sortBy
         ) {
-          return stocks;
+          if (pinned) return [pinned].concat(rest);
+          return rest.length ? rest : stocks;
         }
 
-        var arr = stocks.slice();
-
         if (sortBy === "location_name_asc") {
-          arr.sort(function (a, b) {
+          rest.sort(function (a, b) {
             var an = a.displayName || a.locationName || "";
             var bn = b.displayName || b.locationName || "";
             return an.localeCompare(bn);
           });
         } else if (sortBy === "quantity_desc") {
-          arr.sort(function (a, b) {
+          rest.sort(function (a, b) {
             return (b.quantity || 0) - (a.quantity || 0);
           });
         } else if (sortBy === "quantity_asc") {
-          arr.sort(function (a, b) {
+          rest.sort(function (a, b) {
             return (a.quantity || 0) - (b.quantity || 0);
           });
         }
 
-        return arr;
+        if (pinned) return [pinned].concat(rest);
+        return rest;
       }
 
       // マーク＋在庫数＋ラベルの HTML
@@ -792,6 +806,12 @@
             // 並び順
             if (appConfig.sort && typeof appConfig.sort.mode === "string") {
               settings.sortBy = appConfig.sort.mode;
+            }
+            // 上部固定（1 ロケーションを常に先頭に）
+            if (typeof appConfig.pinnedLocationId === "string" && appConfig.pinnedLocationId.trim() !== "") {
+              settings.pinnedLocationId = appConfig.pinnedLocationId.trim();
+            } else {
+              settings.pinnedLocationId = null;
             }
 
             // ロケーション表示ルール
