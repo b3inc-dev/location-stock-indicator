@@ -1,9 +1,9 @@
-# 自社用カスタムアプリ（デフォルト）。公開用は shopify.app.public.toml を使用。
+# 公開用アプリ（App Store 用）。同じコードを shopify app config use shopify.app.public.toml でデプロイ。
 # https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = "61b474b801b754166b12f0b9cd07f450"
-name = "location-stock-indicator-ciara"
-application_url = "https://location-stock-indicator-ciara.onrender.com"
+client_id = "1758d63a004d7f7d99afe5bf334d1f48"
+name = "Location Stock"
+application_url = "https://location-stock-indicator.onrender.com"
 embedded = true
 
 [build]
@@ -25,9 +25,9 @@ api_version = "2026-01"
 scopes = "read_inventory,read_locations,read_products,write_app_proxy,write_products"
 
 [auth]
-redirect_urls = [ "https://location-stock-indicator-ciara.onrender.com/api/auth" ]
+redirect_urls = [ "https://location-stock-indicator.onrender.com/api/auth" ]
 
 [app_proxy]
-url = "https://location-stock-indicator-ciara.onrender.com/apps/location-stock"
+url = "https://location-stock-indicator.onrender.com/apps/location-stock"
 subpath = "location-stock"
 prefix = "apps"
