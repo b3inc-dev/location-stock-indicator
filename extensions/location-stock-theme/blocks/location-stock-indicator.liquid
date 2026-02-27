@@ -264,6 +264,18 @@
       "label": "枠線の色",
       "default": "#e3e3e3"
     },
+    {
+      "type": "select",
+      "id": "accordion_icon",
+      "label": "エリア折りたたみの開閉マーク",
+      "default": "chevron",
+      "options": [
+        { "value": "chevron", "label": "三角（▼/▶）" },
+        { "value": "plus_minus", "label": "プラス・マイナス（+/−）" },
+        { "value": "arrow", "label": "矢印（↓/→）" }
+      ],
+      "info": "「エリアごとに折りたたみ表示」をONにしたときの見出し右のマークです。"
+    },
 
     {
       "type": "color",
@@ -310,6 +322,86 @@
       "max": 80,
       "step": 5,
       "default": 70
+    },
+
+    {
+      "type": "header",
+      "content": "エリア見出しのデザイン"
+    },
+    {
+      "type": "paragraph",
+      "content": "「エリアでグルーピング」ON時の地域見出し行の見た目です。アプリのロケーション設定で指定した値よりこちらが優先されます。"
+    },
+    {
+      "type": "color",
+      "id": "region_heading_background",
+      "label": "エリア見出しの背景色"
+    },
+    {
+      "type": "color",
+      "id": "region_heading_color",
+      "label": "エリア見出しの文字色"
+    },
+    {
+      "type": "text",
+      "id": "region_heading_font_size",
+      "label": "エリア見出しの文字サイズ",
+      "placeholder": "0.95em",
+      "info": "例: 0.9em, 1em"
+    },
+    {
+      "type": "text",
+      "id": "region_heading_font_weight",
+      "label": "エリア見出しの太さ",
+      "placeholder": "600",
+      "info": "例: 600, bold"
+    },
+    {
+      "type": "text",
+      "id": "region_heading_padding",
+      "label": "エリア見出しの余白",
+      "placeholder": "8px 12px",
+      "info": "CSS の padding 値（上右下左など）"
+    },
+
+    {
+      "type": "header",
+      "content": "店舗受け取りボタンのデザイン"
+    },
+    {
+      "type": "paragraph",
+      "content": "「この店舗で受け取る」ボタンの見た目です。アプリのロケーション設定で指定した値よりこちらが優先されます。"
+    },
+    {
+      "type": "color",
+      "id": "order_pick_btn_background",
+      "label": "ボタン背景色"
+    },
+    {
+      "type": "color",
+      "id": "order_pick_btn_color",
+      "label": "ボタン文字色"
+    },
+    {
+      "type": "text",
+      "id": "order_pick_btn_border_radius",
+      "label": "ボタン角丸",
+      "placeholder": "4px",
+      "info": "例: 4px, 8px"
+    },
+    {
+      "type": "text",
+      "id": "order_pick_btn_padding",
+      "label": "ボタン余白",
+      "placeholder": "4px 10px",
+      "info": "CSS の padding 値"
+    },
+    {
+      "type": "text",
+      "id": "order_pick_btn_font_size",
+      "label": "ボタン文字サイズ",
+      "placeholder": "0.85em",
+      "info": "例: 0.85em, 1em"
     },
 
     {

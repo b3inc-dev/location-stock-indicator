@@ -4,6 +4,7 @@ import shopify from "../shopify.server";
 
 /**
  * バリアント在庫 + ショップメタフィールド(location_stock.config) をまとめて取得
+ * location に localPickupSettingsV2 を含め、店舗受け取り対応の有無を判定する
  */
 const VARIANT_INVENTORY_WITH_CONFIG_QUERY = `#graphql
   query VariantInventoryWithConfig($id: ID!) {
@@ -20,6 +21,16 @@ const VARIANT_INVENTORY_WITH_CONFIG_QUERY = `#graphql
                 id
                 name
                 fulfillsOnlineOrders
+                localPickupSettingsV2 {
+                  pickupTime
+                }
+                address {
+                  city
+                  provinceCode
+                  countryCode
+                  latitude
+                  longitude
+                }
               }
               quantities(names: "available") {
                 name
@@ -37,6 +48,135 @@ const VARIANT_INVENTORY_WITH_CONFIG_QUERY = `#graphql
     }
   }
 `;
+
+/**
+ * 配送プロファイルから locationId → { hasShipping, hasLocalDelivery } を構築（read_shipping が必要）
+ */
+const DELIVERY_PROFILES_QUERY = `#graphql
+  query DeliveryProfilesForLocations {
+    deliveryProfiles(first: 50) {
+      nodes {
+        profileLocationGroups {
+          locationGroup {
+            locations(first: 100) {
+              nodes {
+                id
+              }
+            }
+          }
+          locationGroupZones(first: 30) {
+            nodes {
+              zone {
+                name
+              }
+              methodDefinitions(first: 50) {
+                nodes {
+                  active
+                  name
+                  rateProvider {
+                    __typename
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+/**
+ * 配送方法名から「ローカルデリバリー」かどうかを判定する（API に methodType がないため名前で判定）
+ */
+function isLocalDeliveryMethodName(name) {
+  if (!name || typeof name !== "string") return false;
+  const n = name.toLowerCase().trim();
+  return (
+    n.includes("local") ||
+    n.includes("ローカル") ||
+    n.includes("local delivery") ||
+    n.includes("localdelivery") ||
+    n.includes("same-day") ||
+    n.includes("sameday") ||
+    n.includes("same day") ||
+    n.includes("当日") ||
+    n.includes("近距離") ||
+    n.includes("半径") ||
+    n.includes("地域配達")
+  );
+}
+
+/**
+ * 接続型で nodes が無い場合は edges から取り出す（REQUIREMENTS §6 と管理画面と同じフォールバック）
+ */
+function getNodes(connection) {
+  if (!connection) return [];
+  if (Array.isArray(connection.nodes)) return connection.nodes;
+  if (Array.isArray(connection.edges)) return connection.edges.map((e) => e.node).filter(Boolean);
+  return [];
+}
+
+function buildLocationDeliveryFlags(deliveryProfilesData) {
+  const map = new Map();
+  const nodes = deliveryProfilesData?.deliveryProfiles?.nodes ?? [];
+  for (const profile of nodes) {
+    const groups = profile.profileLocationGroups ?? [];
+    for (const plg of groups) {
+      const locsRaw = plg.locationGroup?.locations;
+      const locNodes = getNodes(locsRaw);
+      const locationIds = locNodes.map((n) => n.id).filter(Boolean);
+      let hasShipping = false;
+      let hasLocalDelivery = false;
+      const zones = getNodes(plg.locationGroupZones);
+      for (const zoneNode of zones) {
+        const zoneName = zoneNode.zone?.name ?? "";
+        if (isLocalDeliveryMethodName(zoneName)) {
+          hasLocalDelivery = true;
+        }
+        const methods = getNodes(zoneNode.methodDefinitions);
+        for (const m of methods) {
+          if (!m.active) continue;
+          const rp = m.rateProvider;
+          if (!rp) continue;
+          const methodName = m.name ?? "";
+          if (rp.__typename === "DeliveryParticipant") {
+            hasShipping = true;
+            if (isLocalDeliveryMethodName(methodName)) hasLocalDelivery = true;
+          } else if (rp.__typename === "DeliveryRateDefinition") {
+            if (isLocalDeliveryMethodName(methodName)) {
+              hasLocalDelivery = true;
+            } else {
+              hasShipping = true;
+            }
+          }
+        }
+      }
+      for (const lid of locationIds) {
+        const cur = map.get(lid) || { hasShipping: false, hasLocalDelivery: false };
+        map.set(lid, {
+          hasShipping: cur.hasShipping || hasShipping,
+          hasLocalDelivery: cur.hasLocalDelivery || hasLocalDelivery,
+        });
+      }
+    }
+  }
+  return map;
+}
+
+/**
+ * エラー時にショップ・variant_id・コード・メッセージを JSON で console.error（要件 4）
+ */
+function logAppProxyError(shop, variantId, code, message, err) {
+  console.error(
+    "[location-stock] App Proxy error",
+    JSON.stringify(
+      { shop, variantId, code, message, err: err ? String(err) : undefined },
+      null,
+      2
+    )
+  );
+}
 
 /**
  * 正常系レスポンス
@@ -80,6 +220,10 @@ function applyConfigToStocks(stocks, config) {
   const locationsConfig = Array.isArray(config?.locations)
     ? config.locations
     : [];
+  const regionGroups = Array.isArray(config?.regionGroups)
+    ? config.regionGroups
+    : [];
+  const regionGroupById = new Map(regionGroups.filter((g) => g && g.id).map((g) => [g.id, g.name]));
 
   // 設定が無い場合:
   //  - ラベル = 元ロケーション名
@@ -91,6 +235,7 @@ function applyConfigToStocks(stocks, config) {
       displayName: s.locationName,
       sortOrder: 999999,
       fromConfig: false,
+      excludeFromNearby: false,
     }));
   }
 
@@ -114,6 +259,7 @@ function applyConfigToStocks(stocks, config) {
           displayName: stock.locationName,
           sortOrder: 999999,
           fromConfig: false,
+          excludeFromNearby: false,
         };
       }
 
@@ -122,6 +268,17 @@ function applyConfigToStocks(stocks, config) {
         return null;
       }
 
+      const pinnedLocationId = typeof config?.pinnedLocationId === "string" && config.pinnedLocationId.trim() !== ""
+        ? config.pinnedLocationId.trim()
+        : null;
+      // 上部固定のロケーションはエリアから抜き出し（最優先で単体表示するため __pinned__ を付与）
+      const regionKey =
+        pinnedLocationId && stock.locationId === pinnedLocationId
+          ? "__pinned__"
+          : cfg.regionGroupId && regionGroupById.has(cfg.regionGroupId)
+            ? regionGroupById.get(cfg.regionGroupId)
+            : "未設定";
+
       // メタフィールドで明示設定されたロケーション
       return {
         ...stock,
@@ -129,6 +286,8 @@ function applyConfigToStocks(stocks, config) {
         sortOrder:
           typeof cfg.sortOrder === "number" ? cfg.sortOrder : 999999,
         fromConfig: true,
+        regionKey,
+        excludeFromNearby: !!cfg.excludeFromNearby,
       };
     })
     .filter(Boolean);
@@ -188,6 +347,8 @@ function buildGlobalConfig(raw) {
       nearbyOtherCollapsible: false,
       showOrderPickButton: false,
       orderPickButtonLabel: "この店舗で受け取る",
+      orderPickRedirectToCheckout: false,
+      regionUnsetLabel: "その他",
     },
     sort: {
       mode: "none", // none / location_name_asc / quantity_desc / quantity_asc
@@ -308,6 +469,12 @@ function buildGlobalConfig(raw) {
   if (typeof futureRaw.orderPickButtonLabel === "string") {
     future.orderPickButtonLabel = futureRaw.orderPickButtonLabel;
   }
+  if (typeof futureRaw.orderPickRedirectToCheckout === "boolean") {
+    future.orderPickRedirectToCheckout = futureRaw.orderPickRedirectToCheckout;
+  }
+  if (typeof futureRaw.regionUnsetLabel === "string") {
+    future.regionUnsetLabel = futureRaw.regionUnsetLabel.trim() || "その他";
+  }
 
   // sort
   const sortRaw = safe.sort || {};
@@ -347,6 +514,14 @@ function buildGlobalConfig(raw) {
       ? safe.pinnedLocationId.trim()
       : null;
 
+  // エリアグループ（表示順をスニペットに渡す。sortOrder でソート）
+  const regionGroupsRaw = Array.isArray(safe.regionGroups)
+    ? safe.regionGroups.filter((g) => g && g.id && g.name)
+    : [];
+  const regionGroups = regionGroupsRaw
+    .map((g, i) => ({ ...g, sortOrder: typeof g.sortOrder === "number" ? g.sortOrder : i + 1 }))
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+
   return {
     thresholds,
     quantity,
@@ -359,6 +534,7 @@ function buildGlobalConfig(raw) {
     messages,
     notice,
     pinnedLocationId,
+    regionGroups,
   };
 }
 
@@ -368,11 +544,13 @@ export async function loader({ request }) {
     const { admin, session } = auth || {};
 
     if (!admin) {
-      console.error("Admin client is undefined in app proxy loader", {
-        shop: session?.shop,
-        sessionType: session?.isOnline ? "online" : "offline",
-      });
-
+      logAppProxyError(
+        session?.shop,
+        null,
+        "missing_admin_client",
+        "管理画面 API クライアントの初期化に失敗しました。アプリの設定（APIキーなど）を確認してください。",
+        null
+      );
       return errorJson(
         "missing_admin_client",
         "管理画面 API クライアントの初期化に失敗しました。アプリの設定（APIキーなど）を確認してください。"
@@ -383,6 +561,7 @@ export async function loader({ request }) {
     const variantId = url.searchParams.get("variant_id");
 
     if (!variantId) {
+      logAppProxyError(session?.shop, null, "missing_variant_id", "variant_id が指定されていません。", null);
       return errorJson("missing_variant_id", "variant_id が指定されていません。");
     }
 
@@ -398,7 +577,7 @@ export async function loader({ request }) {
     const result = await gqlResponse.json();
 
     if (result.errors && result.errors.length > 0) {
-      console.error("VariantInventoryWithConfig errors:", result.errors);
+      logAppProxyError(session?.shop, variantId, "graphql_error", "在庫情報の取得中にエラーが発生しました。", result.errors);
       return errorJson("graphql_error", "在庫情報の取得中にエラーが発生しました。");
     }
 
@@ -414,7 +593,24 @@ export async function loader({ request }) {
       });
     }
 
-    // 在庫レベルをベースの stocks に変換
+    // 配送プロファイルから locationId → { hasShipping, hasLocalDelivery } を取得（read_shipping が必要）
+    let deliveryFlagsByLocationId = new Map();
+    try {
+      const dpRes = await admin.graphql(DELIVERY_PROFILES_QUERY);
+      const dpResult = await dpRes.json();
+      if (dpResult.errors?.length) {
+        console.warn(
+          "[location-stock] deliveryProfiles query returned GraphQL errors (要因: スコープ未付与 or API 制限):",
+          JSON.stringify(dpResult.errors, null, 2)
+        );
+      } else if (dpResult.data) {
+        deliveryFlagsByLocationId = buildLocationDeliveryFlags(dpResult.data);
+      }
+    } catch (dpErr) {
+      console.warn("[location-stock] deliveryProfiles fetch failed:", dpErr);
+    }
+
+    // 在庫レベルをベースの stocks に変換（配送・店舗受け取りフラグを付与）
     const levels = variant.inventoryItem.inventoryLevels?.edges ?? [];
     const baseStocks = levels.map((edge) => {
       const node = edge.node;
@@ -422,12 +618,28 @@ export async function loader({ request }) {
       const quantities = node.quantities ?? [];
       const availableEntry = quantities.find((q) => q.name === "available");
       const quantity = availableEntry?.quantity ?? 0;
+      const flags = deliveryFlagsByLocationId.get(location?.id) ?? {
+        hasShipping: false,
+        hasLocalDelivery: false,
+      };
+
+      const address = location?.address;
+      const regionKey =
+        [address?.city, address?.provinceCode, address?.countryCode]
+          .filter(Boolean)
+          .join("_") || location?.name || "Unknown";
 
       return {
         locationId: location.id ?? null,
         locationName: location.name ?? "Unknown location",
         fulfillsOnlineOrders: !!location.fulfillsOnlineOrders,
         quantity,
+        hasShipping: flags.hasShipping,
+        hasLocalDelivery: flags.hasLocalDelivery,
+        storePickupEnabled: !!location?.localPickupSettingsV2,
+        regionKey,
+        latitude: address?.latitude ?? null,
+        longitude: address?.longitude ?? null,
       };
     });
 
@@ -454,7 +666,17 @@ export async function loader({ request }) {
       config: globalConfig,
     });
   } catch (error) {
-    console.error("location-stock loader error:", error);
+    let variantId = null;
+    try {
+      variantId = new URL(request.url).searchParams.get("variant_id");
+    } catch (_) { /* URL パース失敗時 */ }
+    logAppProxyError(
+      null,
+      variantId,
+      "internal_error",
+      error instanceof Error ? error.message : String(error),
+      error
+    );
     return errorJson(
       "internal_error",
       error instanceof Error ? error.message : String(error)

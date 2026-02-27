@@ -1,6 +1,6 @@
 // app/routes/app._index.jsx
 
-import { Link } from "react-router";
+import { Link, useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 
 /**
@@ -53,6 +53,58 @@ function StepCard({ title, description, buttonLabel, to }) {
   );
 }
 
+/**
+ * 配送プロファイルの案内カード（ロケーション設定の下に表示）
+ * 「配送対応」「ローカルデリバリー対応」は Shopify の配送設定で決まる旨と、配送設定を開くボタン
+ */
+function DeliveryProfileCard({ shop }) {
+  const deliverySettingsUrl = shop ? `https://${shop}/admin/settings/shipping` : null;
+  return (
+    <div
+      style={{
+        marginBottom: "16px",
+        padding: "16px",
+        background: "#fff",
+        borderRadius: "8px",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+        borderLeft: "4px solid #008060",
+      }}
+    >
+      <div style={{ marginBottom: "8px", fontSize: "14px", fontWeight: 600, color: "#6d7175" }}>
+        「配送対応」「ローカルデリバリー対応」について
+      </div>
+      <div style={{ marginBottom: "12px", fontSize: "14px", color: "#6d7175", lineHeight: 1.5 }}>
+        ロケーション一覧の「配送対応」「ローカルデリバリー対応」は、Shopify の
+        <strong style={{ color: "#202223" }}> 配送プロファイル</strong>
+        の設定から取得しています。ロケーションをプロファイルのロケーショングループに割り当て、ゾーン（例：通常配送は「アジア」、ローカルデリバリーは「Local Delivery」や「東京都」など）を作成すると反映されます。並び順の「配送対応を優先」「ローカルデリバリーを優先」も同じ設定を使います。
+      </div>
+      <div style={{ marginBottom: "12px", fontSize: "13px", color: "#6d7175", lineHeight: 1.5 }}>
+        <strong style={{ color: "#202223" }}>手順の例：</strong>
+        設定 → 配送と配達 → 配送プロファイルでロケーションを追加し、該当するゾーンを設定してください。ローカルデリバリーの場合は、ゾーン名に「Local delivery」「ローカル」「東京都」などが含まれると「ローカルデリバリー対応」と表示されます。
+      </div>
+      {deliverySettingsUrl && (
+        <a
+          href={deliverySettingsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: "inline-block",
+            padding: "8px 16px",
+            fontSize: "14px",
+            fontWeight: 500,
+            color: "#fff",
+            background: "#2c6ecb",
+            borderRadius: "6px",
+            textDecoration: "none",
+          }}
+        >
+          配送設定を開く
+        </a>
+      )}
+    </div>
+  );
+}
+
 /** POS Stock の SummaryCard に準拠：タイトル＋子要素 */
 function SummaryCard({ title, children, style = {} }) {
   return (
@@ -77,6 +129,7 @@ function SummaryCard({ title, children, style = {} }) {
  * /app の Home 画面（POS Stock のカード構成に準拠）
  */
 export default function AppIndex() {
+  const { shop } = useLoaderData();
   return (
     <s-page heading="ホーム">
       <style>{`
@@ -115,6 +168,7 @@ export default function AppIndex() {
             buttonLabel="ロケーション設定を開く"
             to="/app/locations"
           />
+          <DeliveryProfileCard shop={shop} />
           <StepCard
             title="2. 在庫表示設定"
             description="在庫マーク（◯△✕）、並び順、在庫数の表示ルール、在庫ステータスのラベル、ロケーション名クリック時の動作など、在庫表示ロジックをまとめて管理する画面です。"

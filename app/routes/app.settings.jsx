@@ -58,7 +58,7 @@ export async function loader({ request }) {
   const metafield = result?.data?.shop?.metafield;
 
   if (!shopId) {
-    console.error("shopId is null in LocationStockConfig");
+    console.error("[location-stock]", { route: "app.settings", shop: session?.shop ?? "(unknown)" }, "shopId is null in LocationStockConfig");
     return {
       ok: false,
       error: "shop ID が取得できませんでした。（metafieldsSet の ownerId）",
@@ -71,7 +71,7 @@ export async function loader({ request }) {
     try {
       rawConfig = JSON.parse(metafield.value);
     } catch (e) {
-      console.error("Failed to parse location_stock.config JSON in loader:", e);
+      console.error("[location-stock]", { route: "app.settings", shop: session?.shop ?? "(unknown)" }, "Failed to parse location_stock.config JSON in loader:", e);
       rawConfig = {};
     }
   }
@@ -161,7 +161,8 @@ export async function loader({ request }) {
  * だけを上書きして config を保存（並び順・上部固定はロケーション設定で編集）
  */
 export async function action({ request }) {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
+  const shop = session?.shop ?? "(unknown)";
   const formData = await request.formData();
 
   // 閾値
@@ -246,7 +247,7 @@ export async function action({ request }) {
     let rawConfig = {};
 
     if (!shopId) {
-      console.error("shopId is null in LocationStockConfig (action)");
+      console.error("[location-stock]", { route: "app.settings", shop }, "shopId is null in LocationStockConfig (action)");
       return {
         ok: false,
         error:
@@ -258,10 +259,7 @@ export async function action({ request }) {
       try {
         rawConfig = JSON.parse(metafield.value);
       } catch (e) {
-        console.error(
-          "Failed to parse location_stock.config JSON in action:",
-          e
-        );
+        console.error("[location-stock]", { route: "app.settings", shop }, "Failed to parse location_stock.config JSON in action:", e);
         rawConfig = {};
       }
     }
@@ -324,6 +322,8 @@ export async function action({ request }) {
         ...(rawConfig.notice || {}),
         text: noticeText || "",
       },
+      // 拡張表示はロケーション設定で編集するため上書きしない
+      future: rawConfig.future || {},
     };
 
     // JSON 文字列にして metafieldsSet で保存
@@ -349,7 +349,7 @@ export async function action({ request }) {
       saveResult?.data?.metafieldsSet?.userErrors || [];
 
     if (userErrors.length > 0) {
-      console.error("metafieldsSet userErrors:", userErrors);
+      console.error("[location-stock]", { route: "app.settings", shop }, "metafieldsSet userErrors:", userErrors);
       return {
         ok: false,
         error: userErrors
@@ -410,7 +410,7 @@ export async function action({ request }) {
       savedConfig: nextConfig,
     };
   } catch (error) {
-    console.error("Error in /app/settings action:", error);
+    console.error("[location-stock]", { route: "app.settings", shop }, "Error in /app/settings action:", error);
     return {
       ok: false,
       error:
@@ -491,7 +491,6 @@ export default function AppSettings() {
   );
 
   const saving = fetcher.state !== "idle";
-  const saveOk = fetcher.data && fetcher.data.ok === true;
   const saveErr = fetcher.data && fetcher.data.ok === false ? fetcher.data.error : null;
 
   const handleDiscard = () => setState(initial);
