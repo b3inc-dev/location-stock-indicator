@@ -1166,6 +1166,14 @@
             html += '<tr class="location-stock-indicator__region-data-row" data-region-block="nearby" style="display:none;">';
             html += '<td colspan="' + colCount + '" class="location-stock-indicator__nearby-body-cell"><div id="' + nearbyBodyId + '" class="location-stock-indicator__nearby-body">' + nearbyInitMsg + '</div></td></tr>';
           }
+          var otherHeadingText = (settings.nearbyOtherHeading && settings.nearbyOtherHeading.trim()) ? settings.nearbyOtherHeading.trim() : "";
+          if (settings.nearbyFirstEnabled && opts.hasCoordsForNearby && otherHeadingText) {
+            var totalInGroups = groups.reduce(function (sum, g) { return sum + (g.items ? g.items.length : 0); }, 0);
+            if (totalInGroups > 0) {
+              var otherBlockIdForHeading = regionBlockId++;
+              html += addTableRow(null, true, otherHeadingText, otherBlockIdForHeading, true);
+            }
+          }
           groups.forEach(function (group) {
             var blockId = regionBlockId++;
             var items = group.items;
@@ -1180,9 +1188,9 @@
           });
           if (otherStocks.length > 0) {
             var otherBlockId = regionBlockId++;
-            var otherHeadingText = (settings.nearbyOtherHeading && settings.nearbyOtherHeading.trim()) ? settings.nearbyOtherHeading.trim() : "";
-            if (otherHeadingText) {
-              html += addTableRow(null, true, otherHeadingText + " (" + otherStocks.length + ")", otherBlockId, true);
+            var otherHeadingForRest = (settings.nearbyOtherHeading && settings.nearbyOtherHeading.trim()) ? settings.nearbyOtherHeading.trim() : "";
+            if (otherHeadingForRest) {
+              html += addTableRow(null, true, otherHeadingForRest, otherBlockId, true);
             }
             otherStocks.forEach(function (item) {
               html += addTableRow(item, false, null, otherBlockId, true);
@@ -1200,6 +1208,14 @@
             html += '<div id="' + nearbyBodyId + '" class="location-stock-indicator__nearby-body">' + nearbyInitMsg + '</div>';
             html += '</li>';
           }
+          var otherHeadingTextList = (settings.nearbyOtherHeading && settings.nearbyOtherHeading.trim()) ? settings.nearbyOtherHeading.trim() : "";
+          if (settings.nearbyFirstEnabled && opts.hasCoordsForNearby && otherHeadingTextList) {
+            var totalInGroupsList = groups.reduce(function (sum, g) { return sum + (g.items ? g.items.length : 0); }, 0);
+            if (totalInGroupsList > 0) {
+              var otherBlockIdForHeadingList = regionBlockId++;
+              html += addListItem(null, true, otherHeadingTextList, otherBlockIdForHeadingList, true);
+            }
+          }
           groups.forEach(function (group) {
             var blockId = regionBlockId++;
             var items = group.items;
@@ -1214,9 +1230,9 @@
           });
           if (otherStocks.length > 0) {
             var otherBlockId = regionBlockId++;
-            var otherHeadingText = (settings.nearbyOtherHeading && settings.nearbyOtherHeading.trim()) ? settings.nearbyOtherHeading.trim() : "";
-            if (otherHeadingText) {
-              html += addListItem(null, true, otherHeadingText + " (" + otherStocks.length + ")", otherBlockId, true);
+            var otherHeadingForRestList = (settings.nearbyOtherHeading && settings.nearbyOtherHeading.trim()) ? settings.nearbyOtherHeading.trim() : "";
+            if (otherHeadingForRestList) {
+              html += addListItem(null, true, otherHeadingForRestList, otherBlockId, true);
             }
             otherStocks.forEach(function (item) {
               html += addListItem(item, false, null, otherBlockId, true);
