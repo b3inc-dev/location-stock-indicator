@@ -325,6 +325,7 @@ export async function loader({ request }) {
     regionAccordionEnabled: !!config?.future?.regionAccordionEnabled,
     nearbyFirstEnabled: !!config?.future?.nearbyFirstEnabled,
     nearbyOtherCollapsible: !!config?.future?.nearbyOtherCollapsible,
+    nearbyHeading: (config?.future?.nearbyHeading && String(config.future.nearbyHeading).trim()) || "",
     nearbyOtherHeading: (config?.future?.nearbyOtherHeading && String(config.future.nearbyOtherHeading).trim()) || "",
     showOrderPickButton: !!config?.future?.showOrderPickButton,
     orderPickButtonLabel: config?.future?.orderPickButtonLabel ?? "この店舗で受け取る",
@@ -430,6 +431,7 @@ export async function action({ request }) {
     regionAccordionEnabled: formData.get("future_region_accordion") === "on",
     nearbyFirstEnabled: formData.get("future_nearby_first") === "on",
     nearbyOtherCollapsible: formData.get("future_nearby_other_collapsible") === "on",
+    nearbyHeading: (formData.get("future_nearby_heading") || "").toString().trim(),
     nearbyOtherHeading: (formData.get("future_nearby_other_heading") || "").toString().trim(),
     showOrderPickButton: formData.get("future_show_order_pick_button") === "on",
     orderPickButtonLabel: (formData.get("future_order_pick_button_label") || "この店舗で受け取る").toString().trim(),
@@ -576,6 +578,7 @@ export default function LocationsConfigPage() {
     formData.set("future_region_accordion", future.regionAccordionEnabled ? "on" : "");
     formData.set("future_nearby_first", future.nearbyFirstEnabled ? "on" : "");
     formData.set("future_nearby_other_collapsible", future.nearbyOtherCollapsible ? "on" : "");
+    formData.set("future_nearby_heading", future.nearbyHeading || "");
     formData.set("future_nearby_other_heading", future.nearbyOtherHeading || "");
     formData.set("future_show_order_pick_button", future.showOrderPickButton ? "on" : "");
     formData.set("future_order_pick_button_label", future.orderPickButtonLabel || "この店舗で受け取る");
@@ -883,6 +886,17 @@ export default function LocationsConfigPage() {
                 <input type="checkbox" checked={!!future.nearbyFirstEnabled} onChange={(e) => setFuture((f) => ({ ...f, nearbyFirstEnabled: e.target.checked }))} />
                 <span>近隣店舗を表示</span>
               </label>
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>近隣店舗の見出し</label>
+                <input
+                  type="text"
+                  value={future.nearbyHeading ?? ""}
+                  onChange={(e) => setFuture((f) => ({ ...f, nearbyHeading: e.target.value }))}
+                  style={{ ...selectBaseStyle, width: "100%" }}
+                  placeholder="例：近隣店舗（未入力の場合は「近隣店舗」と表示）"
+                />
+                <div style={{ fontSize: 12, color: "#6d7175", marginTop: 4 }}>アコーディオンの見出しに表示する文言です。未入力の場合は「近隣店舗」と表示されます。</div>
+              </div>
               <div>
                 <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>その他ロケーションの見出し</label>
                 <input

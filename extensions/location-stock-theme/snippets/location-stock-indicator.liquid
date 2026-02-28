@@ -655,6 +655,7 @@
         regionAccordionEnabled: false,
         nearbyFirstEnabled: false,
         nearbyOtherCollapsible: false,
+        nearbyHeading: "",
         nearbyOtherHeading: "",
         showOrderPickButton: false,
         orderPickButtonLabel: "この店舗で受け取る",
@@ -1160,7 +1161,8 @@
             html += '<tr class="location-stock-indicator__region-heading-row location-stock-indicator__nearby-header" data-region-block="nearby" role="button" tabindex="0" aria-expanded="false">';
             html += '<td colspan="' + colCount + '" class="location-stock-indicator__region-heading-cell">';
             html += '<div class="location-stock-indicator__region-heading-cell-inner">';
-            html += '<span class="location-stock-indicator__region-heading-label">近隣店舗</span>';
+            var nearbyLabel = (settings.nearbyHeading && settings.nearbyHeading.trim()) ? settings.nearbyHeading.trim() : "近隣店舗";
+            html += '<span class="location-stock-indicator__region-heading-label">' + nearbyLabel + '</span>';
             html += buildAccordionIconHtml();
             html += '</div></td></tr>';
             html += '<tr class="location-stock-indicator__region-data-row" data-region-block="nearby" style="display:none;">';
@@ -1200,8 +1202,9 @@
         } else {
           html += '<ul class="location-stock-indicator__list">';
           if (settings.nearbyFirstEnabled && opts.hasCoordsForNearby) {
+            var nearbyLabelList = (settings.nearbyHeading && settings.nearbyHeading.trim()) ? settings.nearbyHeading.trim() : "近隣店舗";
             html += '<li class="location-stock-indicator__region-heading-item location-stock-indicator__item location-stock-indicator__nearby-header" data-region-block="nearby" role="button" tabindex="0" aria-expanded="false">';
-            html += '<span class="location-stock-indicator__region-heading-label">近隣店舗</span>';
+            html += '<span class="location-stock-indicator__region-heading-label">' + nearbyLabelList + '</span>';
             html += buildAccordionIconHtml();
             html += '</li>';
             html += '<li class="location-stock-indicator__item location-stock-indicator__region-data-item location-stock-indicator__nearby-body-item" data-region-block="nearby" style="display:none;">';
@@ -1563,6 +1566,9 @@
               }
               if (typeof f.nearbyOtherCollapsible === "boolean") {
                 settings.nearbyOtherCollapsible = f.nearbyOtherCollapsible;
+              }
+              if (typeof f.nearbyHeading === "string") {
+                settings.nearbyHeading = f.nearbyHeading.trim();
               }
               if (typeof f.showOrderPickButton === "boolean") {
                 settings.showOrderPickButton = f.showOrderPickButton;

@@ -350,6 +350,7 @@ function buildGlobalConfig(raw) {
       regionAccordionEnabled: false,
       nearbyFirstEnabled: false,
       nearbyOtherCollapsible: false,
+      nearbyHeading: "",
       nearbyOtherHeading: "",
       showOrderPickButton: false,
       orderPickButtonLabel: "この店舗で受け取る",
@@ -468,6 +469,9 @@ function buildGlobalConfig(raw) {
   }
   if (typeof futureRaw.nearbyOtherCollapsible === "boolean") {
     future.nearbyOtherCollapsible = futureRaw.nearbyOtherCollapsible;
+  }
+  if (typeof futureRaw.nearbyHeading === "string") {
+    future.nearbyHeading = futureRaw.nearbyHeading.trim();
   }
   if (typeof futureRaw.nearbyOtherHeading === "string") {
     future.nearbyOtherHeading = futureRaw.nearbyOtherHeading.trim();
