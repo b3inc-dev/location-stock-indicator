@@ -6,11 +6,13 @@ import { authenticate } from "../shopify.server";
 import { getAnalyticsDailyData } from "../analytics.server";
 
 /**
- * 分析ページ用: ロケーション一覧（表の列名用）を取得。
- * 分析データは今後メタフィールドから取得する想定（現時点では空）。
+ * 分析ページ用: shop と locations を1クエリで取得（app.locations と同じ形式で構文エラーを防ぐ）。
  */
-const LOCATIONS_QUERY = `#graphql
-  query LocationsForAnalytics {
+const ANALYTICS_LOADER_QUERY = `#graphql
+  query AnalyticsLoader {
+    shop {
+      id
+    }
     locations(first: 100) {
       nodes {
         id
@@ -36,20 +38,33 @@ function getDefaultLoaderRange() {
 export async function loader({ request }) {
   const { admin } = await authenticate.admin(request);
 
-  const gqlResponse = await admin.graphql(LOCATIONS_QUERY);
-  const result = await gqlResponse.json();
-  const locations = result?.data?.locations?.nodes ?? [];
-
-  const shopIdRes = await admin.graphql(`#graphql query { shop { id } }`);
-  const shopIdJson = await shopIdRes.json();
-  const shopId = shopIdJson?.data?.shop?.id;
   const range = getDefaultLoaderRange();
-  const dailyData = shopId
-    ? await getAnalyticsDailyData(admin, shopId, range.startStr, range.endStr)
-    : [];
+  let locations = [];
+  let dailyData = [];
+
+  try {
+    const gqlResponse = await admin.graphql(ANALYTICS_LOADER_QUERY);
+    const result = await gqlResponse.json();
+
+    if (result?.errors?.length) {
+      console.error("[app.analytics] GraphQL errors:", result.errors);
+      return { locations: [], dailyData: [] };
+    }
+
+    const shopId = result?.data?.shop?.id;
+    const nodes = result?.data?.locations?.nodes ?? [];
+    locations = nodes.map((loc) => ({ id: loc.id, name: loc.name }));
+
+    if (shopId) {
+      dailyData = await getAnalyticsDailyData(admin, shopId, range.startStr, range.endStr);
+    }
+  } catch (err) {
+    console.error("[app.analytics] loader error:", err);
+    return { locations: [], dailyData: [] };
+  }
 
   return {
-    locations: locations.map((loc) => ({ id: loc.id, name: loc.name })),
+    locations,
     dailyData,
   };
 }
