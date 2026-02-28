@@ -42,6 +42,7 @@ export default function App() {
       <s-app-nav>
         <s-link href="/app/locations">ロケーション設定</s-link>
         <s-link href="/app/settings">在庫表示設定</s-link>
+        <s-link href="/app/analytics">分析</s-link>
       </s-app-nav>
 
       <Outlet />

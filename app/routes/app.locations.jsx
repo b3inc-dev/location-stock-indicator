@@ -325,6 +325,7 @@ export async function loader({ request }) {
     regionAccordionEnabled: !!config?.future?.regionAccordionEnabled,
     nearbyFirstEnabled: !!config?.future?.nearbyFirstEnabled,
     nearbyOtherCollapsible: !!config?.future?.nearbyOtherCollapsible,
+    nearbyOtherHeading: (config?.future?.nearbyOtherHeading && String(config.future.nearbyOtherHeading).trim()) || "",
     showOrderPickButton: !!config?.future?.showOrderPickButton,
     orderPickButtonLabel: config?.future?.orderPickButtonLabel ?? "この店舗で受け取る",
     orderPickRedirectToCheckout: !!config?.future?.orderPickRedirectToCheckout,
@@ -429,6 +430,7 @@ export async function action({ request }) {
     regionAccordionEnabled: formData.get("future_region_accordion") === "on",
     nearbyFirstEnabled: formData.get("future_nearby_first") === "on",
     nearbyOtherCollapsible: formData.get("future_nearby_other_collapsible") === "on",
+    nearbyOtherHeading: (formData.get("future_nearby_other_heading") || "").toString().trim(),
     showOrderPickButton: formData.get("future_show_order_pick_button") === "on",
     orderPickButtonLabel: (formData.get("future_order_pick_button_label") || "この店舗で受け取る").toString().trim(),
     orderPickRedirectToCheckout: formData.get("future_order_pick_redirect_to_checkout") === "on",
@@ -481,6 +483,7 @@ const defaultFuture = {
   regionAccordionEnabled: false,
   nearbyFirstEnabled: false,
   nearbyOtherCollapsible: false,
+  nearbyOtherHeading: "",
   showOrderPickButton: false,
   orderPickButtonLabel: "この店舗で受け取る",
   orderPickRedirectToCheckout: false,
@@ -573,6 +576,7 @@ export default function LocationsConfigPage() {
     formData.set("future_region_accordion", future.regionAccordionEnabled ? "on" : "");
     formData.set("future_nearby_first", future.nearbyFirstEnabled ? "on" : "");
     formData.set("future_nearby_other_collapsible", future.nearbyOtherCollapsible ? "on" : "");
+    formData.set("future_nearby_other_heading", future.nearbyOtherHeading || "");
     formData.set("future_show_order_pick_button", future.showOrderPickButton ? "on" : "");
     formData.set("future_order_pick_button_label", future.orderPickButtonLabel || "この店舗で受け取る");
     formData.set("future_order_pick_redirect_to_checkout", future.orderPickRedirectToCheckout ? "on" : "");
@@ -875,10 +879,21 @@ export default function LocationsConfigPage() {
           </div>
           <div style={{ flex: "1 1 320px", minWidth: 280 }}>
             <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, marginBottom: 12 }}>
                 <input type="checkbox" checked={!!future.nearbyFirstEnabled} onChange={(e) => setFuture((f) => ({ ...f, nearbyFirstEnabled: e.target.checked }))} />
                 <span>近隣店舗を表示</span>
               </label>
+              <div>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>その他ロケーションの見出し</label>
+                <input
+                  type="text"
+                  value={future.nearbyOtherHeading ?? ""}
+                  onChange={(e) => setFuture((f) => ({ ...f, nearbyOtherHeading: e.target.value }))}
+                  style={{ ...selectBaseStyle, width: "100%" }}
+                  placeholder="例：店舗一覧（未入力の場合は見出しは表示されません）"
+                />
+                <div style={{ fontSize: 12, color: "#6d7175", marginTop: 4 }}>近隣店舗を表示にしたとき、近隣店舗の下に並ぶ「その他」ロケーション一覧の直前に表示する見出しです。入力があった場合のみ見出しを表示し、未入力の場合は見出し行は出さずロケーションのみ表示します。</div>
+              </div>
             </div>
           </div>
         </div>

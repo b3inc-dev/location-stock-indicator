@@ -436,6 +436,25 @@
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__nearby-header[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--arrow .location-stock-indicator__region-heading-chevron-closed {
       display: inline;
     }
+    /* 山括弧（＞/∨） */
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-chevron--angle .location-stock-indicator__region-heading-chevron-open,
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-chevron--angle .location-stock-indicator__region-heading-chevron-closed {
+      font-size: 1em;
+      line-height: 1;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-chevron--angle .location-stock-indicator__region-heading-chevron-closed {
+      display: none;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-row[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--angle .location-stock-indicator__region-heading-chevron-open,
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-item[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--angle .location-stock-indicator__region-heading-chevron-open,
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__nearby-header[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--angle .location-stock-indicator__region-heading-chevron-open {
+      display: none;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-row[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--angle .location-stock-indicator__region-heading-chevron-closed,
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-item[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--angle .location-stock-indicator__region-heading-chevron-closed,
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__nearby-header[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--angle .location-stock-indicator__region-heading-chevron-closed {
+      display: inline;
+    }
     /* 「この店舗で受け取る」ボタン */
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-btn {
       padding: 4px 10px;
@@ -520,6 +539,18 @@
 
       var bodyEl = root.querySelector(".location-stock-indicator__body");
 
+      function getTodayDateStr() {
+        var d = new Date();
+        return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+      }
+      function sendAnalyticsEvent(eventType, payload) {
+        payload = payload || {};
+        var q = "action=analytics&event=" + encodeURIComponent(eventType) + "&date=" + encodeURIComponent(getTodayDateStr());
+        if (payload.locationId) q += "&locationId=" + encodeURIComponent(payload.locationId);
+        if (payload.locationIds && payload.locationIds.length) q += "&locationIds=" + encodeURIComponent(payload.locationIds.join(","));
+        fetch("/apps/location-stock?" + q).catch(function () {});
+      }
+
       // 「この店舗で受け取る」ボタン：クリックでカスタムイベント発火のあと、デフォルトでカートに追加（任意でチェックアウトへリダイレクト）
       root.addEventListener("click", function (e) {
         var btn = e.target && e.target.closest ? e.target.closest(".location-stock-indicator__order-pick-btn") : null;
@@ -528,6 +559,7 @@
         var locationId = btn.getAttribute("data-location-id") || "";
         var locationName = btn.getAttribute("data-location-name") || "";
         root.dispatchEvent(new CustomEvent("location-stock-order-pick", { detail: { locationId: locationId, locationName: locationName }, bubbles: true }));
+        sendAnalyticsEvent("order_pick_click", { locationId: locationId });
 
         var variantId = root.getAttribute("data-variant-id");
         if (variantId && settings.showOrderPickButton) {
@@ -623,6 +655,7 @@
         regionAccordionEnabled: false,
         nearbyFirstEnabled: false,
         nearbyOtherCollapsible: false,
+        nearbyOtherHeading: "",
         showOrderPickButton: false,
         orderPickButtonLabel: "この店舗で受け取る",
         regionGroupOrder: [],
@@ -1025,6 +1058,12 @@
               '<span class="location-stock-indicator__region-heading-chevron-closed">→</span>' +
               "</span>";
           }
+          if (iconType === "angle") {
+            return '<span class="location-stock-indicator__region-heading-chevron location-stock-indicator__region-heading-chevron--angle" aria-hidden="true">' +
+              '<span class="location-stock-indicator__region-heading-chevron-open">∨</span>' +
+              '<span class="location-stock-indicator__region-heading-chevron-closed">＞</span>' +
+              "</span>";
+          }
           return '<span class="location-stock-indicator__region-heading-chevron location-stock-indicator__region-heading-chevron--chevron" aria-hidden="true"></span>';
         }
 
@@ -1141,7 +1180,10 @@
           });
           if (otherStocks.length > 0) {
             var otherBlockId = regionBlockId++;
-            html += addTableRow(null, true, "その他の店舗 (" + otherStocks.length + ")", otherBlockId, true);
+            var otherHeadingText = (settings.nearbyOtherHeading && settings.nearbyOtherHeading.trim()) ? settings.nearbyOtherHeading.trim() : "";
+            if (otherHeadingText) {
+              html += addTableRow(null, true, otherHeadingText + " (" + otherStocks.length + ")", otherBlockId, true);
+            }
             otherStocks.forEach(function (item) {
               html += addTableRow(item, false, null, otherBlockId, true);
             });
@@ -1172,7 +1214,10 @@
           });
           if (otherStocks.length > 0) {
             var otherBlockId = regionBlockId++;
-            html += addListItem(null, true, "その他の店舗 (" + otherStocks.length + ")", otherBlockId, true);
+            var otherHeadingText = (settings.nearbyOtherHeading && settings.nearbyOtherHeading.trim()) ? settings.nearbyOtherHeading.trim() : "";
+            if (otherHeadingText) {
+              html += addListItem(null, true, otherHeadingText + " (" + otherStocks.length + ")", otherBlockId, true);
+            }
             otherStocks.forEach(function (item) {
               html += addListItem(item, false, null, otherBlockId, true);
             });
@@ -1329,6 +1374,7 @@
                   return;
                 }
                 fillBodyWithNearest(nearest);
+                sendAnalyticsEvent("nearby_click", { locationIds: nearest.locationId ? [nearest.locationId] : [] });
               },
               function () {
                 showBodyError("位置情報を利用できません。条件に該当する店舗が見つかりませんでした。");
@@ -1511,6 +1557,9 @@
               if (typeof f.regionUnsetLabel === "string") {
                 settings.regionUnsetLabel = f.regionUnsetLabel.trim() || "その他";
               }
+              if (typeof f.nearbyOtherHeading === "string") {
+                settings.nearbyOtherHeading = f.nearbyOtherHeading.trim();
+              }
               if (typeof f.orderPickRedirectToCheckout === "boolean") {
                 settings.orderPickRedirectToCheckout = f.orderPickRedirectToCheckout;
               }
@@ -1556,6 +1605,7 @@
             stocks = sortLocations(stocks);
             var hasCoords = stocks.some(function (s) { return s.latitude != null && s.longitude != null; });
             renderStocks(stocks, { skipFilterSort: true, hasCoordsForNearby: hasCoords });
+              sendAnalyticsEvent("area_display", {});
             } catch (e) {
               console.error("[location-stock] render error", e);
               setMessage("error", settings.errorMessage);

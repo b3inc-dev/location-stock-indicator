@@ -1,6 +1,7 @@
 // app/routes/apps.location-stock.js
 
 import shopify from "../shopify.server";
+import { recordAnalyticsEvent } from "../analytics.server";
 
 /**
  * バリアント在庫 + ショップメタフィールド(location_stock.config) をまとめて取得
@@ -84,6 +85,10 @@ const DELIVERY_PROFILES_QUERY = `#graphql
       }
     }
   }
+`;
+
+const SHOP_ID_QUERY = `#graphql
+  query ShopId { shop { id } }
 `;
 
 /**
@@ -345,6 +350,7 @@ function buildGlobalConfig(raw) {
       regionAccordionEnabled: false,
       nearbyFirstEnabled: false,
       nearbyOtherCollapsible: false,
+      nearbyOtherHeading: "",
       showOrderPickButton: false,
       orderPickButtonLabel: "この店舗で受け取る",
       orderPickRedirectToCheckout: false,
@@ -463,6 +469,9 @@ function buildGlobalConfig(raw) {
   if (typeof futureRaw.nearbyOtherCollapsible === "boolean") {
     future.nearbyOtherCollapsible = futureRaw.nearbyOtherCollapsible;
   }
+  if (typeof futureRaw.nearbyOtherHeading === "string") {
+    future.nearbyOtherHeading = futureRaw.nearbyOtherHeading.trim();
+  }
   if (typeof futureRaw.showOrderPickButton === "boolean") {
     future.showOrderPickButton = futureRaw.showOrderPickButton;
   }
@@ -558,6 +567,40 @@ export async function loader({ request }) {
     }
 
     const url = new URL(request.url);
+    // 分析イベント（App Proxy は GET のみのためクエリで受信）
+    if (url.searchParams.get("action") === "analytics") {
+      const eventType = url.searchParams.get("event");
+      const dateStr = url.searchParams.get("date");
+      if (eventType && dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        const allowed = ["area_display", "nearby_click", "order_pick_click"];
+        if (allowed.includes(eventType)) {
+          try {
+            const shopIdRes = await admin.graphql(SHOP_ID_QUERY);
+            const shopIdJson = await shopIdRes.json();
+            const shopId = shopIdJson?.data?.shop?.id;
+            if (shopId) {
+              const payload = {};
+              if (eventType === "nearby_click") {
+                const ids = url.searchParams.get("locationIds");
+                payload.locationIds = ids ? ids.split(",").filter(Boolean) : [];
+              }
+              if (eventType === "order_pick_click") {
+                const id = url.searchParams.get("locationId");
+                if (id) payload.locationId = id;
+              }
+              await recordAnalyticsEvent(admin, shopId, dateStr, eventType, payload);
+            }
+          } catch (analyticsErr) {
+            console.error("[location-stock] analytics record error:", analyticsErr);
+          }
+        }
+      }
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     const variantId = url.searchParams.get("variant_id");
 
     if (!variantId) {
@@ -680,6 +723,86 @@ export async function loader({ request }) {
     return errorJson(
       "internal_error",
       error instanceof Error ? error.message : String(error)
+    );
+  }
+}
+
+/**
+ * 分析イベント受信（ストアフロントから POST）
+ * body: { event: "area_display"|"nearby_click"|"order_pick_click", date: "YYYY-MM-DD", locationId?: string, locationIds?: string[] }
+ */
+export async function action({ request }) {
+  if (request.method !== "POST") {
+    return new Response(JSON.stringify({ ok: false, error: "Method not allowed" }), {
+      status: 405,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  try {
+    const auth = await shopify.authenticate.public.appProxy(request);
+    const { admin, session } = auth || {};
+    if (!admin) {
+      return new Response(JSON.stringify({ ok: false, error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const shopIdRes = await admin.graphql(SHOP_ID_QUERY);
+    const shopIdJson = await shopIdRes.json();
+    const shopId = shopIdJson?.data?.shop?.id;
+    if (!shopId) {
+      return new Response(JSON.stringify({ ok: false, error: "Shop not found" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    let body = {};
+    try {
+      body = await request.json();
+    } catch {
+      return new Response(JSON.stringify({ ok: false, error: "Invalid JSON body" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const eventType = body?.event;
+    const dateStr = body?.date;
+    if (!eventType || !dateStr) {
+      return new Response(
+        JSON.stringify({ ok: false, error: "Missing event or date" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      return new Response(
+        JSON.stringify({ ok: false, error: "Invalid date format (use YYYY-MM-DD)" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    const allowed = ["area_display", "nearby_click", "order_pick_click"];
+    if (!allowed.includes(eventType)) {
+      return new Response(
+        JSON.stringify({ ok: false, error: "Invalid event type" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    const payload = {};
+    if (eventType === "nearby_click" && Array.isArray(body.locationIds)) {
+      payload.locationIds = body.locationIds;
+    }
+    if (eventType === "order_pick_click" && body.locationId) {
+      payload.locationId = body.locationId;
+    }
+    await recordAnalyticsEvent(admin, shopId, dateStr, eventType, payload);
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    console.error("[location-stock] analytics action error:", err);
+    return new Response(
+      JSON.stringify({ ok: false, error: err instanceof Error ? err.message : "Internal error" }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 }
