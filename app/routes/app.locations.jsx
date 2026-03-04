@@ -298,6 +298,7 @@ export async function loader({ request }) {
         fromConfig: !!cfg,
         regionGroupId: cfg?.regionGroupId ?? "",
         excludeFromNearby: !!cfg?.excludeFromNearby,
+        linkUrl: (cfg && typeof cfg.linkUrl === "string") ? cfg.linkUrl.trim() : "",
       };
     })
     .sort((a, b) => a.sortOrder - b.sortOrder);
@@ -331,6 +332,7 @@ export async function loader({ request }) {
     orderPickButtonLabel: config?.future?.orderPickButtonLabel ?? "この店舗で受け取る",
     orderPickRedirectToCheckout: !!config?.future?.orderPickRedirectToCheckout,
     regionUnsetLabel: (config?.future?.regionUnsetLabel && String(config.future.regionUnsetLabel).trim()) || "その他",
+    showLocationLinks: !!config?.future?.showLocationLinks,
   };
 
   return {
@@ -373,6 +375,7 @@ export async function action({ request }) {
   const publicNames = formData.getAll("publicName").map(String);
   const sortOrdersRaw = formData.getAll("sortOrder").map(String);
   const regionGroupIds = formData.getAll("regionGroupId").map((id) => (id === "" ? null : id));
+  const linkUrls = formData.getAll("linkUrl").map((v) => (typeof v === "string" ? v : "").trim());
 
   const enabledIds = new Set(
     formData.getAll("enabledLocationId").map(String)
@@ -400,6 +403,7 @@ export async function action({ request }) {
     const parsedSort = Number.parseInt(sortOrderStr, 10);
     const sortOrder = Number.isFinite(parsedSort) ? parsedSort : 999999;
     const regionGroupId = regionGroupIds[index] ?? null;
+    const linkUrl = linkUrls[index] ?? "";
 
     return {
       locationId,
@@ -408,6 +412,7 @@ export async function action({ request }) {
       sortOrder,
       regionGroupId: regionGroupId || undefined,
       excludeFromNearby: excludeFromNearbyIds.has(locationId),
+      linkUrl: linkUrl || "",
     };
   });
 
@@ -437,6 +442,7 @@ export async function action({ request }) {
     orderPickButtonLabel: (formData.get("future_order_pick_button_label") || "この店舗で受け取る").toString().trim(),
     orderPickRedirectToCheckout: formData.get("future_order_pick_redirect_to_checkout") === "on",
     regionUnsetLabel: (formData.get("future_region_unset_label") || "その他").toString().trim() || "その他",
+    showLocationLinks: formData.get("future_show_location_links") === "on",
   };
 
   const nextConfig = {
@@ -490,6 +496,7 @@ const defaultFuture = {
   orderPickButtonLabel: "この店舗で受け取る",
   orderPickRedirectToCheckout: false,
   regionUnsetLabel: "その他",
+  showLocationLinks: false,
 };
 
 export default function LocationsConfigPage() {
@@ -584,11 +591,13 @@ export default function LocationsConfigPage() {
     formData.set("future_order_pick_button_label", future.orderPickButtonLabel || "この店舗で受け取る");
     formData.set("future_order_pick_redirect_to_checkout", future.orderPickRedirectToCheckout ? "on" : "");
     formData.set("future_region_unset_label", future.regionUnsetLabel || "その他");
+    formData.set("future_show_location_links", future.showLocationLinks ? "on" : "");
     rows.forEach((r) => {
       formData.append("locationId", r.locationId);
       formData.append("publicName", r.publicName || "");
       formData.append("sortOrder", String(r.sortOrder));
       formData.append("regionGroupId", r.locationId === pinnedLocationId ? "" : (r.regionGroupId || ""));
+      formData.append("linkUrl", r.linkUrl || "");
       if (r.enabled) formData.append("enabledLocationId", r.locationId);
       if (r.excludeFromNearby) formData.append("excludeFromNearbyLocationId", r.locationId);
     });
@@ -938,6 +947,27 @@ export default function LocationsConfigPage() {
           </div>
         </div>
 
+        {/* ロケーション名のリンク設定：一括でリンク表示ON/OFF ＋ 行ごとにURL入力 */}
+        <div style={{ display: "flex", gap: "24px", alignItems: "flex-start", flexWrap: "wrap", marginBottom: "24px" }}>
+          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>ロケーション名のリンク設定</div>
+            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
+              「リンクを表示する」をONにすると、商品ページの在庫一覧でロケーション名をリンクにできます。下の一覧の「リンクURL」列にURLを入力したロケーションだけがリンク表示され、未入力のロケーションはリンクになりません。
+            </div>
+          </div>
+          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+            <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14 }}>
+                <input type="checkbox" checked={!!future.showLocationLinks} onChange={(e) => setFuture((f) => ({ ...f, showLocationLinks: e.target.checked }))} />
+                <span>リンクを表示する</span>
+              </label>
+              <div style={{ fontSize: 12, color: "#6d7175", marginTop: 8 }}>
+                ONのとき、下の一覧でURLを入力したロケーションのみリンク表示されます。URLが空の行はリンクになりません。
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* タイトル＋説明（カードなし・上段） */}
         <div style={{ marginBottom: 24 }}>
           <div
@@ -976,12 +1006,13 @@ export default function LocationsConfigPage() {
             style={{
               overflowX: "auto",
               WebkitOverflowScrolling: "touch",
+              width: "100%",
             }}
           >
             <table
               style={{
                 width: "100%",
-                minWidth: 640,
+                minWidth: 1000,
                 borderCollapse: "collapse",
               }}
             >
@@ -1096,6 +1127,20 @@ export default function LocationsConfigPage() {
                       title="オンストア・本社・倉庫など、近隣検索に含めたくないロケーションでONにします"
                     >
                       近隣除外
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        borderBottom: "1px solid #c9cccf",
+                        padding: "8px 12px",
+                        minWidth: 200,
+                        fontSize: 14,
+                        fontWeight: 600,
+                        color: "#6d7175",
+                      }}
+                      title="「リンクを表示する」がONのとき、入力したURLがロケーション名のリンク先になります。空欄はリンクなし"
+                    >
+                      リンクURL
                     </th>
                   </tr>
                 </thead>
@@ -1298,6 +1343,34 @@ export default function LocationsConfigPage() {
                           }
                           style={{ width: 16, height: 16 }}
                           title="ONにすると近隣店舗の検索対象から外れます（本社・倉庫など）"
+                        />
+                      </td>
+                      <td
+                        style={{
+                          borderBottom: "1px solid #e1e3e5",
+                          padding: "8px 12px",
+                          minWidth: 200,
+                        }}
+                      >
+                        <input
+                          type="text"
+                          value={row.linkUrl ?? ""}
+                          onChange={(e) =>
+                            updateRow(row.locationId, {
+                              linkUrl: e.target.value,
+                            })
+                          }
+                          placeholder="例: /pages/store-a または https://..."
+                          style={{
+                            width: "100%",
+                            minWidth: 160,
+                            padding: "6px 8px",
+                            borderRadius: 4,
+                            border: "1px solid #c9cccf",
+                            fontSize: 14,
+                            boxSizing: "border-box",
+                          }}
+                          title="「リンクを表示する」がONのときのみ反映。空欄はリンクなし"
                         />
                       </td>
                     </tr>

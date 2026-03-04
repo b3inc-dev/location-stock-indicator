@@ -20,6 +20,10 @@
   "target": "section",
   "settings": [
     {
+      "type": "header",
+      "content": "タイトルとレイアウト"
+    },
+    {
       "type": "text",
       "id": "heading_text",
       "label": "タイトル",
@@ -36,6 +40,20 @@
         { "value": "center", "label": "中央" },
         { "value": "right", "label": "右寄せ" }
       ]
+    },
+    {
+      "type": "range",
+      "id": "heading_margin_bottom",
+      "label": "タイトル下マージン（px）",
+      "min": 0,
+      "max": 40,
+      "step": 2,
+      "default": 8
+    },
+    {
+      "type": "color",
+      "id": "heading_color",
+      "label": "タイトルの色"
     },
     {
       "type": "select",
@@ -70,7 +88,6 @@
         { "value": "right", "label": "右寄せ" }
       ]
     },
-
     {
       "type": "select",
       "id": "font_size",
@@ -82,7 +99,6 @@
         { "value": "large", "label": "大きめ" }
       ]
     },
-
     {
       "type": "range",
       "id": "margin_top",
@@ -101,7 +117,6 @@
       "step": 2,
       "default": 16
     },
-
     {
       "type": "range",
       "id": "content_max_width",
@@ -125,15 +140,9 @@
     },
 
     {
-      "type": "range",
-      "id": "heading_margin_bottom",
-      "label": "タイトル下マージン（px）",
-      "min": 0,
-      "max": 40,
-      "step": 2,
-      "default": 8
+      "type": "header",
+      "content": "凡例・注意書き・行・枠線・色"
     },
-
     {
       "type": "checkbox",
       "id": "show_legend",
@@ -161,7 +170,11 @@
         { "value": "right", "label": "右寄せ" }
       ]
     },
-
+    {
+      "type": "color",
+      "id": "legend_color",
+      "label": "凡例の色"
+    },
     {
       "type": "checkbox",
       "id": "show_notice",
@@ -198,7 +211,11 @@
       "step": 2,
       "default": 8
     },
-
+    {
+      "type": "color",
+      "id": "notice_color",
+      "label": "注意書きの色"
+    },
     {
       "type": "text",
       "id": "list_separator",
@@ -237,7 +254,15 @@
       "step": 2,
       "default": 12
     },
-
+    {
+      "type": "range",
+      "id": "location_col_width",
+      "label": "テーブルレイアウト時のロケーション列の幅（%）",
+      "min": 30,
+      "max": 80,
+      "step": 5,
+      "default": 70
+    },
     {
       "type": "select",
       "id": "border_style",
@@ -265,40 +290,10 @@
       "default": "#e3e3e3"
     },
     {
-      "type": "select",
-      "id": "accordion_icon",
-      "label": "エリア折りたたみの開閉マーク",
-      "default": "chevron",
-      "options": [
-        { "value": "chevron", "label": "三角（▼/▶）" },
-        { "value": "angle", "label": "山括弧（＞/∨）" },
-        { "value": "plus_minus", "label": "プラス・マイナス（+/−）" },
-        { "value": "arrow", "label": "矢印（↓/→）" }
-      ],
-      "info": "「エリアごとに折りたたみ表示」をONにしたときの見出し右のマークです。"
-    },
-
-    {
-      "type": "color",
-      "id": "heading_color",
-      "label": "タイトルの色"
-    },
-    {
-      "type": "color",
-      "id": "legend_color",
-      "label": "凡例の色"
-    },
-    {
-      "type": "color",
-      "id": "notice_color",
-      "label": "注意書きの色"
-    },
-    {
       "type": "color",
       "id": "status_text_color",
       "label": "在庫ステータス（行内テキスト）の色"
     },
-
     {
       "type": "color",
       "id": "in_stock_color",
@@ -314,15 +309,18 @@
       "id": "out_of_stock_color",
       "label": "在庫なしマークの色（✕）"
     },
-
     {
-      "type": "range",
-      "id": "location_col_width",
-      "label": "テーブルレイアウト時のロケーション列の幅（%）",
-      "min": 30,
-      "max": 80,
-      "step": 5,
-      "default": 70
+      "type": "select",
+      "id": "accordion_icon",
+      "label": "エリア折りたたみの開閉マーク",
+      "default": "chevron",
+      "options": [
+        { "value": "chevron", "label": "三角（▼/▶）" },
+        { "value": "angle", "label": "山括弧（＞/∨）" },
+        { "value": "plus_minus", "label": "プラス・マイナス（+/−）" },
+        { "value": "arrow", "label": "矢印（↓/→）" }
+      ],
+      "info": "「エリアごとに折りたたみ表示」をONにしたときの見出し右のマークです。"
     },
 
     {

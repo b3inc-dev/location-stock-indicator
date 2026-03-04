@@ -1,4 +1,5 @@
-# 公開用アプリ（App Store 用）。同じコードを shopify app config use shopify.app.public.toml でデプロイ。
+# 公開用アプリ（App Store 用）。自社用は shopify.app.toml。
+# 別アプリ・別 Render の設定一覧: docs/APP_AND_RENDER_CONFIG.md
 # https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "1758d63a004d7f7d99afe5bf334d1f48"
@@ -6,23 +7,20 @@ name = "Location Stock"
 application_url = "https://location-stock-indicator.onrender.com"
 embedded = true
 
-[build]
-automatically_update_urls_on_dev = true
-
 [webhooks]
 api_version = "2026-01"
-
-  [[webhooks.subscriptions]]
-  topics = [ "app/uninstalled" ]
-  uri = "/webhooks/app/uninstalled"
 
   [[webhooks.subscriptions]]
   topics = [ "app/scopes_update" ]
   uri = "/webhooks/app/scopes_update"
 
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_inventory,read_locations,read_products,write_app_proxy,write_products"
+scopes = "read_inventory,read_locations,read_products,read_shipping,write_app_proxy,write_products"
 
 [auth]
 redirect_urls = [ "https://location-stock-indicator.onrender.com/api/auth" ]
@@ -31,3 +29,6 @@ redirect_urls = [ "https://location-stock-indicator.onrender.com/api/auth" ]
 url = "https://location-stock-indicator.onrender.com/apps/location-stock"
 subpath = "location-stock"
 prefix = "apps"
+
+[build]
+automatically_update_urls_on_dev = true

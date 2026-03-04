@@ -69,18 +69,21 @@ npx shopify app deploy --force
 
 ## 4. デプロイは公開用と自社用に分けて実行しなくて問題ない？
 
+**公開用・自社用の toml と Render の対応一覧**は `docs/APP_AND_RENDER_CONFIG.md` に記載しています。
+
 現在のリポジトリでは:
 
-- **shopify.app.toml** と **shopify.app.public.toml** の **client_id が同じ**（`1758d63a004d7f7d99afe5bf334d1f48`）です。
-- つまり **1 つの Partners アプリ** を、名前や設定の違いで 2 つの toml から見ているだけです。
-- デプロイ時には **どちらか一方が「デフォルト」** として使われ（直前のデプロイでは `shopify.app.public.toml`）、**同じアプリの同じバージョン** が 1 つリリースされます。
+- **shopify.app.public.toml** = 公開用（Location Stock、client_id: `1758d63a...`、Render: location-stock-indicator.onrender.com）
+- **shopify.app.toml** = 自社用（Location Stock - Ciara、client_id: `61b474b8...`、Render: location-stock-indicator-ciara.onrender.com）
+- つまり **公開用と自社用で別々の Partners アプリと別々の Render サービス** を使っています。
 
 このため:
 
-- **公開用と自社用で「同じ 1 つのアプリ」** を使う場合は、**デプロイを 1 回実行すれば十分**です。分けて実行する必要はありません。
-- **公開用と自社用で「別々の Partners アプリ」（別 client_id）** を使う場合は、アプリごとに toml を分け、それぞれの設定で **別々にデプロイ** する必要があります。
+- **公開用**でデプロイするとき: `shopify app config use shopify.app.public.toml` のあと `shopify app deploy` を実行する。
+- **自社用**でデプロイするとき: `shopify app config use shopify.app.toml` のあと `shopify app deploy` を実行する。
+- それぞれ **別々にデプロイ** する必要があります。バックエンド（Node サーバー）も、公開用・自社用で **別の Render サービス** を用意し、それぞれの環境変数（SHOPIFY_API_KEY / SHOPIFY_API_SECRET はアプリごとに異なる）を設定します。
 
-現在の構成では **1 アプリ・1 デプロイ** で問題ありません。
+一覧は **`docs/APP_AND_RENDER_CONFIG.md`** を参照してください。
 
 ---
 

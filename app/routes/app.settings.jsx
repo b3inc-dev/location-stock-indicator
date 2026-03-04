@@ -41,7 +41,6 @@ const SET_LOCATION_STOCK_CONFIG_MUTATION = `#graphql
  * loader:
  * 現在の config から
  * - symbols.inStock / lowStock / outOfStock
- * - click.*
  * - quantity の文言（label / wrapper）
  * - labels.*
  * - messages.*
@@ -95,17 +94,6 @@ export async function loader({ request }) {
     outOfStock: rawConfig?.symbols?.outOfStock ?? "✕",
   };
 
-  // クリック設定
-  const click = {
-    action: rawConfig?.click?.action ?? "none",
-    mapUrlTemplate:
-      rawConfig?.click?.mapUrlTemplate ??
-      "https://maps.google.com/?q={location_name}",
-    urlTemplate:
-      rawConfig?.click?.urlTemplate ??
-      "/pages/store-{location_id}",
-  };
-
   // 在庫数テキスト・単位（quantity の文言系）
   const quantityTexts = {
     label: rawConfig?.quantity?.quantityLabel ?? "在庫",
@@ -141,7 +129,6 @@ export async function loader({ request }) {
     shop: session.shop,
     thresholds,
     symbols,
-    click,
     quantityTexts,
     labels,
     messages,
@@ -153,7 +140,6 @@ export async function loader({ request }) {
 /**
  * action: フォーム送信された値で
  * - symbols.xxx
- * - click.*
  * - quantity の文言
  * - labels.*
  * - messages.*
@@ -184,16 +170,6 @@ export async function action({ request }) {
     (formData.get("symbol_low_stock") || "").toString() || "△";
   const symbolOutOfStock =
     (formData.get("symbol_out_of_stock") || "").toString() || "✕";
-
-  // クリックアクション
-  const clickAction =
-    (formData.get("click_action") || "").toString() || "none";
-  const mapUrlTemplate =
-    (formData.get("map_url_template") || "").toString() ||
-    "https://maps.google.com/?q={location_name}";
-  const urlTemplate =
-    (formData.get("url_template") || "").toString() ||
-    "/pages/store-{location_id}";
 
   // quantity の文言
   const quantityLabel = (formData.get("quantity_label") || "")
@@ -280,13 +256,7 @@ export async function action({ request }) {
         lowStock: symbolLowStock,
         outOfStock: symbolOutOfStock,
       },
-      // クリック設定（並び順はロケーション設定で編集するためここでは上書きしない）
-      click: {
-        ...(rawConfig.click || {}),
-        action: clickAction,
-        mapUrlTemplate,
-        urlTemplate,
-      },
+      // クリック・リンク設定はロケーション設定で編集（ここでは上書きしない）
       // quantity の文言（showQuantity など他のキーは保つ）
       quantity: {
         ...(rawConfig.quantity || {}),
@@ -370,12 +340,6 @@ export async function action({ request }) {
       outOfStock: nextConfig.symbols.outOfStock,
     };
 
-    const click = {
-      action: nextConfig.click.action,
-      mapUrlTemplate: nextConfig.click.mapUrlTemplate,
-      urlTemplate: nextConfig.click.urlTemplate,
-    };
-
     const quantityTexts = {
       label: nextConfig.quantity.quantityLabel,
       wrapperBefore: nextConfig.quantity.wrapperBefore,
@@ -402,7 +366,6 @@ export async function action({ request }) {
       ok: true,
       thresholds,
       symbols,
-      click,
       quantityTexts,
       labels,
       messages,
@@ -448,7 +411,6 @@ export default function AppSettings() {
   const [initial, setInitial] = useState(() => ({
     thresholds: loaderData.thresholds ?? { outOfStockMax: 0, inStockMin: 5 },
     symbols: loaderData.symbols,
-    click: loaderData.click,
     quantityTexts: loaderData.quantityTexts,
     labels: loaderData.labels,
     messages: loaderData.messages,
@@ -467,7 +429,6 @@ export default function AppSettings() {
     const next = {
       thresholds: fetcher.data.thresholds ?? initial.thresholds,
       symbols: fetcher.data.symbols,
-      click: fetcher.data.click,
       quantityTexts: fetcher.data.quantityTexts,
       labels: fetcher.data.labels,
       messages: fetcher.data.messages,
@@ -501,9 +462,6 @@ export default function AppSettings() {
     fd.set("symbol_in_stock", state.symbols.inStock);
     fd.set("symbol_low_stock", state.symbols.lowStock);
     fd.set("symbol_out_of_stock", state.symbols.outOfStock);
-    fd.set("click_action", state.click.action);
-    fd.set("map_url_template", state.click.mapUrlTemplate);
-    fd.set("url_template", state.click.urlTemplate);
     fd.set("quantity_label", state.quantityTexts.label);
     fd.set("quantity_wrapper_before", state.quantityTexts.wrapperBefore);
     fd.set("quantity_wrapper_after", state.quantityTexts.wrapperAfter);
@@ -778,46 +736,6 @@ export default function AppSettings() {
             <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
               <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>注意書きテキスト</label>
               <textarea value={state.notice.text} onChange={(e) => setState((s) => ({ ...s, notice: { ...s.notice, text: e.target.value } }))} style={textareaBaseStyle} placeholder="例: 在庫は店舗間で移動する場合があります。ご来店前に店舗へ在庫をご確認ください。" />
-            </div>
-          </div>
-        </div>
-
-        {/* セクション：ロケーション名クリック時の動作 */}
-        <div
-          style={{
-            display: "flex",
-            gap: "24px",
-            alignItems: "flex-start",
-            flexWrap: "wrap",
-            marginBottom: "24px",
-          }}
-        >
-          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>ロケーション名クリック時の動作</div>
-            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
-              在庫リスト内のロケーション名をクリックしたときの動作を設定します。クリックで Google マップを開いたり、任意のストアページに遷移させることができます。
-            </div>
-          </div>
-          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
-            <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
-              <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>クリック時の動作</label>
-                <select value={state.click.action} onChange={(e) => setState((s) => ({ ...s, click: { ...s.click, action: e.target.value } }))} style={selectBaseStyle}>
-                  <option value="none">何もしない（テキストのまま）</option>
-                  <option value="open_map">Google マップを開く（open_map）</option>
-                  <option value="open_url">任意の URL に遷移（open_url）</option>
-                </select>
-              </div>
-              <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>マップ URL テンプレート（open_map のとき）</label>
-                <input type="text" value={state.click.mapUrlTemplate} onChange={(e) => setState((s) => ({ ...s, click: { ...s.click, mapUrlTemplate: e.target.value } }))} style={inputBaseStyle} />
-                <p style={{ margin: "4px 0 0", fontSize: 13, color: "#6d7175" }}>例: https://maps.google.com/?q=&#123;location_name&#125; など。&#123;location_name&#125; の部分がロケーション名で置き換えられます。</p>
-              </div>
-              <div>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>任意 URL テンプレート（open_url のとき）</label>
-                <input type="text" value={state.click.urlTemplate} onChange={(e) => setState((s) => ({ ...s, click: { ...s.click, urlTemplate: e.target.value } }))} style={inputBaseStyle} />
-                <p style={{ margin: "4px 0 0", fontSize: 13, color: "#6d7175" }}>例: /pages/store-&#123;location_id&#125; など。&#123;location_id&#125; はロケーションの ID、&#123;location_name&#125; はロケーション名で置き換えられます。</p>
-              </div>
             </div>
           </div>
         </div>

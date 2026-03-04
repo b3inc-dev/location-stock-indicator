@@ -624,10 +624,11 @@
         locationsMode: "all",
         usePublicLocationName: false,
 
-        // ▼ クリックアクション
+        // ▼ クリックアクション（後方互換）＋ ロケーション別リンク（リンク設定で行ごとURL）
         clickAction: "none",
         mapUrlTemplate: "https://maps.google.com/?q={location_name}",
         urlTemplate: "/pages/store-{location_id}",
+        showLocationLinks: false,
 
         // ▼ カラー・幅などの見た目（テーマ側）
         inStockColor: {{ s.in_stock_color | json }},
@@ -766,9 +767,17 @@
         );
       }
 
-      // クリックアクション用
+      // クリック・リンク表示用（ロケーション設定の「リンクを表示する」＋行ごとURLを優先）
       function applyClickAction(location, displayName) {
         var name = displayName || location.locationName || "";
+
+        // ロケーション設定で「リンクを表示する」がONで、かつこのロケーションにURLが設定されている場合
+        if (settings.showLocationLinks && location.linkUrl && String(location.linkUrl).trim() !== "") {
+          var rawUrl = String(location.linkUrl).trim();
+          var safeUrl = rawUrl.replace(/"/g, "&quot;").replace(/</g, "&lt;");
+          var ext = rawUrl.indexOf("http") === 0 ? ' target="_blank" rel="noopener noreferrer"' : "";
+          return '<a href="' + safeUrl + '"' + ext + '>' + name + '</a>';
+        }
 
         if (settings.clickAction === "open_map") {
           var url = settings.mapUrlTemplate.replace("{location_name}", encodeURIComponent(name));
@@ -970,6 +979,8 @@
       }
       function buildOrderPickButton(item) {
         if (!settings.showOrderPickButton || !settings.orderPickButtonLabel) return "";
+        // 受け取り可能設定の店舗のみボタンを表示（storePickupEnabled は App Proxy が Location.localPickupSettingsV2 から付与）
+        if (!item || !item.storePickupEnabled) return "";
         var label = settings.orderPickButtonLabel.replace(/</g, "&lt;").replace(/>/g, "&gt;");
         var btnStyle = buildOrderPickButtonStyle();
         return (
@@ -1535,7 +1546,7 @@
               }
             }
 
-            // クリックアクション
+            // クリックアクション（後方互換）
             if (appConfig.click) {
               var click = appConfig.click;
               if (typeof click.action === "string") {
@@ -1547,6 +1558,10 @@
               if (typeof click.urlTemplate === "string") {
                 settings.urlTemplate = click.urlTemplate;
               }
+            }
+            // ロケーション設定の「リンクを表示する」＋行ごとURL
+            if (appConfig.future && typeof appConfig.future.showLocationLinks === "boolean") {
+              settings.showLocationLinks = appConfig.future.showLocationLinks;
             }
 
             // 将来拡張

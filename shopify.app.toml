@@ -1,4 +1,5 @@
 # 自社用カスタムアプリ（デフォルト）。公開用は shopify.app.public.toml を使用。
+# 別アプリ・別 Render の設定一覧: docs/APP_AND_RENDER_CONFIG.md
 # https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "61b474b801b754166b12f0b9cd07f450"
@@ -22,7 +23,7 @@ api_version = "2026-01"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_inventory,read_locations,read_products,write_app_proxy,write_products"
+scopes = "read_inventory,read_locations,read_products,read_shipping,write_app_proxy,write_products"
 
 [auth]
 redirect_urls = [ "https://location-stock-indicator-ciara.onrender.com/api/auth" ]

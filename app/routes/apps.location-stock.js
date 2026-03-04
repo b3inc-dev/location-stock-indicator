@@ -241,6 +241,7 @@ function applyConfigToStocks(stocks, config) {
       sortOrder: 999999,
       fromConfig: false,
       excludeFromNearby: false,
+      linkUrl: "",
     }));
   }
 
@@ -265,6 +266,7 @@ function applyConfigToStocks(stocks, config) {
           sortOrder: 999999,
           fromConfig: false,
           excludeFromNearby: false,
+          linkUrl: "",
         };
       }
 
@@ -284,7 +286,8 @@ function applyConfigToStocks(stocks, config) {
             ? regionGroupById.get(cfg.regionGroupId)
             : "未設定";
 
-      // メタフィールドで明示設定されたロケーション
+      // メタフィールドで明示設定されたロケーション（リンクURLは「リンクを表示する」がONのときのみ使用）
+      const linkUrl = (cfg && typeof cfg.linkUrl === "string" && cfg.linkUrl.trim() !== "") ? cfg.linkUrl.trim() : "";
       return {
         ...stock,
         displayName: cfg.publicName || stock.locationName,
@@ -293,6 +296,7 @@ function applyConfigToStocks(stocks, config) {
         fromConfig: true,
         regionKey,
         excludeFromNearby: !!cfg.excludeFromNearby,
+        linkUrl,
       };
     })
     .filter(Boolean);
@@ -356,6 +360,7 @@ function buildGlobalConfig(raw) {
       orderPickButtonLabel: "この店舗で受け取る",
       orderPickRedirectToCheckout: false,
       regionUnsetLabel: "その他",
+      showLocationLinks: false,
     },
     sort: {
       mode: "none", // none / location_name_asc / quantity_desc / quantity_asc
@@ -487,6 +492,9 @@ function buildGlobalConfig(raw) {
   }
   if (typeof futureRaw.regionUnsetLabel === "string") {
     future.regionUnsetLabel = futureRaw.regionUnsetLabel.trim() || "その他";
+  }
+  if (typeof futureRaw.showLocationLinks === "boolean") {
+    future.showLocationLinks = futureRaw.showLocationLinks;
   }
 
   // sort

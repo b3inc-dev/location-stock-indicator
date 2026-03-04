@@ -4,6 +4,8 @@
   "scripts": {
     "build": "react-router build",
     "dev": "shopify app dev",
+    "dev:public": "shopify app config use shopify.app.public.toml && shopify app dev",
+    "dev:custom": "shopify app config use shopify.app.toml && shopify app dev",
     "config:link": "shopify app config link",
     "generate": "shopify app generate",
     "deploy": "shopify app deploy",
