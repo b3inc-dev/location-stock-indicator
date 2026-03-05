@@ -358,6 +358,8 @@ function buildGlobalConfig(raw) {
       nearbyOtherHeading: "",
       showOrderPickButton: false,
       orderPickButtonLabel: "この店舗で受け取る",
+      orderPickAddingLabel: "追加中...",
+      orderPickAddedLabel: "追加しました",
       orderPickRedirectToCheckout: false,
       regionUnsetLabel: "その他",
       showLocationLinks: false,
@@ -487,6 +489,12 @@ function buildGlobalConfig(raw) {
   if (typeof futureRaw.orderPickButtonLabel === "string") {
     future.orderPickButtonLabel = futureRaw.orderPickButtonLabel;
   }
+  if (typeof futureRaw.orderPickAddingLabel === "string") {
+    future.orderPickAddingLabel = futureRaw.orderPickAddingLabel.trim() || "追加中...";
+  }
+  if (typeof futureRaw.orderPickAddedLabel === "string") {
+    future.orderPickAddedLabel = futureRaw.orderPickAddedLabel.trim() || "追加しました";
+  }
   if (typeof futureRaw.orderPickRedirectToCheckout === "boolean") {
     future.orderPickRedirectToCheckout = futureRaw.orderPickRedirectToCheckout;
   }
@@ -529,6 +537,14 @@ function buildGlobalConfig(raw) {
     notice = { text: safe.notice.text };
   }
 
+  // 表示ルール（凡例・注意書きの表示、区切り文字）。行の表示内容は quantity.rowContentMode
+  const displayRaw = safe.display || {};
+  const display = {
+    showLegend: typeof displayRaw.showLegend === "boolean" ? displayRaw.showLegend : true,
+    showNotice: typeof displayRaw.showNotice === "boolean" ? displayRaw.showNotice : false,
+    listSeparator: typeof displayRaw.listSeparator === "string" ? displayRaw.listSeparator : "： ",
+  };
+
   // 上部固定（1 ロケーションだけ先頭に表示）
   const pinnedLocationId =
     typeof safe.pinnedLocationId === "string" && safe.pinnedLocationId.trim() !== ""
@@ -554,6 +570,7 @@ function buildGlobalConfig(raw) {
     sort,
     messages,
     notice,
+    display,
     pinnedLocationId,
     regionGroups,
   };

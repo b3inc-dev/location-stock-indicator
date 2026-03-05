@@ -56,6 +56,15 @@
       "label": "タイトルの色"
     },
     {
+      "type": "range",
+      "id": "heading_font_size",
+      "label": "タイトルの文字サイズ（px）",
+      "min": 12,
+      "max": 24,
+      "step": 1,
+      "default": 18
+    },
+    {
       "type": "select",
       "id": "layout_type",
       "label": "レイアウト",
@@ -89,15 +98,14 @@
       ]
     },
     {
-      "type": "select",
+      "type": "range",
       "id": "font_size",
-      "label": "文字サイズ",
-      "default": "medium",
-      "options": [
-        { "value": "small", "label": "小さめ" },
-        { "value": "medium", "label": "標準" },
-        { "value": "large", "label": "大きめ" }
-      ]
+      "label": "ブロックの文字サイズ（リスト・凡例・注意書き）（px）",
+      "min": 12,
+      "max": 24,
+      "step": 1,
+      "default": 16,
+      "info": "リスト・凡例・注意書きに共通で適用されます。"
     },
     {
       "type": "range",
@@ -144,12 +152,6 @@
       "content": "凡例・注意書き・行・枠線・色"
     },
     {
-      "type": "checkbox",
-      "id": "show_legend",
-      "label": "凡例を表示する",
-      "default": true
-    },
-    {
       "type": "select",
       "id": "legend_position",
       "label": "凡例の表示位置",
@@ -176,12 +178,6 @@
       "label": "凡例の色"
     },
     {
-      "type": "checkbox",
-      "id": "show_notice",
-      "label": "注意書きを表示する（文言はアプリ側で設定）",
-      "default": false
-    },
-    {
       "type": "select",
       "id": "notice_position",
       "label": "注意書きの位置",
@@ -203,38 +199,9 @@
       ]
     },
     {
-      "type": "range",
-      "id": "notice_margin",
-      "label": "注意書きとリストの間隔（px）",
-      "min": 0,
-      "max": 40,
-      "step": 2,
-      "default": 8
-    },
-    {
       "type": "color",
       "id": "notice_color",
       "label": "注意書きの色"
-    },
-    {
-      "type": "text",
-      "id": "list_separator",
-      "label": "リスト表示時の区切り文字（ロケーション名と在庫の間）",
-      "default": "： ",
-      "info": "例: 「： 」「 / 」など。レイアウトが「リスト」のときに使われます。"
-    },
-    {
-      "type": "select",
-      "id": "row_content_mode",
-      "label": "行内の表示内容",
-      "default": "symbol_and_quantity",
-      "options": [
-        { "value": "symbol_only", "label": "マークのみ（◯△✕）" },
-        { "value": "symbol_and_quantity", "label": "マーク＋在庫数" },
-        { "value": "symbol_quantity_label", "label": "マーク＋在庫数＋ラベル" },
-        { "value": "quantity_only", "label": "在庫数のみ" },
-        { "value": "quantity_label", "label": "在庫数＋ラベル" }
-      ]
     },
     {
       "type": "range",
@@ -309,19 +276,6 @@
       "id": "out_of_stock_color",
       "label": "在庫なしマークの色（✕）"
     },
-    {
-      "type": "select",
-      "id": "accordion_icon",
-      "label": "エリア折りたたみの開閉マーク",
-      "default": "chevron",
-      "options": [
-        { "value": "chevron", "label": "三角（▼/▶）" },
-        { "value": "angle", "label": "山括弧（＞/∨）" },
-        { "value": "plus_minus", "label": "プラス・マイナス（+/−）" },
-        { "value": "arrow", "label": "矢印（↓/→）" }
-      ],
-      "info": "「エリアごとに折りたたみ表示」をONにしたときの見出し右のマークです。"
-    },
 
     {
       "type": "header",
@@ -342,34 +296,58 @@
       "label": "エリア見出しの文字色"
     },
     {
-      "type": "text",
+      "type": "range",
       "id": "region_heading_font_size",
-      "label": "エリア見出しの文字サイズ",
-      "placeholder": "0.95em",
-      "info": "例: 0.9em, 1em"
+      "label": "エリア見出しの文字サイズ（px）",
+      "min": 12,
+      "max": 20,
+      "step": 1,
+      "default": 14
     },
     {
-      "type": "text",
-      "id": "region_heading_font_weight",
-      "label": "エリア見出しの太さ",
-      "placeholder": "600",
-      "info": "例: 600, bold"
-    },
-    {
-      "type": "text",
+      "type": "range",
       "id": "region_heading_padding",
-      "label": "エリア見出しの余白",
-      "placeholder": "8px 12px",
-      "info": "CSS の padding 値（上右下左など）"
+      "label": "エリア見出しの余白（px）",
+      "min": 0,
+      "max": 24,
+      "step": 2,
+      "default": 8
     },
-
+    {
+      "type": "select",
+      "id": "accordion_icon",
+      "label": "エリア折りたたみの開閉マーク",
+      "default": "chevron",
+      "options": [
+        { "value": "chevron", "label": "三角（▼/▶）" },
+        { "value": "angle", "label": "山括弧（＞/∨）" },
+        { "value": "plus_minus", "label": "プラス・マイナス（+/−）" },
+        { "value": "arrow", "label": "矢印（↓/→）" }
+      ],
+      "info": "「エリアごとに折りたたみ表示」をONにしたときの見出し右のマークです。"
+    },
     {
       "type": "header",
-      "content": "店舗受け取りボタンのデザイン"
+      "content": "店舗受け取りボタン"
     },
     {
       "type": "paragraph",
-      "content": "「この店舗で受け取る」ボタンの見た目です。アプリのロケーション設定で指定した値よりこちらが優先されます。"
+      "content": "ボタンの種類と色を設定します。アプリのロケーション設定でボタン表示をONにしたときのみ表示されます。"
+    },
+    {
+      "type": "select",
+      "id": "order_pick_btn_style",
+      "label": "ボタンの種類",
+      "default": "solid_round",
+      "options": [
+        { "value": "solid_square", "label": "ソリッド×スクエア" },
+        { "value": "solid_round", "label": "ソリッド×ラウンド" },
+        { "value": "solid_pill", "label": "ソリッド×ピル" },
+        { "value": "outline_square", "label": "アウトライン×スクエア" },
+        { "value": "outline_round", "label": "アウトライン×ラウンド" },
+        { "value": "outline_pill", "label": "アウトライン×ピル" },
+        { "value": "ghost", "label": "ゴースト" }
+      ]
     },
     {
       "type": "color",
@@ -382,25 +360,43 @@
       "label": "ボタン文字色"
     },
     {
-      "type": "text",
-      "id": "order_pick_btn_border_radius",
-      "label": "ボタン角丸",
-      "placeholder": "4px",
-      "info": "例: 4px, 8px"
-    },
-    {
-      "type": "text",
-      "id": "order_pick_btn_padding",
-      "label": "ボタン余白",
-      "placeholder": "4px 10px",
-      "info": "CSS の padding 値"
-    },
-    {
-      "type": "text",
+      "type": "range",
       "id": "order_pick_btn_font_size",
-      "label": "ボタン文字サイズ",
-      "placeholder": "0.85em",
-      "info": "例: 0.85em, 1em"
+      "label": "ボタンの文字サイズ（px）",
+      "min": 12,
+      "max": 24,
+      "step": 1,
+      "default": 14
+    },
+    {
+      "type": "range",
+      "id": "order_pick_btn_padding",
+      "label": "ボタンの文字余白（px）",
+      "min": 4,
+      "max": 24,
+      "step": 2,
+      "default": 8
+    },
+    {
+      "type": "range",
+      "id": "order_pick_col_width",
+      "label": "ボタン列の幅（テーブル時・%）",
+      "min": 15,
+      "max": 45,
+      "step": 5,
+      "default": 25,
+      "info": "テーブル表示でボタン表示時のみ有効です。"
+    },
+    {
+      "type": "select",
+      "id": "order_pick_btn_align",
+      "label": "ボタンの左右位置",
+      "default": "right",
+      "options": [
+        { "value": "left", "label": "左寄せ" },
+        { "value": "center", "label": "中央" },
+        { "value": "right", "label": "右寄せ" }
+      ]
     },
 
     {
@@ -408,7 +404,7 @@
       "id": "custom_css",
       "label": "追加CSS",
       "default": "/* custom CSS */",
-      "info": "#location-stock-indicator-{{ block.id }} をルートにしてスタイルを上書きできます。"
+      "info": "ルート要素の ID は block に基づきます。スタイルを上書きする場合は #location-stock-indicator-（blockのID） をセレクタに使えます。"
     }
   ]
 }

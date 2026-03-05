@@ -14,7 +14,7 @@
     assign s = config | default: section.settings
     assign root_id = root_id | default: section.id
 
-    assign border_color = s.border_color | default: 'rgba(0,0,0,0.08)'
+    assign border_color = s.border_color | default: '#e3e3e3'
     assign border_width = s.border_width | default: 1
 
     assign content_align = s.content_align | default: 'left'
@@ -24,11 +24,31 @@
 
     assign row_padding_y = s.row_padding_y | default: 8
     assign row_padding_x = s.row_padding_x | default: 12
+
+    # font_size: range の数値（px）または旧 select（small/medium/large）を px に正規化。未設定時は 16
+    assign font_size_px = 16
+    if s.font_size == 'small'
+      assign font_size_px = 14
+    elsif s.font_size == 'large'
+      assign font_size_px = 18
+    elsif s.font_size == 'medium'
+      assign font_size_px = 16
+    elsif s.font_size != blank and s.font_size != ''
+      assign font_size_num = s.font_size | plus: 0
+      if font_size_num > 0
+        assign font_size_px = font_size_num
+      endif
+    endif
+
+    # heading_font_size: range の数値。未設定時はスキーマデフォルト 18
+    assign heading_font_size_px = s.heading_font_size | default: 18
   %}
 
   <div
     id="location-stock-indicator-{{ root_id }}"
     class="location-stock-indicator"
+    data-layout-type="{{ s.layout_type | default: 'list' }}"
+    data-order-pick-btn-style="{{ s.order_pick_btn_style | default: 'solid_round' }}"
     data-variant-id="{{ product.selected_or_first_available_variant.id }}"
     data-table-row-padding-y="{{ row_padding_y }}"
     data-table-row-padding-x="{{ row_padding_x }}"
@@ -37,7 +57,7 @@
     data-table-border-style="{{ s.border_style | default: 'rows' }}"
     style="
       margin-top: {{ s.margin_top | default: 0 }}px;
-      margin-bottom: {{ s.margin_bottom | default: 0 }}px;
+      margin-bottom: {{ s.margin_bottom | default: 16 }}px;
     "
   >
     <div class="location-stock-indicator__inner">
@@ -51,27 +71,18 @@
       {% endif %}
 
       {%- comment -%}
-        凡例（上側）
-        legend_position == 'top' のとき、リストより上に表示
-        ※ 実際の文言は JS（settings.symbol*/label*）側で上書き
+        凡例（上側）。表示有無は JS で appConfig.display.showLegend に応じて制御
       {%- endcomment -%}
-      {% if s.show_legend and s.legend_position == 'top' %}
-        <div
-          class="location-stock-indicator__legend
-                 location-stock-indicator__legend--{{ s.legend_align }}
-                 location-stock-indicator__legend--position-top"
-        ></div>
-      {% endif %}
+      <div
+        class="location-stock-indicator__legend location-stock-indicator__legend--{{ s.legend_align | default: 'left' }} location-stock-indicator__legend--position-top"
+        data-role="legend"
+        data-legend-position="top"
+      ></div>
 
       {%- comment -%}
-        注意書き（上側）
-        notice_position == 'top' のとき、リストより上に表示。
-        文言自体は JS 側で app 設定に上書きされる（settings.noticeText）
+        注意書き（上側）。表示有無は JS で appConfig.display.showNotice に応じて制御
       {%- endcomment -%}
-      {% if s.show_notice and s.notice_position == 'top' %}
-        <div class="location-stock-indicator__notice location-stock-indicator__notice--top location-stock-indicator__notice--align-{{ s.notice_align | default: 'left' }}">
-        </div>
-      {% endif %}
+      <div class="location-stock-indicator__notice location-stock-indicator__notice--top location-stock-indicator__notice--align-{{ s.notice_align | default: 'left' }}" data-role="notice" data-notice-position="top"></div>
 
       {%- comment -%}
         在庫リスト本体（JS で UL / TABLE が入る）
@@ -81,45 +92,31 @@
       </div>
 
       {%- comment -%}
-        凡例（下側）
-        legend_position が 'top' 以外（= 'bottom' or 未設定）のとき、リストの下に表示
+        凡例（下側）。表示有無は JS で appConfig.display.showLegend に応じて制御
       {%- endcomment -%}
-      {% if s.show_legend and s.legend_position != 'top' %}
-        <div
-          class="location-stock-indicator__legend
-                 location-stock-indicator__legend--{{ s.legend_align }}
-                 location-stock-indicator__legend--position-bottom"
-        ></div>
-      {% endif %}
+      <div
+        class="location-stock-indicator__legend location-stock-indicator__legend--{{ s.legend_align | default: 'left' }} location-stock-indicator__legend--position-bottom"
+        data-role="legend"
+        data-legend-position="bottom"
+      ></div>
 
       {%- comment -%}
-        注意書き（下側）
-        文言は app 側の notice 設定で上書き
+        注意書き（下側）。表示有無は JS で appConfig.display.showNotice に応じて制御
       {%- endcomment -%}
-      {% if s.show_notice and s.notice_position == 'bottom' %}
-        <div class="location-stock-indicator__notice location-stock-indicator__notice--bottom location-stock-indicator__notice--align-{{ s.notice_align | default: 'left' }}">
-        </div>
-      {% endif %}
+      <div class="location-stock-indicator__notice location-stock-indicator__notice--bottom location-stock-indicator__notice--align-{{ s.notice_align | default: 'left' }}" data-role="notice" data-notice-position="bottom"></div>
     </div>
   </div>
 
   <style>
-    /* セクション全体のベーススタイル */
     #location-stock-indicator-{{ root_id }} {
-      {% if s.font_size == 'small' %}
-        font-size: 0.9em;
-      {% elsif s.font_size == 'large' %}
-        font-size: 1.1em;
-      {% else %}
-        font-size: 1em;
-      {% endif %}
+      font-size: {{ font_size_px }}px;
     }
 
-    /* 中身コンテナ：max-width + 左/中央/右配置 */
+    {% assign content_max_width_val = s.content_max_width | default: 600 %}
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__inner {
       max-width:
-        {% if s.content_max_width and s.content_max_width > 0 %}
-          {{ s.content_max_width }}px
+        {% if content_max_width_val > 0 %}
+          {{ content_max_width_val }}px
         {% else %}
           100%
         {% endif %};
@@ -138,12 +135,12 @@
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__heading {
       margin-bottom: {{ s.heading_margin_bottom | default: 8 }}px;
       font-weight: 600;
-      font-size: 1.1em;
+      font-size: {{ heading_font_size_px }}px;
       text-align: {{ heading_align }};
     }
 
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__body {
-      font-size: 0.95em;
+      font-size: inherit;
     }
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__body.location-stock-indicator__message--loading {
       opacity: 0.8;
@@ -155,7 +152,6 @@
       opacity: 0.8;
     }
 
-    /* 凡例 */
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__legend {
       font-size: 0.8em;
       opacity: 0.8;
@@ -176,7 +172,6 @@
       text-align: right;
     }
 
-    /* 注意書き（長文時はスクロール可能・REQUIREMENTS §10） */
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__notice {
       font-size: 0.8em;
       opacity: 0.8;
@@ -186,10 +181,10 @@
       padding-right: 4px;
     }
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__notice--top {
-      margin-bottom: {{ s.notice_margin | default: 8 }}px;
+      margin-bottom: {{ row_padding_y }}px;
     }
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__notice--bottom {
-      margin-top: {{ s.notice_margin | default: 8 }}px;
+      margin-top: {{ row_padding_y }}px;
     }
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__notice--align-left {
       text-align: left;
@@ -201,13 +196,11 @@
       text-align: right;
     }
 
-    /* メッセージ文言・注意書きで改行（\n）を反映する */
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__body,
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__notice {
       white-space: pre-line;
     }
 
-    /* リストレイアウト */
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__list {
       list-style: none;
       margin: 0;
@@ -229,14 +222,12 @@
         {% endif %};
     }
 
-    /* 「外枠＋行ごと」のときは最後の行だけ下線を消して二重線を防ぐ */
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__item:last-child {
       {% if s.border_style == 'full' %}
         border-bottom: none;
       {% endif %}
     }
 
-    /* スタックレイアウト用（2行表示） */
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__stacked-name {
       font-weight: 500;
       text-align: {{ location_align }};
@@ -248,7 +239,6 @@
       text-align: {{ status_align }};
     }
 
-    /* テーブルレイアウト（表表示時のみ .table-wrap でラップし、テーマの上書きを避けて枠線・余白を反映） */
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__table-wrap {
       display: block;
       width: 100%;
@@ -276,7 +266,7 @@
         {% else %}
           none
         {% endif %};
-      vertical-align: top;
+      vertical-align: middle;
       box-sizing: border-box;
     }
 
@@ -297,7 +287,6 @@
       {% endif %}
     }
 
-    /* ロケーション名・ステータスの共通スタイル（テキスト揃え） */
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__location {
       text-align: {{ location_align }};
     }
@@ -305,7 +294,6 @@
       text-align: {{ status_align }};
     }
 
-    /* エリア見出し（表・リストの同枠内の1行として組み込み、同じ線・余白のトンマナ） */
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__table .location-stock-indicator__region-heading-row td,
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-row td {
       width: 100%;
@@ -327,7 +315,6 @@
       background: #f6f6f7;
       vertical-align: middle;
     }
-    /* td は table-cell のままにして colspan で表幅いっぱいに。flex は内側ラッパーのみ */
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-cell-inner {
       display: flex;
       align-items: center;
@@ -349,11 +336,9 @@
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__nearby-header:focus {
       outline: none;
     }
-    /* 近隣店舗：見出しは常にクリック可能（アコーディオンOFF時も位置取得のため） */
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__nearby-header {
       cursor: pointer;
     }
-    /* 近隣店舗 body：余白・枠線は .location-stock-indicator__table td / .location-stock-indicator__item に任せ、設定のデザインを反映 */
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__nearby-body-cell {
       vertical-align: middle;
     }
@@ -374,7 +359,6 @@
       color: #6d7175;
       background: #f6f6f7;
     }
-    /* アコーディオン開閉マーク（テーマで選択可能。アニメーションなし） */
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-chevron {
       display: inline-flex;
       align-items: center;
@@ -384,7 +368,6 @@
       vertical-align: middle;
       color: #6d7175;
     }
-    /* 三角（▼/▶） */
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-chevron--chevron {
       width: 0;
       height: 0;
@@ -397,7 +380,6 @@
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__nearby-header[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--chevron {
       transform: rotate(-90deg);
     }
-    /* プラス・マイナス（+/−） */
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-chevron--plus-minus .location-stock-indicator__region-heading-chevron-open,
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-chevron--plus-minus .location-stock-indicator__region-heading-chevron-closed {
       font-size: 1.1em;
@@ -417,7 +399,6 @@
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__nearby-header[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--plus-minus .location-stock-indicator__region-heading-chevron-closed {
       display: inline;
     }
-    /* 矢印（↓/→） */
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-chevron--arrow .location-stock-indicator__region-heading-chevron-open,
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-chevron--arrow .location-stock-indicator__region-heading-chevron-closed {
       font-size: 1em;
@@ -436,7 +417,6 @@
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__nearby-header[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--arrow .location-stock-indicator__region-heading-chevron-closed {
       display: inline;
     }
-    /* 山括弧（＞/∨） */
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-chevron--angle .location-stock-indicator__region-heading-chevron-open,
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-chevron--angle .location-stock-indicator__region-heading-chevron-closed {
       font-size: 1em;
@@ -455,25 +435,67 @@
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__nearby-header[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--angle .location-stock-indicator__region-heading-chevron-closed {
       display: inline;
     }
-    /* 「この店舗で受け取る」ボタン */
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-btn {
-      padding: 4px 10px;
-      font-size: 0.85em;
-      border-radius: 4px;
-      border: 1px solid #2c6ecb;
-      background: #2c6ecb;
-      color: #fff;
       cursor: pointer;
       white-space: nowrap;
+      text-decoration: none;
+      transition: opacity 0.2s ease;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-btn.is-loading {
+      opacity: 0.7;
+      cursor: wait;
+      pointer-events: none;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-btn.is-added {
+      opacity: 1;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-btn-spinner {
+      display: inline-block;
+      width: 1em;
+      height: 1em;
+      border: 2px solid currentColor;
+      border-right-color: transparent;
+      border-radius: 50%;
+      animation: location-stock-indicator-spin 0.6s linear infinite;
+      vertical-align: -0.15em;
+      margin-right: 0.35em;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-btn.is-loading .location-stock-indicator__order-pick-btn-spinner {
+      display: inline-block;
+    }
+    @keyframes location-stock-indicator-spin {
+      to { transform: rotate(360deg); }
     }
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-cell {
       vertical-align: middle;
     }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-cell--left { text-align: left; }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-cell--center { text-align: center; }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-cell--right { text-align: right; }
     #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-wrap {
       margin-top: 4px;
     }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__item {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      line-height: 1.5;
+    }
+    #location-stock-indicator-{{ root_id }}[data-layout-type="stacked"] .location-stock-indicator__item {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-wrap--left {
+      order: 0;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-wrap--right {
+      margin-left: auto;
+    }
+    #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-wrap--center {
+      flex: 1 1 100%;
+      text-align: center;
+    }
 
-    /* スマホ時の表示バランス（REQUIREMENTS §10） */
     @media (max-width: 767px) {
       #location-stock-indicator-{{ root_id }} {
         font-size: 0.95em;
@@ -551,7 +573,26 @@
         fetch("/apps/location-stock?" + q).catch(function () {});
       }
 
-      // 「この店舗で受け取る」ボタン：クリックでカスタムイベント発火のあと、デフォルトでカートに追加（任意でチェックアウトへリダイレクト）
+      function refreshCartSections() {
+        var sectionIds = ["cart-drawer", "theme-cart-drawer", "cart-icon-bubble", "cart-drawer-wrapper", "main-cart-items"];
+        var q = sectionIds.join(",");
+        fetch("/?sections=" + q)
+          .then(function (r) { return r.json(); })
+          .then(function (sections) {
+            if (!sections || typeof sections !== "object") return;
+            Object.keys(sections).forEach(function (id) {
+              var html = sections[id];
+              if (typeof html !== "string" || !html) return;
+              var el = document.getElementById("shopify-section-" + id);
+              if (el) {
+                el.innerHTML = html.trim();
+                document.dispatchEvent(new CustomEvent("section:refreshed", { detail: { sectionId: id }, bubbles: true }));
+              }
+            });
+          })
+          .catch(function () {});
+      }
+
       root.addEventListener("click", function (e) {
         var btn = e.target && e.target.closest ? e.target.closest(".location-stock-indicator__order-pick-btn") : null;
         if (!btn) return;
@@ -562,21 +603,60 @@
         sendAnalyticsEvent("order_pick_click", { locationId: locationId });
 
         var variantId = root.getAttribute("data-variant-id");
-        if (variantId && settings.showOrderPickButton) {
-          fetch("/cart/add.js", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ items: [{ id: variantId, quantity: 1 }] }),
+        if (!variantId || !settings.showOrderPickButton) return;
+
+        var originalText = btn.textContent || "";
+        var addingLabel = (settings.orderPickAddingLabel || "追加中...").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        var addedLabel = settings.orderPickAddedLabel || "追加しました";
+
+        btn.classList.add("is-loading");
+        btn.setAttribute("aria-busy", "true");
+        btn.innerHTML = '<span class="location-stock-indicator__order-pick-btn-spinner" aria-hidden="true"></span>' + addingLabel;
+        if (typeof btn.disabled !== "undefined") btn.disabled = true;
+
+        fetch("/cart/add.js", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items: [{ id: variantId, quantity: 1 }] }),
+        })
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (data.status && data.status !== 200) {
+              btn.classList.remove("is-loading");
+              btn.removeAttribute("aria-busy");
+              btn.textContent = originalText;
+              if (typeof btn.disabled !== "undefined") btn.disabled = false;
+              return;
+            }
+            if (settings.orderPickRedirectToCheckout) {
+              window.location.href = "/checkout";
+              return;
+            }
+            btn.classList.remove("is-loading");
+            btn.classList.add("is-added");
+            btn.setAttribute("aria-busy", "false");
+            btn.textContent = addedLabel;
+            if (typeof btn.disabled !== "undefined") btn.disabled = false;
+
+            fetch("/cart.js")
+              .then(function (r) { return r.json(); })
+              .then(function (cart) {
+                document.dispatchEvent(new CustomEvent("cart:refresh", { detail: { cart: cart }, bubbles: true }));
+                document.dispatchEvent(new CustomEvent("location-stock:cart-added", { detail: { cart: cart }, bubbles: true }));
+                refreshCartSections();
+              })
+              .catch(function () {});
+            setTimeout(function () {
+              btn.classList.remove("is-added");
+              btn.textContent = originalText;
+            }, 2000);
           })
-            .then(function (res) { return res.json(); })
-            .then(function (data) {
-              if (data.status && data.status !== 200) return;
-              if (settings.orderPickRedirectToCheckout) {
-                window.location.href = "/checkout";
-              }
-            })
-            .catch(function () {});
-        }
+          .catch(function () {
+            btn.classList.remove("is-loading");
+            btn.removeAttribute("aria-busy");
+            btn.textContent = originalText;
+            if (typeof btn.disabled !== "undefined") btn.disabled = false;
+          });
       });
 
       function setMessage(type, text) {
@@ -594,64 +674,42 @@
       }
 
       var settings = {
-        // ▼ ロジック系（＝アプリ側 config がマスター）
         outOfStockMax: 0,
         inStockMin: 5,
-
-        // 在庫表示レイアウト（テーマ側がマスター）
-        // symbol_only / symbol_and_quantity / symbol_quantity_label / quantity_only / quantity_label
-        rowContentMode: {{ s.row_content_mode | default: 'symbol_and_quantity' | json }},
+        rowContentMode: "symbol_and_quantity",
         quantityLabel: "在庫",
         quantityWrapperBefore: "(",
         quantityWrapperAfter: ")",
-
-        // ラベル
         labelInStock: "在庫あり",
         labelLowStock: "残りわずか",
         labelOutOfStock: "在庫なし",
-
-        // ▼ メッセージ系（アプリ側で上書き）
         loadingMessage: "在庫を読み込み中...",
         emptyMessage: "現在、この商品の店舗在庫はありません。",
         errorMessage: "在庫情報の取得に失敗しました。時間をおいて再度お試しください。",
-
-        // ▼ レイアウト・並び順・上部固定
-        layoutType: {{ s.layout_type | json }}, // table / list / stacked
+        layoutType: {{ s.layout_type | default: 'list' | json }},
         sortBy: "config_order",
         pinnedLocationId: null,
-
-        // ▼ ロケーション表示ルール
         locationsMode: "all",
         usePublicLocationName: false,
-
-        // ▼ クリックアクション（後方互換）＋ ロケーション別リンク（リンク設定で行ごとURL）
         clickAction: "none",
         mapUrlTemplate: "https://maps.google.com/?q={location_name}",
         urlTemplate: "/pages/store-{location_id}",
         showLocationLinks: false,
-
-        // ▼ カラー・幅などの見た目（テーマ側）
         inStockColor: {{ s.in_stock_color | json }},
         lowStockColor: {{ s.low_stock_color | json }},
         outOfStockColor: {{ s.out_of_stock_color | json }},
         locationColWidth: {{ s.location_col_width | default: 70 | json }},
-
-        // 在庫マーク（アプリ側 config があればそちらが優先）
         symbolInStock: "◯",
         symbolLowStock: "△",
         symbolOutOfStock: "✕",
-
-        // リスト表示時の区切り
-        listSeparator: {{ s.list_separator | default: "： " | json }},
-
-        // ▼ 注意書き（位置や表示フラグはテーマ側、文言は app 側）
-        showNotice: {{ s.show_notice | json }},
+        listSeparator: "： ",
+        showLegend: true,
+        showNotice: false,
+        legendPosition: {{ s.legend_position | default: 'bottom' | json }},
         noticePosition: {{ s.notice_position | default: 'bottom' | json }},
         noticeText: "",
         noticeAlign: {{ s.notice_align | default: 'left' | json }},
-        noticeMargin: {{ s.notice_margin | default: 8 | json }},
-
-        // ▼ 将来拡張
+        noticeMargin: {{ row_padding_y | default: 8 | json }},
         groupByRegion: false,
         regionAccordionEnabled: false,
         nearbyFirstEnabled: false,
@@ -660,6 +718,8 @@
         nearbyOtherHeading: "",
         showOrderPickButton: false,
         orderPickButtonLabel: "この店舗で受け取る",
+        orderPickAddingLabel: "追加中...",
+        orderPickAddedLabel: "追加しました",
         regionGroupOrder: [],
         accordionIcon: {{ s.accordion_icon | default: 'chevron' | json }},
         regionUnsetLabel: "その他",
@@ -667,20 +727,18 @@
         themeRegionHeadingStyle: {
           backgroundColor: {{ s.region_heading_background | json }},
           color: {{ s.region_heading_color | json }},
-          fontSize: {{ s.region_heading_font_size | json }},
-          fontWeight: {{ s.region_heading_font_weight | json }},
-          padding: {{ s.region_heading_padding | json }}
+          fontSize: {{ s.region_heading_font_size | default: 14 | json }},
+          padding: {{ s.region_heading_padding | default: 8 | json }}
         },
-        themeOrderPickButtonStyle: {
-          backgroundColor: {{ s.order_pick_btn_background | json }},
-          color: {{ s.order_pick_btn_color | json }},
-          borderRadius: {{ s.order_pick_btn_border_radius | json }},
-          padding: {{ s.order_pick_btn_padding | json }},
-          fontSize: {{ s.order_pick_btn_font_size | json }}
-        }
+        orderPickBtnStyle: {{ s.order_pick_btn_style | default: 'solid_round' | json }},
+        orderPickBtnAlign: {{ s.order_pick_btn_align | default: 'right' | json }},
+        orderPickColWidth: {{ s.order_pick_col_width | default: 25 | json }},
+        orderPickBtnPadding: {{ s.order_pick_btn_padding | default: 8 | json }},
+        orderPickBtnFontSize: {{ s.order_pick_btn_font_size | default: 14 | json }},
+        orderPickBtnBackground: {{ s.order_pick_btn_background | json }},
+        orderPickBtnColor: {{ s.order_pick_btn_color | json }}
       };
 
-      // 凡例テキストの更新
       function updateLegendElements() {
         var legends = root.querySelectorAll(".location-stock-indicator__legend");
         if (!legends.length) return;
@@ -697,7 +755,6 @@
         });
       }
 
-      // 注意書きテキストの更新
       function updateNoticeElements() {
         var notices = root.querySelectorAll(".location-stock-indicator__notice");
         if (!notices.length) return;
@@ -708,7 +765,19 @@
         });
       }
 
-      // 在庫数から マーク & ラベルを決定
+      function applyLegendNoticeVisibility() {
+        var legendPos = settings.legendPosition || "bottom";
+        var noticePos = settings.noticePosition || "bottom";
+        root.querySelectorAll("[data-role=\"legend\"]").forEach(function (el) {
+          var pos = el.getAttribute("data-legend-position") || "";
+          el.style.display = (settings.showLegend && pos === legendPos) ? "" : "none";
+        });
+        root.querySelectorAll("[data-role=\"notice\"]").forEach(function (el) {
+          var pos = el.getAttribute("data-notice-position") || "";
+          el.style.display = (settings.showNotice && pos === noticePos) ? "" : "none";
+        });
+      }
+
       function getStatusSymbolAndLabel(qty) {
         var outMax = settings.outOfStockMax;
         var inMin = settings.inStockMin;
@@ -729,7 +798,6 @@
         return { symbol: symbol, label: label };
       }
 
-      // 在庫数部分の HTML を組み立て
       function buildQuantityHtml(qty) {
         var mode = settings.rowContentMode;
 
@@ -955,42 +1023,60 @@
         return parts.join("");
       }
 
-      // 1行ぶんの「店舗で受け取る」ボタン（showOrderPickButton 時）
+      // 1行ぶんの「店舗で受け取る」ボタン。7種類（ソリッド/アウトライン×スクエア/ラウンド/ピル、ゴースト）＋背景・文字色・余白
       function buildOrderPickButtonStyle() {
-        var appS = settings.orderPickButtonStyle || {};
-        var themeS = settings.themeOrderPickButtonStyle || {};
-        var s = {};
-        [appS, themeS].forEach(function (source) {
-          if (!source || typeof source !== "object") return;
-          Object.keys(source).forEach(function (k) {
-            var v = source[k];
-            if (v != null && String(v).trim() !== "") s[k] = v;
-          });
-        });
-        if (Object.keys(s).length === 0) return "";
+        var kind = settings.orderPickBtnStyle || "solid_round";
+        if (kind === "simple" || kind === "accent" || kind === "solid" || kind === "outline" || kind === "round" || kind === "pill" || kind === "ghost_square") {
+          if (kind === "solid" || kind === "simple" || kind === "accent") kind = "solid_round";
+          else if (kind === "outline") kind = "outline_round";
+          else if (kind === "ghost_square") kind = "ghost";
+        }
+        var bg = (settings.orderPickBtnBackground && String(settings.orderPickBtnBackground).trim()) ? String(settings.orderPickBtnBackground).trim() : "";
+        var fg = (settings.orderPickBtnColor && String(settings.orderPickBtnColor).trim()) ? String(settings.orderPickBtnColor).trim() : "";
+        var pad = (typeof settings.orderPickBtnPadding === "number" && settings.orderPickBtnPadding >= 0) ? settings.orderPickBtnPadding : 8;
+        var radius = "4px";
+        if (kind === "solid_round" || kind === "outline_round") radius = "8px";
+        if (kind === "solid_pill" || kind === "outline_pill") radius = "999px";
+        if (kind === "solid_square" || kind === "outline_square") radius = "0";
+        if (kind === "ghost") radius = "4px";
+        var defaultBg = "#f5f5f5";
+        var defaultFg = "#333";
         var parts = [];
-        if (s.backgroundColor) parts.push("background:" + String(s.backgroundColor).replace(/"/g, "&quot;"));
-        if (s.color) parts.push("color:" + String(s.color).replace(/"/g, "&quot;"));
-        if (s.border) parts.push("border:" + String(s.border).replace(/"/g, "&quot;"));
-        if (s.borderRadius) parts.push("border-radius:" + String(s.borderRadius).replace(/"/g, "&quot;"));
-        if (s.padding) parts.push("padding:" + String(s.padding).replace(/"/g, "&quot;"));
-        if (s.fontSize) parts.push("font-size:" + String(s.fontSize).replace(/"/g, "&quot;"));
-        return parts.length ? parts.join(";") : "";
+        if (kind === "ghost") {
+          parts.push("background:transparent");
+          parts.push("border:1px solid transparent");
+          parts.push("color:" + (fg || defaultFg).replace(/"/g, "&quot;"));
+        } else if (kind.indexOf("outline") === 0) {
+          var borderColor = fg || defaultFg;
+          parts.push("background:transparent");
+          parts.push("border:1px solid " + borderColor.replace(/"/g, "&quot;"));
+          parts.push("color:" + (fg || defaultFg).replace(/"/g, "&quot;"));
+        } else {
+          parts.push("background:" + (bg || defaultBg).replace(/"/g, "&quot;"));
+          parts.push("border:none");
+          parts.push("color:" + (fg || defaultFg).replace(/"/g, "&quot;"));
+        }
+        parts.push("border-radius:" + radius);
+        parts.push("padding:" + pad + "px " + (pad * 1.5) + "px");
+        var fs = (typeof settings.orderPickBtnFontSize === "number" && settings.orderPickBtnFontSize >= 12 && settings.orderPickBtnFontSize <= 24) ? settings.orderPickBtnFontSize : 14;
+        parts.push("font-size:" + fs + "px");
+        parts.push("display:inline-block");
+        parts.push("text-decoration:none");
+        return parts.join(";");
       }
       function buildOrderPickButton(item) {
         if (!settings.showOrderPickButton || !settings.orderPickButtonLabel) return "";
-        // 受け取り可能設定の店舗のみボタンを表示（storePickupEnabled は App Proxy が Location.localPickupSettingsV2 から付与）
         if (!item || !item.storePickupEnabled) return "";
         var label = settings.orderPickButtonLabel.replace(/</g, "&lt;").replace(/>/g, "&gt;");
         var btnStyle = buildOrderPickButtonStyle();
-        return (
-          '<button type="button" class="location-stock-indicator__order-pick-btn" data-location-id="' +
-          (item.locationId || "").replace(/"/g, "&quot;") +
-          '" data-location-name="' +
-          (item.displayName || item.locationName || "").replace(/"/g, "&quot;") +
-          (btnStyle ? '" style="' + btnStyle + '"' : '"') +
-          '>' + label + "</button>"
-        );
+        var align = settings.orderPickBtnAlign || "right";
+        var locId = (item.locationId || "").replace(/"/g, "&quot;");
+        var locName = (item.displayName || item.locationName || "").replace(/"/g, "&quot;");
+        var cls = "location-stock-indicator__order-pick-btn location-stock-indicator__order-pick-btn--" + (align || "right");
+        if (settings.orderPickRedirectToCheckout) {
+          return '<a href="/checkout" class="' + cls + '" data-location-id="' + locId + '" data-location-name="' + locName + '" style="' + btnStyle + '">' + label + "</a>";
+        }
+        return '<button type="button" class="' + cls + '" data-location-id="' + locId + '" data-location-name="' + locName + '" style="' + btnStyle + '">' + label + "</button>";
       }
 
       // 地域でグルーピング（groupByRegion）。order があるときはその順で表示し、最後に「未設定」があれば追加
@@ -1049,9 +1135,22 @@
         var groups = settings.groupByRegion ? groupStocksByRegion(restStocks, settings.regionGroupOrder) : [{ regionKey: "", items: mainStocks }];
         if (settings.groupByRegion && pinnedItems.length) groups = [{ regionKey: "", items: pinnedItems, _pinned: true }].concat(groups);
         var html = "";
-        var locWidth = settings.layoutType === "table" ? (settings.locationColWidth || 70) : 0;
-        var statusWidth = settings.layoutType === "table" ? (100 - locWidth) : 0;
-        if (settings.layoutType === "table" && settings.showOrderPickButton) statusWidth -= 15;
+        var locWidth = 70;
+        var btnColWidth = 0;
+        var statusWidth = 30;
+        if (settings.layoutType === "table") {
+          locWidth = Math.min(80, Math.max(30, Number(settings.locationColWidth) || 70));
+          if (settings.showOrderPickButton) {
+            btnColWidth = Math.min(45, Math.max(15, Number(settings.orderPickColWidth) || 25));
+            if (locWidth + btnColWidth >= 90) {
+              locWidth = Math.min(locWidth, 80);
+              btnColWidth = Math.min(btnColWidth, 100 - locWidth - 10);
+            }
+            statusWidth = 100 - locWidth - btnColWidth;
+          } else {
+            statusWidth = 100 - locWidth;
+          }
+        }
         var colCount = settings.layoutType === "table" ? (settings.showOrderPickButton ? 3 : 2) : 0;
         var accordionEnabled = settings.groupByRegion && settings.regionAccordionEnabled;
         var regionBlockId = 0;
@@ -1094,9 +1193,15 @@
           var parts = [];
           if (rs.backgroundColor) parts.push("background:" + String(rs.backgroundColor).replace(/"/g, "&quot;"));
           if (rs.color) parts.push("color:" + String(rs.color).replace(/"/g, "&quot;"));
-          if (rs.fontSize) parts.push("font-size:" + String(rs.fontSize).replace(/"/g, "&quot;"));
+          if (rs.fontSize != null) {
+            var fs = rs.fontSize;
+            parts.push("font-size:" + (typeof fs === "number" ? fs + "px" : String(fs).replace(/"/g, "&quot;")));
+          }
           if (rs.fontWeight) parts.push("font-weight:" + String(rs.fontWeight).replace(/"/g, "&quot;"));
-          if (rs.padding) parts.push("padding:" + String(rs.padding).replace(/"/g, "&quot;"));
+          if (rs.padding != null) {
+            var pd = rs.padding;
+            parts.push("padding:" + (typeof pd === "number" ? pd + "px" : String(pd).replace(/"/g, "&quot;")));
+          }
           else {
             if (rs.paddingTop) parts.push("padding-top:" + String(rs.paddingTop).replace(/"/g, "&quot;"));
             if (rs.paddingBottom) parts.push("padding-bottom:" + String(rs.paddingBottom).replace(/"/g, "&quot;"));
@@ -1126,7 +1231,7 @@
           var nameHtml = applyClickAction(item, name);
           tr += '<td class="location-stock-indicator__location" style="width:' + locWidth + '%;">' + nameHtml + "</td>";
           tr += '<td class="location-stock-indicator__status" style="width:' + statusWidth + '%;">' + buildStatusHtml(item, status) + "</td>";
-          if (settings.showOrderPickButton) tr += '<td class="location-stock-indicator__order-pick-cell">' + buildOrderPickButton(item) + "</td>";
+          if (settings.showOrderPickButton) tr += '<td class="location-stock-indicator__order-pick-cell location-stock-indicator__order-pick-cell--' + (settings.orderPickBtnAlign || "right") + '" style="width:' + btnColWidth + '%;">' + buildOrderPickButton(item) + "</td>";
           tr += "</tr>";
           return tr;
         }
@@ -1150,11 +1255,11 @@
           var rowHtml = "";
           if (settings.layoutType === "stacked") {
             rowHtml = '<div class="location-stock-indicator__stacked-name">' + nameHtml + "</div>" + '<div class="location-stock-indicator__stacked-status">' + buildStatusHtml(item, status) + "</div>";
-            if (settings.showOrderPickButton) rowHtml += '<div class="location-stock-indicator__order-pick-wrap">' + buildOrderPickButton(item) + "</div>";
+            if (settings.showOrderPickButton) rowHtml += '<div class="location-stock-indicator__order-pick-wrap location-stock-indicator__order-pick-wrap--' + (settings.orderPickBtnAlign || "right") + '">' + buildOrderPickButton(item) + "</div>";
           } else {
             var sep = settings.listSeparator || "： ";
             rowHtml = '<span class="location-stock-indicator__location">' + nameHtml + "</span>" + sep + '<span class="location-stock-indicator__status">' + buildStatusHtml(item, status) + "</span>";
-            if (settings.showOrderPickButton) rowHtml += " " + buildOrderPickButton(item);
+            if (settings.showOrderPickButton) rowHtml += '<span class="location-stock-indicator__order-pick-wrap location-stock-indicator__order-pick-wrap--' + (settings.orderPickBtnAlign || "right") + '">' + buildOrderPickButton(item) + "</span>";
           }
           li += rowHtml + "</li>";
           return li;
@@ -1167,7 +1272,9 @@
         }
         if (settings.layoutType === "table") {
           html += '<div class="location-stock-indicator__table-wrap">';
-          html += '<table class="location-stock-indicator__table"><tbody>';
+          html += '<table class="location-stock-indicator__table">';
+          html += '<colgroup><col style="width:' + locWidth + '%"><col style="width:' + statusWidth + '%">' + (settings.showOrderPickButton ? '<col style="width:' + btnColWidth + '%">' : '') + '</colgroup>';
+          html += '<tbody>';
           if (settings.nearbyFirstEnabled && opts.hasCoordsForNearby) {
             html += '<tr class="location-stock-indicator__region-heading-row location-stock-indicator__nearby-header" data-region-block="nearby" role="button" tabindex="0" aria-expanded="false">';
             html += '<td colspan="' + colCount + '" class="location-stock-indicator__region-heading-cell">';
@@ -1277,7 +1384,7 @@
               [].forEach.call(wrap.querySelectorAll("td"), function (td) {
                 td.style.padding = pad;
                 td.style.borderBottom = borderBottom;
-                td.style.verticalAlign = td.classList.contains("location-stock-indicator__region-heading-cell") || td.classList.contains("location-stock-indicator__nearby-body-cell") ? "middle" : "top";
+                td.style.verticalAlign = "middle";
               });
               if (bStyle === "full" && bw !== null && bc !== null) {
                 [].forEach.call(wrap.querySelectorAll("td + td"), function (td) {
@@ -1325,8 +1432,16 @@
         var body = doc.getElementById(root.id + "-nearby-body") || root.querySelector(".location-stock-indicator__nearby-body");
         if (!btn || !body) return;
         var loaded = false;
-        var locWidth = settings.locationColWidth || 70;
-        var statusWidth = 100 - locWidth - (settings.showOrderPickButton ? 15 : 0);
+        var locWidth = Math.min(80, Math.max(30, Number(settings.locationColWidth) || 70));
+        var btnColWidth = 0;
+        if (settings.showOrderPickButton) {
+          btnColWidth = Math.min(45, Math.max(15, Number(settings.orderPickColWidth) || 25));
+          if (locWidth + btnColWidth >= 90) {
+            locWidth = Math.min(locWidth, 80);
+            btnColWidth = Math.min(btnColWidth, 100 - locWidth - 10);
+          }
+        }
+        var statusWidth = 100 - locWidth - btnColWidth;
         var bodyRow = body.closest("tr") || body.closest("li");
 
         function applyTableCellStyles(cells) {
@@ -1342,7 +1457,7 @@
           [].forEach.call(cells, function (td) {
             td.style.padding = pad;
             td.style.borderBottom = borderBottom;
-            td.style.verticalAlign = td.classList.contains("location-stock-indicator__region-heading-cell") ? "middle" : "top";
+            td.style.verticalAlign = "middle";
           });
           if (bStyle === "full" && bw !== null && bc !== null) {
             for (var i = 1; i < cells.length; i++) {
@@ -1357,7 +1472,7 @@
           if (settings.layoutType === "table" && bodyRow && bodyRow.tagName === "TR") {
             var trHtml = '<td class="location-stock-indicator__location" style="width:' + locWidth + '%;">' + nameHtml + '</td>';
             trHtml += '<td class="location-stock-indicator__status" style="width:' + statusWidth + '%;">' + buildStatusHtml(nearest, status) + '</td>';
-            if (settings.showOrderPickButton) trHtml += '<td class="location-stock-indicator__order-pick-cell">' + buildOrderPickButton(nearest) + '</td>';
+            if (settings.showOrderPickButton) trHtml += '<td class="location-stock-indicator__order-pick-cell location-stock-indicator__order-pick-cell--' + (settings.orderPickBtnAlign || "right") + '" style="width:' + btnColWidth + '%;">' + buildOrderPickButton(nearest) + '</td>';
             bodyRow.innerHTML = trHtml;
             applyTableCellStyles(bodyRow.querySelectorAll("td"));
             return;
@@ -1365,11 +1480,11 @@
           var rowHtml;
           if (settings.layoutType === "stacked") {
             rowHtml = '<div class="location-stock-indicator__stacked-name">' + nameHtml + "</div>" + '<div class="location-stock-indicator__stacked-status">' + buildStatusHtml(nearest, status) + "</div>";
-            if (settings.showOrderPickButton) rowHtml += '<div class="location-stock-indicator__order-pick-wrap">' + buildOrderPickButton(nearest) + "</div>";
+            if (settings.showOrderPickButton) rowHtml += '<div class="location-stock-indicator__order-pick-wrap location-stock-indicator__order-pick-wrap--' + (settings.orderPickBtnAlign || "right") + '">' + buildOrderPickButton(nearest) + "</div>";
           } else {
             var sep = settings.listSeparator || "： ";
             rowHtml = '<span class="location-stock-indicator__location">' + nameHtml + "</span>" + sep + '<span class="location-stock-indicator__status">' + buildStatusHtml(nearest, status) + "</span>";
-            if (settings.showOrderPickButton) rowHtml += " " + buildOrderPickButton(nearest);
+            if (settings.showOrderPickButton) rowHtml += '<span class="location-stock-indicator__order-pick-wrap location-stock-indicator__order-pick-wrap--' + (settings.orderPickBtnAlign || "right") + '">' + buildOrderPickButton(nearest) + "</span>";
           }
           body.innerHTML = rowHtml;
         }
@@ -1564,6 +1679,16 @@
               settings.showLocationLinks = appConfig.future.showLocationLinks;
             }
 
+            // 表示ルール（凡例・注意書きの表示、行の表示内容、区切り文字）
+            if (appConfig.display) {
+              if (typeof appConfig.display.showLegend === "boolean") settings.showLegend = appConfig.display.showLegend;
+              if (typeof appConfig.display.showNotice === "boolean") settings.showNotice = appConfig.display.showNotice;
+              if (typeof appConfig.display.listSeparator === "string") settings.listSeparator = appConfig.display.listSeparator;
+            }
+            if (appConfig.quantity && typeof appConfig.quantity.rowContentMode === "string") {
+              settings.rowContentMode = appConfig.quantity.rowContentMode;
+            }
+
             // 将来拡張
             if (appConfig.regionGroups && Array.isArray(appConfig.regionGroups)) {
               settings.regionGroupOrder = appConfig.regionGroups.map(function (g) { return g.name; });
@@ -1591,6 +1716,12 @@
               if (typeof f.orderPickButtonLabel === "string") {
                 settings.orderPickButtonLabel = f.orderPickButtonLabel;
               }
+              if (typeof f.orderPickAddingLabel === "string") {
+                settings.orderPickAddingLabel = f.orderPickAddingLabel.trim() || "追加中...";
+              }
+              if (typeof f.orderPickAddedLabel === "string") {
+                settings.orderPickAddedLabel = f.orderPickAddedLabel.trim() || "追加しました";
+              }
               if (typeof f.regionUnsetLabel === "string") {
                 settings.regionUnsetLabel = f.regionUnsetLabel.trim() || "その他";
               }
@@ -1602,9 +1733,10 @@
               }
             }
 
-            // 凡例・注意書きを app 設定で更新
+            // 凡例・注意書きを app 設定で更新し、表示有無・位置を反映
             updateLegendElements();
             updateNoticeElements();
+            applyLegendNoticeVisibility();
 
             var stocks = null;
 
@@ -1654,9 +1786,10 @@
           });
       }
 
-      // 初期の凡例・注意書き（app 側にまだ notice が無い場合は空）
+      // 初期の凡例・注意書きと表示制御（app 側にまだ無い場合はデフォルトで表示）
       updateLegendElements();
       updateNoticeElements();
+      applyLegendNoticeVisibility();
 
       // ▼ バリアント切替
       var lastVariantId = null;

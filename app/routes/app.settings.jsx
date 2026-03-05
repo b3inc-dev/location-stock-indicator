@@ -125,6 +125,14 @@ export async function loader({ request }) {
     text: rawConfig?.notice?.text ?? "",
   };
 
+  // 表示ルール（凡例・注意書きの表示、行の表示内容、区切り文字）
+  const display = {
+    showLegend: typeof rawConfig?.display?.showLegend === "boolean" ? rawConfig.display.showLegend : true,
+    showNotice: typeof rawConfig?.display?.showNotice === "boolean" ? rawConfig.display.showNotice : false,
+    rowContentMode: rawConfig?.quantity?.rowContentMode ?? "symbol_and_quantity",
+    listSeparator: typeof rawConfig?.display?.listSeparator === "string" ? rawConfig.display.listSeparator : "： ",
+  };
+
   return {
     shop: session.shop,
     thresholds,
@@ -133,6 +141,7 @@ export async function loader({ request }) {
     labels,
     messages,
     notice,
+    display,
     rawConfig,
   };
 }
@@ -213,6 +222,12 @@ export async function action({ request }) {
     .toString()
     .trim();
 
+  // 表示ルール（凡例・注意書き・行の表示内容・区切り文字）
+  const displayShowLegend = formData.get("display_show_legend");
+  const displayShowNotice = formData.get("display_show_notice");
+  const displayRowContentMode = (formData.get("display_row_content_mode") || "symbol_and_quantity").toString().trim();
+  const displayListSeparator = (formData.get("display_list_separator") || "： ").toString().trim();
+
   try {
     // まず現在の config を取得
     const gqlResponse = await admin.graphql(SHOP_CONFIG_QUERY);
@@ -257,12 +272,21 @@ export async function action({ request }) {
         outOfStock: symbolOutOfStock,
       },
       // クリック・リンク設定はロケーション設定で編集（ここでは上書きしない）
-      // quantity の文言（showQuantity など他のキーは保つ）
+      // quantity の文言・行の表示内容（showQuantity など他のキーは保つ）
       quantity: {
         ...(rawConfig.quantity || {}),
         quantityLabel: quantityLabel || "在庫",
         wrapperBefore: quantityWrapperBefore || "(",
         wrapperAfter: quantityWrapperAfter || ")",
+        rowContentMode: ["symbol_only", "symbol_and_quantity", "symbol_quantity_label", "quantity_only", "quantity_label"].includes(displayRowContentMode)
+          ? displayRowContentMode
+          : "symbol_and_quantity",
+      },
+      // 表示ルール（凡例・注意書きの表示、区切り文字）
+      display: {
+        showLegend: displayShowLegend === "on" || displayShowLegend === "true",
+        showNotice: displayShowNotice === "on" || displayShowNotice === "true",
+        listSeparator: displayListSeparator,
       },
       // ステータスラベル
       labels: {
@@ -334,6 +358,13 @@ export async function action({ request }) {
       inStockMin: nextConfig.thresholds.inStockMin,
     };
 
+    const display = {
+      showLegend: !!nextConfig.display?.showLegend,
+      showNotice: !!nextConfig.display?.showNotice,
+      rowContentMode: nextConfig.quantity?.rowContentMode ?? "symbol_and_quantity",
+      listSeparator: nextConfig.display?.listSeparator ?? "： ",
+    };
+
     const symbols = {
       inStock: nextConfig.symbols.inStock,
       lowStock: nextConfig.symbols.lowStock,
@@ -370,6 +401,7 @@ export async function action({ request }) {
       labels,
       messages,
       notice,
+      display,
       savedConfig: nextConfig,
     };
   } catch (error) {
@@ -415,6 +447,7 @@ export default function AppSettings() {
     labels: loaderData.labels,
     messages: loaderData.messages,
     notice: loaderData.notice,
+    display: loaderData.display ?? { showLegend: true, showNotice: false, rowContentMode: "symbol_and_quantity", listSeparator: "： " },
   }));
 
   const [state, setState] = useState(initial);
@@ -433,6 +466,7 @@ export default function AppSettings() {
       labels: fetcher.data.labels,
       messages: fetcher.data.messages,
       notice: fetcher.data.notice,
+      display: fetcher.data.display ?? initial.display,
     };
     setState(next);
     setInitial(next);
@@ -472,6 +506,10 @@ export default function AppSettings() {
     fd.set("message_empty", state.messages.empty);
     fd.set("message_error", state.messages.error);
     fd.set("notice_text", state.notice.text);
+    fd.set("display_show_legend", state.display.showLegend ? "on" : "off");
+    fd.set("display_show_notice", state.display.showNotice ? "on" : "off");
+    fd.set("display_row_content_mode", state.display.rowContentMode);
+    fd.set("display_list_separator", state.display.listSeparator);
     fetcher.submit(fd, { method: "post" });
   };
 
@@ -736,6 +774,54 @@ export default function AppSettings() {
             <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
               <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>注意書きテキスト</label>
               <textarea value={state.notice.text} onChange={(e) => setState((s) => ({ ...s, notice: { ...s.notice, text: e.target.value } }))} style={textareaBaseStyle} placeholder="例: 在庫は店舗間で移動する場合があります。ご来店前に店舗へ在庫をご確認ください。" />
+            </div>
+          </div>
+        </div>
+
+        {/* セクション：表示ルール（凡例・注意書きの表示、行の表示内容、区切り文字） */}
+        <div
+          style={{
+            display: "flex",
+            gap: "24px",
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+            marginBottom: "24px",
+          }}
+        >
+          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>表示ルール</div>
+            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
+              凡例・注意書きの表示の有無、行内の表示内容、リストの区切り文字を共通で設定します。テーマのカスタマイザーでは見た目（位置・色など）のみ調整できます。
+            </div>
+          </div>
+          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+            <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, color: "#202223" }}>
+                  <input type="checkbox" checked={state.display.showLegend} onChange={(e) => setState((s) => ({ ...s, display: { ...s.display, showLegend: e.target.checked } }))} />
+                  凡例を表示する
+                </label>
+              </div>
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, color: "#202223" }}>
+                  <input type="checkbox" checked={state.display.showNotice} onChange={(e) => setState((s) => ({ ...s, display: { ...s.display, showNotice: e.target.checked } }))} />
+                  注意書きを表示する（文言は上記で設定）
+                </label>
+              </div>
+              <div style={{ marginBottom: "12px" }}>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>行内の表示内容</label>
+                <select value={state.display.rowContentMode} onChange={(e) => setState((s) => ({ ...s, display: { ...s.display, rowContentMode: e.target.value } }))} style={selectBaseStyle}>
+                  <option value="symbol_only">マークのみ（◯△✕）</option>
+                  <option value="symbol_and_quantity">マーク＋在庫数</option>
+                  <option value="symbol_quantity_label">マーク＋在庫数＋ラベル</option>
+                  <option value="quantity_only">在庫数のみ</option>
+                  <option value="quantity_label">在庫数＋ラベル</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>リストの区切り文字（ロケーション名と在庫の間）</label>
+                <input type="text" value={state.display.listSeparator} onChange={(e) => setState((s) => ({ ...s, display: { ...s.display, listSeparator: e.target.value } }))} placeholder="： " style={inputBaseStyle} />
+              </div>
             </div>
           </div>
         </div>

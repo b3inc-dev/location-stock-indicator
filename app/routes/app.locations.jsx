@@ -330,6 +330,8 @@ export async function loader({ request }) {
     nearbyOtherHeading: (config?.future?.nearbyOtherHeading && String(config.future.nearbyOtherHeading).trim()) || "",
     showOrderPickButton: !!config?.future?.showOrderPickButton,
     orderPickButtonLabel: config?.future?.orderPickButtonLabel ?? "この店舗で受け取る",
+    orderPickAddingLabel: config?.future?.orderPickAddingLabel ?? "追加中...",
+    orderPickAddedLabel: config?.future?.orderPickAddedLabel ?? "追加しました",
     orderPickRedirectToCheckout: !!config?.future?.orderPickRedirectToCheckout,
     regionUnsetLabel: (config?.future?.regionUnsetLabel && String(config.future.regionUnsetLabel).trim()) || "その他",
     showLocationLinks: !!config?.future?.showLocationLinks,
@@ -440,6 +442,8 @@ export async function action({ request }) {
     nearbyOtherHeading: (formData.get("future_nearby_other_heading") || "").toString().trim(),
     showOrderPickButton: formData.get("future_show_order_pick_button") === "on",
     orderPickButtonLabel: (formData.get("future_order_pick_button_label") || "この店舗で受け取る").toString().trim(),
+    orderPickAddingLabel: (formData.get("future_order_pick_adding_label") || "追加中...").toString().trim(),
+    orderPickAddedLabel: (formData.get("future_order_pick_added_label") || "追加しました").toString().trim(),
     orderPickRedirectToCheckout: formData.get("future_order_pick_redirect_to_checkout") === "on",
     regionUnsetLabel: (formData.get("future_region_unset_label") || "その他").toString().trim() || "その他",
     showLocationLinks: formData.get("future_show_location_links") === "on",
@@ -494,6 +498,8 @@ const defaultFuture = {
   nearbyOtherHeading: "",
   showOrderPickButton: false,
   orderPickButtonLabel: "この店舗で受け取る",
+  orderPickAddingLabel: "追加中...",
+  orderPickAddedLabel: "追加しました",
   orderPickRedirectToCheckout: false,
   regionUnsetLabel: "その他",
   showLocationLinks: false,
@@ -589,6 +595,8 @@ export default function LocationsConfigPage() {
     formData.set("future_nearby_other_heading", future.nearbyOtherHeading || "");
     formData.set("future_show_order_pick_button", future.showOrderPickButton ? "on" : "");
     formData.set("future_order_pick_button_label", future.orderPickButtonLabel || "この店舗で受け取る");
+    formData.set("future_order_pick_adding_label", future.orderPickAddingLabel || "追加中...");
+    formData.set("future_order_pick_added_label", future.orderPickAddedLabel || "追加しました");
     formData.set("future_order_pick_redirect_to_checkout", future.orderPickRedirectToCheckout ? "on" : "");
     formData.set("future_region_unset_label", future.regionUnsetLabel || "その他");
     formData.set("future_show_location_links", future.showLocationLinks ? "on" : "");
@@ -938,6 +946,14 @@ export default function LocationsConfigPage() {
               <div style={{ marginBottom: 12 }}>
                 <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>ボタンラベル</label>
                 <input type="text" value={future.orderPickButtonLabel} onChange={(e) => setFuture((f) => ({ ...f, orderPickButtonLabel: e.target.value }))} style={selectBaseStyle} placeholder="この店舗で受け取る" />
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>追加中の表示（読み込み中）</label>
+                <input type="text" value={future.orderPickAddingLabel} onChange={(e) => setFuture((f) => ({ ...f, orderPickAddingLabel: e.target.value }))} style={selectBaseStyle} placeholder="追加中..." />
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>追加後の表示（成功メッセージ）</label>
+                <input type="text" value={future.orderPickAddedLabel} onChange={(e) => setFuture((f) => ({ ...f, orderPickAddedLabel: e.target.value }))} style={selectBaseStyle} placeholder="追加しました" />
               </div>
               <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14 }}>
                 <input type="checkbox" checked={!!future.orderPickRedirectToCheckout} onChange={(e) => setFuture((f) => ({ ...f, orderPickRedirectToCheckout: e.target.checked }))} />
