@@ -857,7 +857,7 @@ export default function LocationsConfigPage() {
         >
           <div style={{ flex: "1 1 260px", minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <span style={{ fontWeight: 600, fontSize: 14, color: "#202223" }}>エリア/近隣店舗のデザイン（Proプラン）</span>
+              <span style={{ fontWeight: 600, fontSize: 14, color: "#202223" }}>エリア/近隣店舗のデザイン</span>
               <ProBadge />
             </div>
             <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
@@ -990,7 +990,7 @@ export default function LocationsConfigPage() {
         <div style={{ display: "flex", gap: "24px", alignItems: "flex-start", flexWrap: "wrap", marginBottom: "24px" }}>
           <div style={{ flex: "1 1 260px", minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <span style={{ fontWeight: 600, fontSize: 14, color: "#202223" }}>近隣店舗表示設定（Proプラン）</span>
+              <span style={{ fontWeight: 600, fontSize: 14, color: "#202223" }}>近隣店舗表示設定</span>
               <ProBadge />
             </div>
             <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
@@ -1035,7 +1035,7 @@ export default function LocationsConfigPage() {
         <div style={{ display: "flex", gap: "24px", alignItems: "flex-start", flexWrap: "wrap", marginBottom: "24px" }}>
           <div style={{ flex: "1 1 260px", minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <span style={{ fontWeight: 600, fontSize: 14, color: "#202223" }}>店舗受け取りボタン（Proプラン）</span>
+              <span style={{ fontWeight: 600, fontSize: 14, color: "#202223" }}>店舗受け取りボタン</span>
               <ProBadge />
             </div>
             <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
