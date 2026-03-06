@@ -440,6 +440,10 @@
     {{ _sel }} .lsi-nearby-header[aria-expanded="false"] .lsi-region-heading-chevron--angle .lsi-region-heading-chevron-closed {
       display: inline;
     }
+    {{ _sel }} .lsi-order-pick-btn,
+    {{ _sel }} .lsi-order-pick-out {
+      text-align: center;
+    }
     {{ _sel }} .lsi-order-pick-btn {
       cursor: pointer;
       white-space: nowrap;
@@ -483,6 +487,7 @@
     {{ _sel }} .lsi-order-pick-out {
       position: relative;
       cursor: default;
+      display: inline-block;
     }
     {{ _sel }} .lsi-order-pick-out::after {
       content: "";
