@@ -592,6 +592,20 @@ export default function LocationsConfigPage() {
   const justSavedRef = useRef(false);
   const [showSavedFeedback, setShowSavedFeedback] = useState(false);
   const lastHandledSaveRef = useRef(null);
+  const tableScrollRef = useRef(null);
+
+  /** 横スクロール領域でホイールの横方向を吸収し、ブラウザの戻る／進むに取られないようにする */
+  const handleTableScrollWheel = (e) => {
+    const el = tableScrollRef.current;
+    if (!el || e.deltaX === 0) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    const canScrollLeft = scrollLeft > 0;
+    const canScrollRight = scrollLeft < scrollWidth - clientWidth - 1;
+    if ((e.deltaX < 0 && canScrollRight) || (e.deltaX > 0 && canScrollLeft)) {
+      e.preventDefault();
+      el.scrollLeft += e.deltaX;
+    }
+  };
 
   const isDirty = useMemo(
     () =>
@@ -1138,6 +1152,8 @@ export default function LocationsConfigPage() {
           }}
         >
           <div
+            ref={tableScrollRef}
+            onWheel={handleTableScrollWheel}
             style={{
               overflowX: "auto",
               WebkitOverflowScrolling: "touch",
