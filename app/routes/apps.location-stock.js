@@ -358,8 +358,11 @@ function buildGlobalConfig(raw) {
       nearbyOtherHeading: "",
       showOrderPickButton: false,
       orderPickButtonLabel: "この店舗で受け取る",
-      orderPickAddingLabel: "追加中...",
+      orderPickAddingLabel: "",
       orderPickAddedLabel: "追加しました",
+      orderPickOutOfStockLabel: "Sold Out",
+      orderPickModalTitle: "カートに追加しました（{count}点）",
+      orderPickModalBody: "チェックアウトページでお届け先を「受取」を選択して受取ご希望の店舗をご選択ください。",
       orderPickRedirectToCheckout: false,
       regionUnsetLabel: "その他",
       showLocationLinks: false,
@@ -490,10 +493,19 @@ function buildGlobalConfig(raw) {
     future.orderPickButtonLabel = futureRaw.orderPickButtonLabel;
   }
   if (typeof futureRaw.orderPickAddingLabel === "string") {
-    future.orderPickAddingLabel = futureRaw.orderPickAddingLabel.trim() || "追加中...";
+    future.orderPickAddingLabel = futureRaw.orderPickAddingLabel.trim();
   }
   if (typeof futureRaw.orderPickAddedLabel === "string") {
     future.orderPickAddedLabel = futureRaw.orderPickAddedLabel.trim() || "追加しました";
+  }
+  if (typeof futureRaw.orderPickOutOfStockLabel === "string") {
+    future.orderPickOutOfStockLabel = futureRaw.orderPickOutOfStockLabel.trim() || "Sold Out";
+  }
+  if (typeof futureRaw.orderPickModalTitle === "string") {
+    future.orderPickModalTitle = futureRaw.orderPickModalTitle.trim() || "カートに追加しました（{count}点）";
+  }
+  if (typeof futureRaw.orderPickModalBody === "string") {
+    future.orderPickModalBody = futureRaw.orderPickModalBody.trim();
   }
   if (typeof futureRaw.orderPickRedirectToCheckout === "boolean") {
     future.orderPickRedirectToCheckout = futureRaw.orderPickRedirectToCheckout;

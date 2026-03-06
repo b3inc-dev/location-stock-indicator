@@ -1,16 +1,5 @@
-{%- comment -%}
-  Snippet: location-stock-indicator
-  使い方例：
-  {% render 'location-stock-indicator',
-    product: product,
-    config: section.settings,
-    root_id: section.id
-  %}
-{%- endcomment -%}
-
 {% if product %}
   {% liquid
-    # 呼び出し元から設定を受け取る
     assign s = config | default: section.settings
     assign root_id = root_id | default: section.id
 
@@ -25,7 +14,6 @@
     assign row_padding_y = s.row_padding_y | default: 8
     assign row_padding_x = s.row_padding_x | default: 12
 
-    # font_size: range の数値（px）または旧 select（small/medium/large）を px に正規化。未設定時は 16
     assign font_size_px = 16
     if s.font_size == 'small'
       assign font_size_px = 14
@@ -40,13 +28,14 @@
       endif
     endif
 
-    # heading_font_size: range の数値。未設定時はスキーマデフォルト 18
     assign heading_font_size_px = s.heading_font_size | default: 18
+    assign region_heading_font_size_px = s.region_heading_font_size | default: 14
+    assign region_heading_align = s.region_heading_align | default: 'left'
   %}
 
   <div
-    id="location-stock-indicator-{{ root_id }}"
-    class="location-stock-indicator"
+    id="lsi-{{ root_id }}"
+    class="lsi"
     data-layout-type="{{ s.layout_type | default: 'list' }}"
     data-order-pick-btn-style="{{ s.order_pick_btn_style | default: 'solid_round' }}"
     data-variant-id="{{ product.selected_or_first_available_variant.id }}"
@@ -60,60 +49,57 @@
       margin-bottom: {{ s.margin_bottom | default: 16 }}px;
     "
   >
-    <div class="location-stock-indicator__inner">
+    <div class="lsi-inner">
       {% if s.heading_text != blank %}
         {% assign heading_tag = 'h3' %}
-        {% assign heading_class = 'location-stock-indicator__heading' %}
+        {% assign heading_class = 'lsi-heading' %}
 
         <{{ heading_tag }} class="{{ heading_class }}">
           {{ s.heading_text }}
         </{{ heading_tag }}>
       {% endif %}
 
-      {%- comment -%}
-        凡例（上側）。表示有無は JS で appConfig.display.showLegend に応じて制御
-      {%- endcomment -%}
       <div
-        class="location-stock-indicator__legend location-stock-indicator__legend--{{ s.legend_align | default: 'left' }} location-stock-indicator__legend--position-top"
+        class="lsi-legend lsi-legend--{{ s.legend_align | default: 'left' }} lsi-legend--position-top"
         data-role="legend"
         data-legend-position="top"
       ></div>
 
-      {%- comment -%}
-        注意書き（上側）。表示有無は JS で appConfig.display.showNotice に応じて制御
-      {%- endcomment -%}
-      <div class="location-stock-indicator__notice location-stock-indicator__notice--top location-stock-indicator__notice--align-{{ s.notice_align | default: 'left' }}" data-role="notice" data-notice-position="top"></div>
+      <div class="lsi-notice lsi-notice--top lsi-notice--align-{{ s.notice_align | default: 'left' }}" data-role="notice" data-notice-position="top"></div>
 
-      {%- comment -%}
-        在庫リスト本体（JS で UL / TABLE が入る）
-      {%- endcomment -%}
-      <div class="location-stock-indicator__body location-stock-indicator__message--loading">
+      <div class="lsi-body lsi-message--loading">
         在庫を読み込み中...
       </div>
 
-      {%- comment -%}
-        凡例（下側）。表示有無は JS で appConfig.display.showLegend に応じて制御
-      {%- endcomment -%}
       <div
-        class="location-stock-indicator__legend location-stock-indicator__legend--{{ s.legend_align | default: 'left' }} location-stock-indicator__legend--position-bottom"
+        class="lsi-legend lsi-legend--{{ s.legend_align | default: 'left' }} lsi-legend--position-bottom"
         data-role="legend"
         data-legend-position="bottom"
       ></div>
 
-      {%- comment -%}
-        注意書き（下側）。表示有無は JS で appConfig.display.showNotice に応じて制御
-      {%- endcomment -%}
-      <div class="location-stock-indicator__notice location-stock-indicator__notice--bottom location-stock-indicator__notice--align-{{ s.notice_align | default: 'left' }}" data-role="notice" data-notice-position="bottom"></div>
+      <div class="lsi-notice lsi-notice--bottom lsi-notice--align-{{ s.notice_align | default: 'left' }}" data-role="notice" data-notice-position="bottom"></div>
+    </div>
+    <div class="lsi-cart-m" aria-modal="true" role="dialog" hidden>
+      <div class="lsi-cart-m-bd"></div>
+      <div class="lsi-cart-m-dlg">
+        <button type="button" class="lsi-cart-m-close" aria-label="閉じる">&times;</button>
+        <div class="lsi-cart-m-content">
+          <p class="lsi-cart-m-msg" role="status"></p>
+          <p class="lsi-cart-m-body"></p>
+        </div>
+        <div class="lsi-cart-m-act"></div>
+      </div>
     </div>
   </div>
 
   <style>
-    #location-stock-indicator-{{ root_id }} {
+    {% assign _sel = "#lsi-" | append: root_id %}
+    {{ _sel }} {
       font-size: {{ font_size_px }}px;
     }
 
     {% assign content_max_width_val = s.content_max_width | default: 600 %}
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__inner {
+    {{ _sel }} .lsi-inner {
       max-width:
         {% if content_max_width_val > 0 %}
           {{ content_max_width_val }}px
@@ -132,47 +118,47 @@
       {% endif %}
     }
 
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__heading {
+    {{ _sel }} .lsi-heading {
       margin-bottom: {{ s.heading_margin_bottom | default: 8 }}px;
       font-weight: 600;
       font-size: {{ heading_font_size_px }}px;
       text-align: {{ heading_align }};
     }
 
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__body {
+    {{ _sel }} .lsi-body {
       font-size: inherit;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__body.location-stock-indicator__message--loading {
+    {{ _sel }} .lsi-body.lsi-message--loading {
       opacity: 0.8;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__body.location-stock-indicator__message--error {
+    {{ _sel }} .lsi-body.lsi-message--error {
       color: #b00020;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__body.location-stock-indicator__message--empty {
+    {{ _sel }} .lsi-body.lsi-message--empty {
       opacity: 0.8;
     }
 
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__legend {
+    {{ _sel }} .lsi-legend {
       font-size: 0.8em;
       opacity: 0.8;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__legend--position-top {
+    {{ _sel }} .lsi-legend--position-top {
       margin-bottom: 8px;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__legend--position-bottom {
+    {{ _sel }} .lsi-legend--position-bottom {
       margin-top: 8px;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__legend--left {
+    {{ _sel }} .lsi-legend--left {
       text-align: left;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__legend--center {
+    {{ _sel }} .lsi-legend--center {
       text-align: center;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__legend--right {
+    {{ _sel }} .lsi-legend--right {
       text-align: right;
     }
 
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__notice {
+    {{ _sel }} .lsi-notice {
       font-size: 0.8em;
       opacity: 0.8;
       line-height: 1.5;
@@ -180,28 +166,28 @@
       overflow-y: auto;
       padding-right: 4px;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__notice--top {
+    {{ _sel }} .lsi-notice--top {
       margin-bottom: {{ row_padding_y }}px;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__notice--bottom {
+    {{ _sel }} .lsi-notice--bottom {
       margin-top: {{ row_padding_y }}px;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__notice--align-left {
+    {{ _sel }} .lsi-notice--align-left {
       text-align: left;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__notice--align-center {
+    {{ _sel }} .lsi-notice--align-center {
       text-align: center;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__notice--align-right {
+    {{ _sel }} .lsi-notice--align-right {
       text-align: right;
     }
 
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__body,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__notice {
+    {{ _sel }} .lsi-body,
+    {{ _sel }} .lsi-notice {
       white-space: pre-line;
     }
 
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__list {
+    {{ _sel }} .lsi-list {
       list-style: none;
       margin: 0;
       padding: 0;
@@ -211,7 +197,7 @@
       {% endif %}
     }
 
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__item {
+    {{ _sel }} .lsi-item {
       display: block;
       padding: {{ row_padding_y }}px {{ row_padding_x }}px;
       border-bottom:
@@ -222,30 +208,33 @@
         {% endif %};
     }
 
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__item:last-child {
+    {{ _sel }} .lsi-item:last-child {
       {% if s.border_style == 'full' %}
         border-bottom: none;
       {% endif %}
     }
 
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__stacked-name {
+    {{ _sel }} .lsi-stacked-name {
       font-weight: 500;
       text-align: {{ location_align }};
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__stacked-status {
+    {{ _sel }} .lsi-stacked-status {
       margin-top: 0.15rem;
       font-size: 0.9em;
       opacity: 0.95;
       text-align: {{ status_align }};
     }
 
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__table-wrap {
+    {{ _sel }} .lsi-table-wrap {
       display: block;
       width: 100%;
+      max-width: 100%;
+      overflow: hidden;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__table-wrap .location-stock-indicator__table,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__table {
+    {{ _sel }} .lsi-table-wrap .lsi-table,
+    {{ _sel }} .lsi-table {
       width: 100%;
+      max-width: 100%;
       border-collapse: collapse;
       table-layout: fixed;
       box-sizing: border-box;
@@ -255,10 +244,10 @@
       {% endif %}
     }
 
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__table-wrap .location-stock-indicator__table tbody td,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__table-wrap .location-stock-indicator__table td,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__table tbody td,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__table td {
+    {{ _sel }} .lsi-table-wrap .lsi-table tbody td,
+    {{ _sel }} .lsi-table-wrap .lsi-table td,
+    {{ _sel }} .lsi-table tbody td,
+    {{ _sel }} .lsi-table td {
       padding: {{ row_padding_y }}px {{ row_padding_x }}px;
       border-bottom:
         {% if s.border_style == 'rows' or s.border_style == 'full' %}
@@ -270,38 +259,44 @@
       box-sizing: border-box;
     }
 
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__table-wrap .location-stock-indicator__table tbody td + td,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__table-wrap .location-stock-indicator__table td + td,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__table tbody td + td,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__table td + td {
+    {{ _sel }} .lsi-table-wrap .lsi-table tbody td + td,
+    {{ _sel }} .lsi-table-wrap .lsi-table td + td,
+    {{ _sel }} .lsi-table tbody td + td,
+    {{ _sel }} .lsi-table td + td {
       {% if s.border_style == 'full' %}
         border-left: {{ border_width }}px solid {{ border_color }};
       {% endif %}
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__table-wrap .location-stock-indicator__table tbody tr:last-child td,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__table-wrap .location-stock-indicator__table tr:last-child td,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__table tbody tr:last-child td,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__table tr:last-child td {
+    {{ _sel }} .lsi-table-wrap .lsi-table tbody tr:last-child td,
+    {{ _sel }} .lsi-table-wrap .lsi-table tr:last-child td,
+    {{ _sel }} .lsi-table tbody tr:last-child td,
+    {{ _sel }} .lsi-table tr:last-child td {
       {% if s.border_style == 'full' %}
         border-bottom: none;
       {% endif %}
     }
 
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__location {
+    {{ _sel }} .lsi-location {
       text-align: {{ location_align }};
+      white-space: normal;
+      word-wrap: break-word;
+      min-width: 0;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__status {
+    {{ _sel }} .lsi-status {
       text-align: {{ status_align }};
+      white-space: normal;
+      word-wrap: break-word;
+      min-width: 0;
     }
 
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__table .location-stock-indicator__region-heading-row td,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-row td {
+    {{ _sel }} .lsi-table .lsi-region-heading-row td,
+    {{ _sel }} .lsi-region-heading-row td {
       width: 100%;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__table .location-stock-indicator__region-heading-row td,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__table .location-stock-indicator__region-heading-cell,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-row td,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-cell {
+    {{ _sel }} .lsi-table .lsi-region-heading-row td,
+    {{ _sel }} .lsi-table .lsi-region-heading-cell,
+    {{ _sel }} .lsi-region-heading-row td,
+    {{ _sel }} .lsi-region-heading-cell {
       padding: {{ row_padding_y }}px {{ row_padding_x }}px;
       border-bottom:
         {% if s.border_style == 'rows' or s.border_style == 'full' %}
@@ -310,12 +305,12 @@
           none
         {% endif %};
       font-weight: 600;
-      font-size: 0.95em;
+      font-size: {{ region_heading_font_size_px }}px;
       color: #6d7175;
       background: #f6f6f7;
       vertical-align: middle;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-cell-inner {
+    {{ _sel }} .lsi-region-heading-cell-inner {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -323,26 +318,36 @@
       width: 100%;
       box-sizing: border-box;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-row[role="button"],
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-item[role="button"],
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__nearby-header {
+    {{ _sel }} .lsi-region-heading-cell-inner--center .lsi-region-heading-label,
+    {{ _sel }} .lsi-region-heading-item--center .lsi-region-heading-label {
+      flex: 1;
+      text-align: center;
+    }
+    {{ _sel }} .lsi-region-heading-cell-inner--right .lsi-region-heading-label,
+    {{ _sel }} .lsi-region-heading-item--right .lsi-region-heading-label {
+      flex: 1;
+      text-align: right;
+    }
+    {{ _sel }} .lsi-region-heading-row[role="button"],
+    {{ _sel }} .lsi-region-heading-item[role="button"],
+    {{ _sel }} .lsi-nearby-header {
       outline: none;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-row[role="button"]:hover,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-row[role="button"]:focus,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-item[role="button"]:hover,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-item[role="button"]:focus,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__nearby-header:hover,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__nearby-header:focus {
+    {{ _sel }} .lsi-region-heading-row[role="button"]:hover,
+    {{ _sel }} .lsi-region-heading-row[role="button"]:focus,
+    {{ _sel }} .lsi-region-heading-item[role="button"]:hover,
+    {{ _sel }} .lsi-region-heading-item[role="button"]:focus,
+    {{ _sel }} .lsi-nearby-header:hover,
+    {{ _sel }} .lsi-nearby-header:focus {
       outline: none;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__nearby-header {
+    {{ _sel }} .lsi-nearby-header {
       cursor: pointer;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__nearby-body-cell {
+    {{ _sel }} .lsi-nearby-body-cell {
       vertical-align: middle;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-item {
+    {{ _sel }} .lsi-region-heading-item {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -355,211 +360,347 @@
           none
         {% endif %};
       font-weight: 600;
-      font-size: 0.95em;
+      font-size: {{ region_heading_font_size_px }}px;
       color: #6d7175;
       background: #f6f6f7;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-chevron {
+    {{ _sel }} .lsi-region-heading-chevron {
       display: inline-flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
       margin-left: auto;
       vertical-align: middle;
-      color: #6d7175;
+      color: inherit;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-chevron--chevron {
+    {{ _sel }} .lsi-region-heading-chevron--chevron {
       width: 0;
       height: 0;
       border-left: 5px solid transparent;
       border-right: 5px solid transparent;
-      border-top: 6px solid #6d7175;
+      border-top: 6px solid currentColor;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-row[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--chevron,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-item[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--chevron,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__nearby-header[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--chevron {
+    {{ _sel }} .lsi-region-heading-row[aria-expanded="false"] .lsi-region-heading-chevron--chevron,
+    {{ _sel }} .lsi-region-heading-item[aria-expanded="false"] .lsi-region-heading-chevron--chevron,
+    {{ _sel }} .lsi-nearby-header[aria-expanded="false"] .lsi-region-heading-chevron--chevron {
       transform: rotate(-90deg);
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-chevron--plus-minus .location-stock-indicator__region-heading-chevron-open,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-chevron--plus-minus .location-stock-indicator__region-heading-chevron-closed {
+    {{ _sel }} .lsi-region-heading-chevron--plus-minus .lsi-region-heading-chevron-open,
+    {{ _sel }} .lsi-region-heading-chevron--plus-minus .lsi-region-heading-chevron-closed {
       font-size: 1.1em;
       font-weight: 600;
       line-height: 1;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-chevron--plus-minus .location-stock-indicator__region-heading-chevron-closed {
+    {{ _sel }} .lsi-region-heading-chevron--plus-minus .lsi-region-heading-chevron-closed {
       display: none;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-row[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--plus-minus .location-stock-indicator__region-heading-chevron-open,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-item[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--plus-minus .location-stock-indicator__region-heading-chevron-open,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__nearby-header[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--plus-minus .location-stock-indicator__region-heading-chevron-open {
+    {{ _sel }} .lsi-region-heading-row[aria-expanded="false"] .lsi-region-heading-chevron--plus-minus .lsi-region-heading-chevron-open,
+    {{ _sel }} .lsi-region-heading-item[aria-expanded="false"] .lsi-region-heading-chevron--plus-minus .lsi-region-heading-chevron-open,
+    {{ _sel }} .lsi-nearby-header[aria-expanded="false"] .lsi-region-heading-chevron--plus-minus .lsi-region-heading-chevron-open {
       display: none;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-row[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--plus-minus .location-stock-indicator__region-heading-chevron-closed,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-item[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--plus-minus .location-stock-indicator__region-heading-chevron-closed,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__nearby-header[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--plus-minus .location-stock-indicator__region-heading-chevron-closed {
+    {{ _sel }} .lsi-region-heading-row[aria-expanded="false"] .lsi-region-heading-chevron--plus-minus .lsi-region-heading-chevron-closed,
+    {{ _sel }} .lsi-region-heading-item[aria-expanded="false"] .lsi-region-heading-chevron--plus-minus .lsi-region-heading-chevron-closed,
+    {{ _sel }} .lsi-nearby-header[aria-expanded="false"] .lsi-region-heading-chevron--plus-minus .lsi-region-heading-chevron-closed {
       display: inline;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-chevron--arrow .location-stock-indicator__region-heading-chevron-open,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-chevron--arrow .location-stock-indicator__region-heading-chevron-closed {
+    {{ _sel }} .lsi-region-heading-chevron--arrow .lsi-region-heading-chevron-open,
+    {{ _sel }} .lsi-region-heading-chevron--arrow .lsi-region-heading-chevron-closed {
       font-size: 1em;
       line-height: 1;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-chevron--arrow .location-stock-indicator__region-heading-chevron-closed {
+    {{ _sel }} .lsi-region-heading-chevron--arrow .lsi-region-heading-chevron-closed {
       display: none;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-row[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--arrow .location-stock-indicator__region-heading-chevron-open,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-item[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--arrow .location-stock-indicator__region-heading-chevron-open,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__nearby-header[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--arrow .location-stock-indicator__region-heading-chevron-open {
+    {{ _sel }} .lsi-region-heading-row[aria-expanded="false"] .lsi-region-heading-chevron--arrow .lsi-region-heading-chevron-open,
+    {{ _sel }} .lsi-region-heading-item[aria-expanded="false"] .lsi-region-heading-chevron--arrow .lsi-region-heading-chevron-open,
+    {{ _sel }} .lsi-nearby-header[aria-expanded="false"] .lsi-region-heading-chevron--arrow .lsi-region-heading-chevron-open {
       display: none;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-row[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--arrow .location-stock-indicator__region-heading-chevron-closed,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-item[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--arrow .location-stock-indicator__region-heading-chevron-closed,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__nearby-header[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--arrow .location-stock-indicator__region-heading-chevron-closed {
+    {{ _sel }} .lsi-region-heading-row[aria-expanded="false"] .lsi-region-heading-chevron--arrow .lsi-region-heading-chevron-closed,
+    {{ _sel }} .lsi-region-heading-item[aria-expanded="false"] .lsi-region-heading-chevron--arrow .lsi-region-heading-chevron-closed,
+    {{ _sel }} .lsi-nearby-header[aria-expanded="false"] .lsi-region-heading-chevron--arrow .lsi-region-heading-chevron-closed {
       display: inline;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-chevron--angle .location-stock-indicator__region-heading-chevron-open,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-chevron--angle .location-stock-indicator__region-heading-chevron-closed {
+    {{ _sel }} .lsi-region-heading-chevron--angle .lsi-region-heading-chevron-open,
+    {{ _sel }} .lsi-region-heading-chevron--angle .lsi-region-heading-chevron-closed {
       font-size: 1em;
       line-height: 1;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-chevron--angle .location-stock-indicator__region-heading-chevron-closed {
+    {{ _sel }} .lsi-region-heading-chevron--angle .lsi-region-heading-chevron-closed {
       display: none;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-row[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--angle .location-stock-indicator__region-heading-chevron-open,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-item[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--angle .location-stock-indicator__region-heading-chevron-open,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__nearby-header[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--angle .location-stock-indicator__region-heading-chevron-open {
+    {{ _sel }} .lsi-region-heading-row[aria-expanded="false"] .lsi-region-heading-chevron--angle .lsi-region-heading-chevron-open,
+    {{ _sel }} .lsi-region-heading-item[aria-expanded="false"] .lsi-region-heading-chevron--angle .lsi-region-heading-chevron-open,
+    {{ _sel }} .lsi-nearby-header[aria-expanded="false"] .lsi-region-heading-chevron--angle .lsi-region-heading-chevron-open {
       display: none;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-row[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--angle .location-stock-indicator__region-heading-chevron-closed,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__region-heading-item[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--angle .location-stock-indicator__region-heading-chevron-closed,
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__nearby-header[aria-expanded="false"] .location-stock-indicator__region-heading-chevron--angle .location-stock-indicator__region-heading-chevron-closed {
+    {{ _sel }} .lsi-region-heading-row[aria-expanded="false"] .lsi-region-heading-chevron--angle .lsi-region-heading-chevron-closed,
+    {{ _sel }} .lsi-region-heading-item[aria-expanded="false"] .lsi-region-heading-chevron--angle .lsi-region-heading-chevron-closed,
+    {{ _sel }} .lsi-nearby-header[aria-expanded="false"] .lsi-region-heading-chevron--angle .lsi-region-heading-chevron-closed {
       display: inline;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-btn {
+    {{ _sel }} .lsi-order-pick-btn {
       cursor: pointer;
       white-space: nowrap;
       text-decoration: none;
       transition: opacity 0.2s ease;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-btn.is-loading {
+    {{ _sel }} .lsi-order-pick-btn.is-loading {
       opacity: 0.7;
       cursor: wait;
       pointer-events: none;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-btn.is-added {
+    {{ _sel }} .lsi-order-pick-btn.is-added {
       opacity: 1;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-btn-spinner {
+    {{ _sel }} .lsi-order-pick-btn-spinner {
       display: inline-block;
       width: 1em;
       height: 1em;
       border: 2px solid currentColor;
       border-right-color: transparent;
       border-radius: 50%;
-      animation: location-stock-indicator-spin 0.6s linear infinite;
+      animation: lsi-spin 0.6s linear infinite;
       vertical-align: -0.15em;
       margin-right: 0.35em;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-btn.is-loading .location-stock-indicator__order-pick-btn-spinner {
+    {{ _sel }} .lsi-order-pick-btn.is-loading .lsi-order-pick-btn-spinner {
       display: inline-block;
     }
-    @keyframes location-stock-indicator-spin {
+    @keyframes lsi-spin {
       to { transform: rotate(360deg); }
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-cell {
+    {{ _sel }} .lsi-order-pick-cell {
       vertical-align: middle;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-cell--left { text-align: left; }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-cell--center { text-align: center; }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-cell--right { text-align: right; }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-wrap {
+    {{ _sel }} .lsi-order-pick-cell--left { text-align: left; }
+    {{ _sel }} .lsi-order-pick-cell--center { text-align: center; }
+    {{ _sel }} .lsi-order-pick-cell--right { text-align: right; }
+    {{ _sel }} .lsi-order-pick-cell--full { width: 100%; }
+    {{ _sel }} .lsi-order-pick-cell--full .lsi-order-pick-btn,
+    {{ _sel }} .lsi-order-pick-cell--full .lsi-order-pick-out { display: block; width: 100%; text-align: center; box-sizing: border-box; }
+    {{ _sel }} .lsi-order-pick-out {
+      position: relative;
+      cursor: default;
+    }
+    {{ _sel }} .lsi-order-pick-out::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: rgba(255,255,255,0.65);
+      border-radius: inherit;
+      pointer-events: none;
+    }
+    {{ _sel }} .lsi-order-pick-wrap {
       margin-top: 4px;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__item {
+    {{ _sel }}[data-layout-type="list"] .lsi-order-pick-wrap {
+      margin-top: 0;
+      flex-shrink: 0;
+      display: inline-flex;
+      justify-content: center;
+    }
+    {{ _sel }} .lsi-item {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
       line-height: 1.5;
     }
-    #location-stock-indicator-{{ root_id }}[data-layout-type="stacked"] .location-stock-indicator__item {
+    {{ _sel }}[data-layout-type="list"] .lsi-item {
+      flex-wrap: nowrap;
+    }
+    {{ _sel }}[data-layout-type="list"] .lsi-location {
+      min-width: 0;
+    }
+    {{ _sel }}[data-layout-type="stacked"] .lsi-item {
       flex-direction: column;
       align-items: stretch;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-wrap--left {
+    {{ _sel }}[data-layout-type="stacked"] .lsi-region-heading-item,
+    {{ _sel }}[data-layout-type="stacked"] .lsi-nearby-header {
+      flex-direction: row;
+      flex-wrap: nowrap;
+      align-items: center;
+    }
+    {{ _sel }}[data-layout-type="stacked"] .lsi-region-heading-item .lsi-region-heading-label,
+    {{ _sel }}[data-layout-type="stacked"] .lsi-nearby-header .lsi-region-heading-label {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    {{ _sel }} .lsi-order-pick-wrap--left {
       order: 0;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-wrap--right {
+    {{ _sel }}[data-layout-type="list"] .lsi-order-pick-wrap--left {
+      margin-left: auto;
+      margin-right: auto;
+    }
+    {{ _sel }} .lsi-order-pick-wrap--right {
       margin-left: auto;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__order-pick-wrap--center {
+    {{ _sel }} .lsi-order-pick-wrap--center {
       flex: 1 1 100%;
       text-align: center;
     }
+    {{ _sel }}[data-layout-type="list"] .lsi-order-pick-wrap--center {
+      flex: 0 0 auto;
+      margin-left: auto;
+      margin-right: auto;
+    }
 
+    {{ _sel }} .lsi-cart-m {
+      position: fixed;
+      inset: 0;
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      visibility: hidden;
+    }
+    {{ _sel }} .lsi-cart-m.is-visible {
+      opacity: 1;
+      visibility: visible;
+    }
+    {{ _sel }} .lsi-cart-m-bd {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+    }
+    {{ _sel }} .lsi-cart-m-dlg {
+      position: relative;
+      background: #fff;
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+      max-width: 90%;
+      min-width: 280px;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+    @media (max-width: 480px) {
+      {{ _sel }} .lsi-cart-m-dlg {
+        max-width: calc(100vw - 24px);
+        min-width: 0;
+        width: calc(100vw - 24px);
+      }
+    }
+    {{ _sel }} .lsi-cart-m-close {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      border: none;
+      background: transparent;
+      font-size: 24px;
+      line-height: 1;
+      color: #6d7175;
+      cursor: pointer;
+    }
+    {{ _sel }} .lsi-cart-m-close:hover {
+      color: #202223;
+    }
+    {{ _sel }} .lsi-cart-m-content {
+      padding-top: 10px;
+      overflow-wrap: break-word;
+      word-break: break-word;
+      min-width: 0;
+    }
+    {{ _sel }} .lsi-cart-m-msg {
+      margin: 0 0 12px 0;
+      font-size: 16px;
+      font-weight: 600;
+      line-height: 1.5;
+    }
+    {{ _sel }} .lsi-cart-m-body {
+      margin: 0 0 20px 0;
+      font-size: 14px;
+      line-height: 1.5;
+      color: #6d7175;
+      overflow-wrap: break-word;
+      word-break: break-word;
+    }
+    {{ _sel }} .lsi-cart-m-act {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: center;
+    }
+    {{ _sel }} .lsi-cart-m-act .lsi-cart-m-btn {
+      display: inline-block;
+      text-decoration: none;
+      cursor: pointer;
+      text-align: center;
+    }
     @media (max-width: 767px) {
-      #location-stock-indicator-{{ root_id }} {
+      {{ _sel }} {
         font-size: 0.95em;
       }
-      #location-stock-indicator-{{ root_id }} .location-stock-indicator__body {
+      {{ _sel }} .lsi-body {
         line-height: 1.5;
         padding: 4px 0;
       }
-      #location-stock-indicator-{{ root_id }} .location-stock-indicator__item {
+      {{ _sel }} .lsi-item {
         padding: 10px 8px;
       }
-      #location-stock-indicator-{{ root_id }} .location-stock-indicator__table td {
+      {{ _sel }} .lsi-table td {
         padding: 10px 8px;
         font-size: 0.95em;
       }
-      #location-stock-indicator-{{ root_id }} .location-stock-indicator__notice {
+      {{ _sel }} .lsi-notice {
         margin-top: 6px;
         margin-bottom: 6px;
         padding: 6px 0;
       }
     }
 
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__status-symbol {
+    {{ _sel }} .lsi-status-symbol {
       font-weight: 700;
       margin-right: 0.1rem;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__status-label {
+    {{ _sel }} .lsi-status-label {
       margin-left: 0.15rem;
     }
-    #location-stock-indicator-{{ root_id }} .location-stock-indicator__qty {
+    {{ _sel }} .lsi-qty {
       opacity: 0.9;
     }
 
     {% if s.heading_color != blank %}
-      #location-stock-indicator-{{ root_id }} .location-stock-indicator__heading {
+      {{ _sel }} .lsi-heading {
         color: {{ s.heading_color }};
       }
     {% endif %}
     {% if s.legend_color != blank %}
-      #location-stock-indicator-{{ root_id }} .location-stock-indicator__legend {
+      {{ _sel }} .lsi-legend {
         color: {{ s.legend_color }};
       }
     {% endif %}
     {% if s.notice_color != blank %}
-      #location-stock-indicator-{{ root_id }} .location-stock-indicator__notice {
+      {{ _sel }} .lsi-notice {
         color: {{ s.notice_color }};
       }
     {% endif %}
     {% if s.status_text_color != blank %}
-      #location-stock-indicator-{{ root_id }} .location-stock-indicator__status {
+      {{ _sel }} .lsi-status {
         color: {{ s.status_text_color }};
       }
     {% endif %}
 
-    {{ s.custom_css | replace: '</style>', '\3C \2F style \3E' | replace: '</script>', '\3C \2F script \3E' }}
+    {% assign end_style_tag = '</' | append: 'style>' %}
+    {% assign end_script_tag = '</' | append: 'script>' %}
+    {{ s.custom_css | replace: end_style_tag, '\3C \2F style \3E' | replace: end_script_tag, '\3C \2F script \3E' }}
   </style>
 
   <script>
     document.addEventListener("DOMContentLoaded", function () {
-      var rootId = {{ "location-stock-indicator-" | append: root_id | json }};
+      var rootId = {{ "lsi-" | append: root_id | json }};
       var root = document.getElementById(rootId);
       if (!root) return;
 
-      var bodyEl = root.querySelector(".location-stock-indicator__body");
+      var bodyEl = root.querySelector(".lsi-body");
 
       function getTodayDateStr() {
         var d = new Date();
@@ -593,8 +734,47 @@
           .catch(function () {});
       }
 
+      function updateCartCountInPage(cart) {
+        if (!cart || typeof cart.item_count !== "number") return;
+        var c = String(cart.item_count);
+        var s = "[data-cart-count],.cart-count-bubble,.cart-count,.count-bubble,.header__icon--cart .count,[data-cart-item-count],.js-cart-count,#cart-icon-bubble .count";
+        s.split(",").forEach(function (sel) {
+          try {
+            document.querySelectorAll(sel).forEach(function (el) { el.textContent = c; });
+          } catch (e) {}
+        });
+      }
+      function showCartAddedModal(n) {
+        var m = root.querySelector(".lsi-cart-m");
+        if (!m) return;
+        var msgEl = m.querySelector(".lsi-cart-m-msg");
+        var bodyEl = m.querySelector(".lsi-cart-m-body");
+        var act = m.querySelector(".lsi-cart-m-act");
+        if (!msgEl || !act) return;
+        var titleTpl = (settings.orderPickModalTitle || "カートに追加しました（{count}点）").replace(/\{count\}/g, typeof n === "number" && n >= 0 ? String(n) : "0");
+        msgEl.textContent = titleTpl;
+        if (bodyEl) {
+          var bodyText = (settings.orderPickModalBody || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+          bodyEl.textContent = bodyText;
+          bodyEl.style.display = bodyText ? "" : "none";
+        }
+        var st = buildOrderPickButtonStyle();
+        act.innerHTML = '<a href="/cart" class="lsi-cart-m-btn" style="' + st + '">カートを見る</a><button type="button" class="lsi-cart-m-btn" style="' + st + '">買い物を続ける</button>';
+        var btn = act.querySelector("button");
+        function closeM() {
+          m.classList.remove("is-visible");
+          m.setAttribute("hidden", "");
+        }
+        if (btn) btn.addEventListener("click", closeM);
+        m.querySelector(".lsi-cart-m-bd").onclick = closeM;
+        var closeBtn = m.querySelector(".lsi-cart-m-close");
+        if (closeBtn) closeBtn.onclick = closeM;
+        m.removeAttribute("hidden");
+        m.classList.add("is-visible");
+      }
+
       root.addEventListener("click", function (e) {
-        var btn = e.target && e.target.closest ? e.target.closest(".location-stock-indicator__order-pick-btn") : null;
+        var btn = e.target && e.target.closest ? e.target.closest(".lsi-order-pick-btn") : null;
         if (!btn) return;
         e.preventDefault();
         var locationId = btn.getAttribute("data-location-id") || "";
@@ -606,12 +786,15 @@
         if (!variantId || !settings.showOrderPickButton) return;
 
         var originalText = btn.textContent || "";
-        var addingLabel = (settings.orderPickAddingLabel || "追加中...").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        var addingLabel = (settings.orderPickAddingLabel || "").trim();
+        if (addingLabel) addingLabel = addingLabel.replace(/</g, "&lt;").replace(/>/g, "&gt;");
         var addedLabel = settings.orderPickAddedLabel || "追加しました";
 
+        var btnW = btn.offsetWidth;
+        if (btnW > 0) btn.style.minWidth = btnW + "px";
         btn.classList.add("is-loading");
         btn.setAttribute("aria-busy", "true");
-        btn.innerHTML = '<span class="location-stock-indicator__order-pick-btn-spinner" aria-hidden="true"></span>' + addingLabel;
+        btn.innerHTML = '<span class="lsi-order-pick-btn-spinner" aria-hidden="true"></span>' + addingLabel;
         if (typeof btn.disabled !== "undefined") btn.disabled = true;
 
         fetch("/cart/add.js", {
@@ -624,6 +807,7 @@
             if (data.status && data.status !== 200) {
               btn.classList.remove("is-loading");
               btn.removeAttribute("aria-busy");
+              btn.style.minWidth = "";
               btn.textContent = originalText;
               if (typeof btn.disabled !== "undefined") btn.disabled = false;
               return;
@@ -643,31 +827,31 @@
               .then(function (cart) {
                 document.dispatchEvent(new CustomEvent("cart:refresh", { detail: { cart: cart }, bubbles: true }));
                 document.dispatchEvent(new CustomEvent("location-stock:cart-added", { detail: { cart: cart }, bubbles: true }));
+                updateCartCountInPage(cart);
                 refreshCartSections();
+                showCartAddedModal(cart && cart.item_count);
               })
               .catch(function () {});
             setTimeout(function () {
               btn.classList.remove("is-added");
+              btn.style.minWidth = "";
               btn.textContent = originalText;
             }, 2000);
           })
           .catch(function () {
             btn.classList.remove("is-loading");
             btn.removeAttribute("aria-busy");
+            btn.style.minWidth = "";
             btn.textContent = originalText;
             if (typeof btn.disabled !== "undefined") btn.disabled = false;
           });
       });
 
       function setMessage(type, text) {
-        bodyEl.classList.remove(
-          "location-stock-indicator__message--loading",
-          "location-stock-indicator__message--error",
-          "location-stock-indicator__message--empty"
-        );
+        bodyEl.classList.remove("lsi-message--loading", "lsi-message--error", "lsi-message--empty");
 
         if (type) {
-          bodyEl.classList.add("location-stock-indicator__message--" + type);
+          bodyEl.classList.add("lsi-message--" + type);
         }
 
         bodyEl.textContent = text || "";
@@ -718,8 +902,11 @@
         nearbyOtherHeading: "",
         showOrderPickButton: false,
         orderPickButtonLabel: "この店舗で受け取る",
-        orderPickAddingLabel: "追加中...",
+        orderPickAddingLabel: "",
         orderPickAddedLabel: "追加しました",
+        orderPickOutOfStockLabel: "Sold Out",
+        orderPickModalTitle: "カートに追加しました（{count}点）",
+        orderPickModalBody: "チェックアウトページでお届け先を「受取」を選択して受取ご希望の店舗をご選択ください。",
         regionGroupOrder: [],
         accordionIcon: {{ s.accordion_icon | default: 'chevron' | json }},
         regionUnsetLabel: "その他",
@@ -730,6 +917,7 @@
           fontSize: {{ s.region_heading_font_size | default: 14 | json }},
           padding: {{ s.region_heading_padding | default: 8 | json }}
         },
+        regionHeadingAlign: {{ s.region_heading_align | default: 'left' | json }},
         orderPickBtnStyle: {{ s.order_pick_btn_style | default: 'solid_round' | json }},
         orderPickBtnAlign: {{ s.order_pick_btn_align | default: 'right' | json }},
         orderPickColWidth: {{ s.order_pick_col_width | default: 25 | json }},
@@ -740,7 +928,7 @@
       };
 
       function updateLegendElements() {
-        var legends = root.querySelectorAll(".location-stock-indicator__legend");
+        var legends = root.querySelectorAll(".lsi-legend");
         if (!legends.length) return;
 
         var text =
@@ -756,7 +944,7 @@
       }
 
       function updateNoticeElements() {
-        var notices = root.querySelectorAll(".location-stock-indicator__notice");
+        var notices = root.querySelectorAll(".lsi-notice");
         if (!notices.length) return;
 
         var text = settings.noticeText || "";
@@ -801,12 +989,10 @@
       function buildQuantityHtml(qty) {
         var mode = settings.rowContentMode;
 
-        // 数量を一切表示しないモード
         if (mode === "symbol_only") {
           return "";
         }
 
-        // 数量を表示するモードだけ通す
         var useQty =
           mode === "symbol_and_quantity" ||
           mode === "symbol_quantity_label" ||
@@ -817,11 +1003,9 @@
 
         var inner;
 
-        // 「在庫数＋ラベル」のときだけ quantityLabel を付ける
         if (mode === "quantity_label" && settings.quantityLabel) {
           inner = settings.quantityLabel + " " + qty;
         } else {
-          // それ以外は数字だけ
           inner = qty;
         }
 
@@ -829,17 +1013,15 @@
         var after = settings.quantityWrapperAfter || "";
 
         return (
-          '<span class="location-stock-indicator__qty">' +
+          '<span class="lsi-qty">' +
             before + inner + after +
           "</span>"
         );
       }
 
-      // クリック・リンク表示用（ロケーション設定の「リンクを表示する」＋行ごとURLを優先）
       function applyClickAction(location, displayName) {
         var name = displayName || location.locationName || "";
 
-        // ロケーション設定で「リンクを表示する」がONで、かつこのロケーションにURLが設定されている場合
         if (settings.showLocationLinks && location.linkUrl && String(location.linkUrl).trim() !== "") {
           var rawUrl = String(location.linkUrl).trim();
           var safeUrl = rawUrl.replace(/"/g, "&quot;").replace(/</g, "&lt;");
@@ -862,7 +1044,6 @@
         return name;
       }
 
-      // ロケーションの絞り込み
       function filterLocations(stocks) {
         var mode = settings.locationsMode;
 
@@ -881,7 +1062,6 @@
         return stocks;
       }
 
-      // 距離でソート（nearbyFirstEnabled 用・緯度経度があるロケーションのみ）
       function sortByDistance(stocks, userLat, userLng) {
         if (!stocks || !userLat || !userLng) return stocks ? stocks.slice() : [];
         function dist(lat, lng) {
@@ -896,7 +1076,6 @@
         return out;
       }
 
-      // 並び順（上部固定: pinnedLocationId のロケーションを先頭にし、残りを sortBy でソート）
       function sortLocations(stocks) {
         var sortBy = settings.sortBy || "config_order";
         var pinnedId = settings.pinnedLocationId || null;
@@ -971,7 +1150,6 @@
         return rest;
       }
 
-      // マーク＋在庫数＋ラベルの HTML
       function buildStatusHtml(item, status) {
         var color = null;
         if (status.symbol === settings.symbolInStock && settings.inStockColor) color = settings.inStockColor;
@@ -979,7 +1157,7 @@
         if (status.symbol === settings.symbolOutOfStock && settings.outOfStockColor) color = settings.outOfStockColor;
 
         var symbolHtml =
-          '<span class="location-stock-indicator__status-symbol"' +
+          '<span class="lsi-status-symbol"' +
           (color ? ' style="color:' + color + ';"' : '') +
           ">" +
           status.symbol +
@@ -987,7 +1165,7 @@
 
         var qtyHtml = buildQuantityHtml(item.quantity || 0);
         var labelHtml = status.label
-          ? ' <span class="location-stock-indicator__status-label">' +
+          ? ' <span class="lsi-status-label">' +
               status.label +
             "</span>"
           : "";
@@ -996,26 +1174,20 @@
         var parts = [];
 
         if (mode === "symbol_only") {
-          // マークのみ
           parts.push(symbolHtml);
         } else if (mode === "symbol_and_quantity") {
-          // マーク＋数
           parts.push(symbolHtml);
           if (qtyHtml) parts.push(" " + qtyHtml);
         } else if (mode === "symbol_quantity_label") {
-          // マーク＋数＋ステータスラベル
           parts.push(symbolHtml);
           if (qtyHtml) parts.push(" " + qtyHtml);
           if (labelHtml) parts.push(" " + labelHtml);
         } else if (mode === "quantity_only") {
-          // 数のみ
           if (qtyHtml) parts.push(qtyHtml);
         } else if (mode === "quantity_label") {
-          // 在庫ラベル付き数＋ステータスラベル
           if (qtyHtml) parts.push(qtyHtml);
           if (labelHtml) parts.push(" " + labelHtml);
         } else {
-          // 想定外は symbol_and_quantity 扱い
           parts.push(symbolHtml);
           if (qtyHtml) parts.push(" " + qtyHtml);
         }
@@ -1023,7 +1195,6 @@
         return parts.join("");
       }
 
-      // 1行ぶんの「店舗で受け取る」ボタン。7種類（ソリッド/アウトライン×スクエア/ラウンド/ピル、ゴースト）＋背景・文字色・余白
       function buildOrderPickButtonStyle() {
         var kind = settings.orderPickBtnStyle || "solid_round";
         if (kind === "simple" || kind === "accent" || kind === "solid" || kind === "outline" || kind === "round" || kind === "pill" || kind === "ghost_square") {
@@ -1065,21 +1236,29 @@
         return parts.join(";");
       }
       function buildOrderPickButton(item) {
-        if (!settings.showOrderPickButton || !settings.orderPickButtonLabel) return "";
-        if (!item || !item.storePickupEnabled) return "";
+        if (!settings.showOrderPickButton) return "";
+        if (!item) return "";
+        if (!item.storePickupEnabled) return "";
+        var qty = typeof item.quantity === "number" ? item.quantity : parseInt(item.quantity, 10) || 0;
+        var outMax = typeof settings.outOfStockMax === "number" ? settings.outOfStockMax : 0;
+        if (qty <= outMax) {
+          var outLabel = (settings.orderPickOutOfStockLabel || "Sold Out").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+          var btnStyle = buildOrderPickButtonStyle();
+          return '<span class="lsi-order-pick-out" style="' + btnStyle + '">' + outLabel + "</span>";
+        }
+        if (!settings.orderPickButtonLabel) return "";
         var label = settings.orderPickButtonLabel.replace(/</g, "&lt;").replace(/>/g, "&gt;");
         var btnStyle = buildOrderPickButtonStyle();
         var align = settings.orderPickBtnAlign || "right";
         var locId = (item.locationId || "").replace(/"/g, "&quot;");
         var locName = (item.displayName || item.locationName || "").replace(/"/g, "&quot;");
-        var cls = "location-stock-indicator__order-pick-btn location-stock-indicator__order-pick-btn--" + (align || "right");
+        var cls = "lsi-order-pick-btn lsi-order-pick-btn--" + (align || "right");
         if (settings.orderPickRedirectToCheckout) {
           return '<a href="/checkout" class="' + cls + '" data-location-id="' + locId + '" data-location-name="' + locName + '" style="' + btnStyle + '">' + label + "</a>";
         }
         return '<button type="button" class="' + cls + '" data-location-id="' + locId + '" data-location-name="' + locName + '" style="' + btnStyle + '">' + label + "</button>";
       }
 
-      // 地域でグルーピング（groupByRegion）。order があるときはその順で表示し、最後に「未設定」があれば追加
       function groupStocksByRegion(stocks, order) {
         var map = {};
         stocks.forEach(function (item) {
@@ -1100,14 +1279,100 @@
         return Object.keys(map).sort().map(function (k) { return map[k]; });
       }
 
-      // 描画（opts.skipFilterSort: true のときは filter/sort をスキップ。opts.otherStartIndex があるときは先頭 N 件を通常表示、残りを「その他の店舗」で折りたたみ）
+      var savedTableHtml = null;
+      function adjustTableColumnWidthsForMobile() {
+        if (settings.layoutType !== "table" || !settings.showOrderPickButton) return;
+        var table = root.querySelector(".lsi-table");
+        if (!table) return;
+        var colgroup = table.querySelector("colgroup");
+        if (!colgroup || !colgroup.children) return;
+        var colCount = colgroup.children.length;
+        var locShare = Math.min(95, Math.max(5, Number(settings.locationColWidth) || 70));
+        var origBtn = Math.min(50, Math.max(15, Number(settings.orderPickColWidth) || 25));
+        var remaining = 100 - origBtn;
+        var origLoc = remaining * (locShare / 100);
+        var origStatus = remaining * ((100 - locShare) / 100);
+        var doc = root.ownerDocument || document;
+        var vw = (doc.documentElement && doc.documentElement.clientWidth) || (doc.defaultView && doc.defaultView.innerWidth) || 768;
+        if (vw > 768) {
+          if (savedTableHtml) {
+            table.innerHTML = savedTableHtml;
+            savedTableHtml = null;
+            colgroup = table.querySelector("colgroup");
+          }
+          if (colgroup && colgroup.children.length === 3) {
+            var cols = colgroup.children;
+            cols[0].style.width = origLoc + "%";
+            cols[1].style.width = origStatus + "%";
+            cols[2].style.width = origBtn + "%";
+          }
+          return;
+        }
+        if (colCount === 2) return;
+        var btn = root.querySelector(".lsi-order-pick-btn");
+        if (!btn) return;
+        var tableWidth = table.getBoundingClientRect().width;
+        if (tableWidth <= 0) return;
+        var padX = parseInt(root.getAttribute("data-table-row-padding-x"), 10);
+        if (isNaN(padX) || padX < 0) padX = 12;
+        var cellPadH = padX * 2;
+        var buttonWidth = btn.getBoundingClientRect().width;
+        var currentBtnColPx = tableWidth * (origBtn / 100);
+        var currentContentPx = currentBtnColPx - cellPadH;
+        if (buttonWidth <= currentContentPx) {
+          colgroup.children[0].style.width = origLoc + "%";
+          colgroup.children[1].style.width = origStatus + "%";
+          colgroup.children[2].style.width = origBtn + "%";
+          return;
+        }
+        var requiredColPx = buttonWidth + cellPadH;
+        var btnPct = (requiredColPx / tableWidth) * 100;
+        if (btnPct <= 50) {
+          var rem = 100 - btnPct;
+          var locPct = rem * (locShare / 100);
+          var statusPct = rem * ((100 - locShare) / 100);
+          colgroup.children[0].style.width = locPct + "%";
+          colgroup.children[1].style.width = statusPct + "%";
+          colgroup.children[2].style.width = btnPct + "%";
+          return;
+        }
+        if (!savedTableHtml) savedTableHtml = table.innerHTML;
+        var tb = table.querySelector("tbody");
+        if (!tb) return;
+        var h = "<colgroup><col style=\"width:" + locShare + "%\"><col style=\"width:" + (100 - locShare) + "%\"></colgroup><tbody>";
+        var r = tb.querySelectorAll("tr");
+        for (var i = 0; i < r.length; i++) {
+          var t = r[i];
+          var ca = (t.getAttribute("data-region-block") ? " data-region-block=\"" + (t.getAttribute("data-region-block") || "").replace(/"/g, "&quot;") + "\"" : "") + (t.getAttribute("data-location-id") ? " data-location-id=\"" + (t.getAttribute("data-location-id") || "").replace(/"/g, "&quot;") + "\"" : "");
+          if (t.classList.contains("lsi-region-heading-row") || t.classList.contains("lsi-nearby-header")) {
+            var td = t.querySelector("td");
+            var ra = (t.getAttribute("role") ? " role=\"" + t.getAttribute("role") + "\"" : "") + (t.getAttribute("tabindex") !== null ? " tabindex=\"" + t.getAttribute("tabindex") + "\"" : "") + (t.getAttribute("aria-expanded") !== null ? " aria-expanded=\"" + t.getAttribute("aria-expanded") + "\"" : "");
+            h += "<tr class=\"" + (t.className || "").replace(/"/g, "&quot;") + "\"" + ca + ra + "><td colspan=\"2\" class=\"lsi-region-heading-cell\">" + (td ? td.innerHTML : "") + "</td></tr>";
+          } else if (t.classList.contains("lsi-region-data-row")) {
+            var c1 = t.cells[0], c2 = t.cells[1], c3 = t.cells[2];
+            var sy = t.getAttribute("style") ? " style=\"" + (t.getAttribute("style") || "").replace(/"/g, "&quot;") + "\"" : "";
+            h += "<tr class=\"lsi-region-data-row\"" + ca + sy + "><td class=\"lsi-location\">" + (c1 ? c1.innerHTML : "") + "</td><td class=\"lsi-status\">" + (c2 ? c2.innerHTML : "") + "</td></tr>";
+            if (c3 && c3.children && c3.children.length > 0) h += "<tr class=\"lsi-region-data-row lsi-order-pick-subrow\"" + ca + "><td colspan=\"2\" class=\"lsi-order-pick-cell lsi-order-pick-cell--full\">" + c3.innerHTML + "</td></tr>";
+          } else if (t.querySelector(".lsi-nearby-body")) {
+            var tx = t.querySelector("td");
+            h += "<tr><td colspan=\"2\" class=\"lsi-nearby-body-cell\">" + (tx ? tx.innerHTML : "") + "</td></tr>";
+          }
+        }
+        table.innerHTML = h + "</tbody>";
+      }
+      if (typeof window !== "undefined") window.addEventListener("resize", function () { adjustTableColumnWidthsForMobile(); });
+
+      function normalizeButtonWidths() {
+        var e = root.querySelectorAll(".lsi-order-pick-btn, .lsi-order-pick-out");
+        if (!e || !e.length) return;
+        var m = 0;
+        for (var i = 0; i < e.length; i++) { var w = e[i].getBoundingClientRect().width; if (w > m) m = w; }
+        if (m > 0) for (var j = 0; j < e.length; j++) e[j].style.minWidth = m + "px";
+      }
+
       function renderStocks(stocks, opts) {
         opts = opts || {};
-        bodyEl.classList.remove(
-          "location-stock-indicator__message--loading",
-          "location-stock-indicator__message--error",
-          "location-stock-indicator__message--empty"
-        );
+        bodyEl.classList.remove("lsi-message--loading", "lsi-message--error", "lsi-message--empty");
 
         if (!opts.skipFilterSort) {
           stocks = filterLocations(stocks);
@@ -1139,15 +1404,14 @@
         var btnColWidth = 0;
         var statusWidth = 30;
         if (settings.layoutType === "table") {
-          locWidth = Math.min(80, Math.max(30, Number(settings.locationColWidth) || 70));
           if (settings.showOrderPickButton) {
-            btnColWidth = Math.min(45, Math.max(15, Number(settings.orderPickColWidth) || 25));
-            if (locWidth + btnColWidth >= 90) {
-              locWidth = Math.min(locWidth, 80);
-              btnColWidth = Math.min(btnColWidth, 100 - locWidth - 10);
-            }
-            statusWidth = 100 - locWidth - btnColWidth;
+            var locShare = Math.min(95, Math.max(5, Number(settings.locationColWidth) || 70));
+            btnColWidth = Math.min(50, Math.max(15, Number(settings.orderPickColWidth) || 25));
+            var remaining = 100 - btnColWidth;
+            locWidth = remaining * (locShare / 100);
+            statusWidth = remaining * ((100 - locShare) / 100);
           } else {
+            locWidth = Math.min(85, Math.max(25, Number(settings.locationColWidth) || 70));
             statusWidth = 100 - locWidth;
           }
         }
@@ -1158,24 +1422,24 @@
         function buildAccordionIconHtml() {
           var iconType = settings.accordionIcon || "chevron";
           if (iconType === "plus_minus") {
-            return '<span class="location-stock-indicator__region-heading-chevron location-stock-indicator__region-heading-chevron--plus-minus" aria-hidden="true">' +
-              '<span class="location-stock-indicator__region-heading-chevron-open">−</span>' +
-              '<span class="location-stock-indicator__region-heading-chevron-closed">+</span>' +
+            return '<span class="lsi-region-heading-chevron lsi-region-heading-chevron--plus-minus" aria-hidden="true">' +
+              '<span class="lsi-region-heading-chevron-open">−</span>' +
+              '<span class="lsi-region-heading-chevron-closed">+</span>' +
               "</span>";
           }
           if (iconType === "arrow") {
-            return '<span class="location-stock-indicator__region-heading-chevron location-stock-indicator__region-heading-chevron--arrow" aria-hidden="true">' +
-              '<span class="location-stock-indicator__region-heading-chevron-open">↓</span>' +
-              '<span class="location-stock-indicator__region-heading-chevron-closed">→</span>' +
+            return '<span class="lsi-region-heading-chevron lsi-region-heading-chevron--arrow" aria-hidden="true">' +
+              '<span class="lsi-region-heading-chevron-open">↓</span>' +
+              '<span class="lsi-region-heading-chevron-closed">→</span>' +
               "</span>";
           }
           if (iconType === "angle") {
-            return '<span class="location-stock-indicator__region-heading-chevron location-stock-indicator__region-heading-chevron--angle" aria-hidden="true">' +
-              '<span class="location-stock-indicator__region-heading-chevron-open">∨</span>' +
-              '<span class="location-stock-indicator__region-heading-chevron-closed">＞</span>' +
+            return '<span class="lsi-region-heading-chevron lsi-region-heading-chevron--angle" aria-hidden="true">' +
+              '<span class="lsi-region-heading-chevron-open">∨</span>' +
+              '<span class="lsi-region-heading-chevron-closed">＞</span>' +
               "</span>";
           }
-          return '<span class="location-stock-indicator__region-heading-chevron location-stock-indicator__region-heading-chevron--chevron" aria-hidden="true"></span>';
+          return '<span class="lsi-region-heading-chevron lsi-region-heading-chevron--chevron" aria-hidden="true"></span>';
         }
 
         function buildRegionHeadingStyle() {
@@ -1214,39 +1478,41 @@
           var tr = "<tr";
           if (isHeading) {
             var regionStyleStr = buildRegionHeadingStyle();
-            tr += ' class="location-stock-indicator__region-heading-row" data-region-block="' + blockId + '"';
+            tr += ' class="lsi-region-heading-row" data-region-block="' + blockId + '"';
             if (accordionEnabled) tr += ' role="button" tabindex="0" aria-expanded="' + (initiallyHidden ? "false" : "true") + '"';
             tr += ">";
-            tr += '<td colspan="' + colCount + '" class="location-stock-indicator__region-heading-cell"' + (regionStyleStr ? ' style="' + regionStyleStr + '"' : '') + '>';
-            tr += '<div class="location-stock-indicator__region-heading-cell-inner">';
-            tr += '<span class="location-stock-indicator__region-heading-label">' + (headingLabel || "") + "</span>";
+            var alignCls = "lsi-region-heading-cell-inner--" + (settings.regionHeadingAlign || "left");
+            tr += '<td colspan="' + colCount + '" class="lsi-region-heading-cell"' + (regionStyleStr ? ' style="' + regionStyleStr + '"' : '') + '>';
+            tr += '<div class="lsi-region-heading-cell-inner ' + alignCls + '">';
+            tr += '<span class="lsi-region-heading-label">' + (headingLabel || "") + "</span>";
             if (accordionEnabled) tr += buildAccordionIconHtml();
             tr += "</div></td></tr>";
             return tr;
           }
           if (accordionEnabled && initiallyHidden) tr += ' style="display:none;"';
-          tr += ' data-region-block="' + blockId + '" data-location-id="' + (item.locationId || "") + '" class="location-stock-indicator__region-data-row">';
+          tr += ' data-region-block="' + blockId + '" data-location-id="' + (item.locationId || "") + '" class="lsi-region-data-row">';
           var status = getStatusSymbolAndLabel(item.quantity || 0);
           var name = item.displayName || item.locationName || "";
           var nameHtml = applyClickAction(item, name);
-          tr += '<td class="location-stock-indicator__location" style="width:' + locWidth + '%;">' + nameHtml + "</td>";
-          tr += '<td class="location-stock-indicator__status" style="width:' + statusWidth + '%;">' + buildStatusHtml(item, status) + "</td>";
-          if (settings.showOrderPickButton) tr += '<td class="location-stock-indicator__order-pick-cell location-stock-indicator__order-pick-cell--' + (settings.orderPickBtnAlign || "right") + '" style="width:' + btnColWidth + '%;">' + buildOrderPickButton(item) + "</td>";
+          tr += '<td class="lsi-location" style="width:' + locWidth + '%;">' + nameHtml + "</td>";
+          tr += '<td class="lsi-status" style="width:' + statusWidth + '%;">' + buildStatusHtml(item, status) + "</td>";
+          if (settings.showOrderPickButton) tr += '<td class="lsi-order-pick-cell lsi-order-pick-cell--' + (settings.orderPickBtnAlign || "right") + '" style="width:' + btnColWidth + '%;">' + buildOrderPickButton(item) + "</td>";
           tr += "</tr>";
           return tr;
         }
         function addListItem(item, isHeading, headingLabel, blockId, initiallyHidden) {
           if (isHeading) {
             var regionStyleStr = buildRegionHeadingStyle();
-            var li = '<li class="location-stock-indicator__region-heading-item location-stock-indicator__item" data-region-block="' + blockId + '"' + (regionStyleStr ? ' style="' + regionStyleStr + '"' : '') + '';
+            var itemAlignCls = "lsi-region-heading-item--" + (settings.regionHeadingAlign || "left");
+            var li = '<li class="lsi-region-heading-item lsi-item ' + itemAlignCls + '" data-region-block="' + blockId + '"' + (regionStyleStr ? ' style="' + regionStyleStr + '"' : '') + '';
             if (accordionEnabled) li += ' role="button" tabindex="0" aria-expanded="' + (initiallyHidden ? "false" : "true") + '"';
             li += ">";
-            li += '<span class="location-stock-indicator__region-heading-label">' + (headingLabel || "") + "</span>";
+            li += '<span class="lsi-region-heading-label">' + (headingLabel || "") + "</span>";
             if (accordionEnabled) li += buildAccordionIconHtml();
             li += "</li>";
             return li;
           }
-          var li = '<li class="location-stock-indicator__item location-stock-indicator__region-data-item" data-region-block="' + blockId + '" data-location-id="' + (item.locationId || "") + '"';
+          var li = '<li class="lsi-item lsi-region-data-item" data-region-block="' + blockId + '" data-location-id="' + (item.locationId || "") + '"';
           if (accordionEnabled && initiallyHidden) li += ' style="display:none;"';
           li += ">";
           var status = getStatusSymbolAndLabel(item.quantity || 0);
@@ -1254,12 +1520,12 @@
           var nameHtml = applyClickAction(item, name);
           var rowHtml = "";
           if (settings.layoutType === "stacked") {
-            rowHtml = '<div class="location-stock-indicator__stacked-name">' + nameHtml + "</div>" + '<div class="location-stock-indicator__stacked-status">' + buildStatusHtml(item, status) + "</div>";
-            if (settings.showOrderPickButton) rowHtml += '<div class="location-stock-indicator__order-pick-wrap location-stock-indicator__order-pick-wrap--' + (settings.orderPickBtnAlign || "right") + '">' + buildOrderPickButton(item) + "</div>";
+            rowHtml = '<div class="lsi-stacked-name">' + nameHtml + "</div>" + '<div class="lsi-stacked-status">' + buildStatusHtml(item, status) + "</div>";
+            if (settings.showOrderPickButton) rowHtml += '<div class="lsi-order-pick-wrap lsi-order-pick-wrap--' + (settings.orderPickBtnAlign || "right") + '">' + buildOrderPickButton(item) + "</div>";
           } else {
             var sep = settings.listSeparator || "： ";
-            rowHtml = '<span class="location-stock-indicator__location">' + nameHtml + "</span>" + sep + '<span class="location-stock-indicator__status">' + buildStatusHtml(item, status) + "</span>";
-            if (settings.showOrderPickButton) rowHtml += '<span class="location-stock-indicator__order-pick-wrap location-stock-indicator__order-pick-wrap--' + (settings.orderPickBtnAlign || "right") + '">' + buildOrderPickButton(item) + "</span>";
+            rowHtml = '<span class="lsi-location">' + nameHtml + "</span>" + sep + '<span class="lsi-status">' + buildStatusHtml(item, status) + "</span>";
+            if (settings.showOrderPickButton) rowHtml += '<span class="lsi-order-pick-wrap lsi-order-pick-wrap--' + (settings.orderPickBtnAlign || "right") + '">' + buildOrderPickButton(item) + "</span>";
           }
           li += rowHtml + "</li>";
           return li;
@@ -1271,20 +1537,22 @@
           nearbyBodyId = root.id + "-nearby-body";
         }
         if (settings.layoutType === "table") {
-          html += '<div class="location-stock-indicator__table-wrap">';
-          html += '<table class="location-stock-indicator__table">';
+          html += '<div class="lsi-table-wrap">';
+          html += '<table class="lsi-table">';
           html += '<colgroup><col style="width:' + locWidth + '%"><col style="width:' + statusWidth + '%">' + (settings.showOrderPickButton ? '<col style="width:' + btnColWidth + '%">' : '') + '</colgroup>';
           html += '<tbody>';
           if (settings.nearbyFirstEnabled && opts.hasCoordsForNearby) {
-            html += '<tr class="location-stock-indicator__region-heading-row location-stock-indicator__nearby-header" data-region-block="nearby" role="button" tabindex="0" aria-expanded="false">';
-            html += '<td colspan="' + colCount + '" class="location-stock-indicator__region-heading-cell">';
-            html += '<div class="location-stock-indicator__region-heading-cell-inner">';
+            var nearbyStyleStr = buildRegionHeadingStyle();
+            var innerAlignCls = "lsi-region-heading-cell-inner--" + (settings.regionHeadingAlign || "left");
+            html += '<tr class="lsi-region-heading-row lsi-nearby-header" data-region-block="nearby" role="button" tabindex="0" aria-expanded="false">';
+            html += '<td colspan="' + colCount + '" class="lsi-region-heading-cell"' + (nearbyStyleStr ? ' style="' + nearbyStyleStr + '"' : '') + '>';
+            html += '<div class="lsi-region-heading-cell-inner ' + innerAlignCls + '">';
             var nearbyLabel = (settings.nearbyHeading && settings.nearbyHeading.trim()) ? settings.nearbyHeading.trim() : "近隣店舗";
-            html += '<span class="location-stock-indicator__region-heading-label">' + nearbyLabel + '</span>';
+            html += '<span class="lsi-region-heading-label">' + nearbyLabel + '</span>';
             html += buildAccordionIconHtml();
             html += '</div></td></tr>';
-            html += '<tr class="location-stock-indicator__region-data-row" data-region-block="nearby" style="display:none;">';
-            html += '<td colspan="' + colCount + '" class="location-stock-indicator__nearby-body-cell"><div id="' + nearbyBodyId + '" class="location-stock-indicator__nearby-body">' + nearbyInitMsg + '</div></td></tr>';
+            html += '<tr class="lsi-region-data-row" data-region-block="nearby" style="display:none;">';
+            html += '<td colspan="' + colCount + '" class="lsi-nearby-body-cell"><div id="' + nearbyBodyId + '" class="lsi-nearby-body">' + nearbyInitMsg + '</div></td></tr>';
           }
           var otherHeadingText = (settings.nearbyOtherHeading && settings.nearbyOtherHeading.trim()) ? settings.nearbyOtherHeading.trim() : "";
           if (settings.nearbyFirstEnabled && opts.hasCoordsForNearby && otherHeadingText) {
@@ -1318,15 +1586,17 @@
           }
           html += "</tbody></table></div>";
         } else {
-          html += '<ul class="location-stock-indicator__list">';
+          html += '<ul class="lsi-list">';
           if (settings.nearbyFirstEnabled && opts.hasCoordsForNearby) {
+            var nearbyStyleStrList = buildRegionHeadingStyle();
             var nearbyLabelList = (settings.nearbyHeading && settings.nearbyHeading.trim()) ? settings.nearbyHeading.trim() : "近隣店舗";
-            html += '<li class="location-stock-indicator__region-heading-item location-stock-indicator__item location-stock-indicator__nearby-header" data-region-block="nearby" role="button" tabindex="0" aria-expanded="false">';
-            html += '<span class="location-stock-indicator__region-heading-label">' + nearbyLabelList + '</span>';
+            var nearbyItemAlignCls = "lsi-region-heading-item--" + (settings.regionHeadingAlign || "left");
+            html += '<li class="lsi-region-heading-item lsi-item lsi-nearby-header ' + nearbyItemAlignCls + '" data-region-block="nearby" role="button" tabindex="0" aria-expanded="false"' + (nearbyStyleStrList ? ' style="' + nearbyStyleStrList + '"' : '') + '>';
+            html += '<span class="lsi-region-heading-label">' + nearbyLabelList + '</span>';
             html += buildAccordionIconHtml();
             html += '</li>';
-            html += '<li class="location-stock-indicator__item location-stock-indicator__region-data-item location-stock-indicator__nearby-body-item" data-region-block="nearby" style="display:none;">';
-            html += '<div id="' + nearbyBodyId + '" class="location-stock-indicator__nearby-body">' + nearbyInitMsg + '</div>';
+            html += '<li class="lsi-item lsi-region-data-item lsi-nearby-body-item" data-region-block="nearby" style="display:none;">';
+            html += '<div id="' + nearbyBodyId + '" class="lsi-nearby-body">' + nearbyInitMsg + '</div>';
             html += '</li>';
           }
           var otherHeadingTextList = (settings.nearbyOtherHeading && settings.nearbyOtherHeading.trim()) ? settings.nearbyOtherHeading.trim() : "";
@@ -1365,7 +1635,7 @@
         bodyEl.innerHTML = html;
 
         if (settings.layoutType === "table") {
-          var wrap = root.querySelector(".location-stock-indicator__table-wrap");
+          var wrap = root.querySelector(".lsi-table-wrap");
           if (wrap) {
             var py = root.getAttribute("data-table-row-padding-y");
             var px = root.getAttribute("data-table-row-padding-x");
@@ -1375,7 +1645,7 @@
             var hasBorder = bStyle === "rows" || bStyle === "full";
             var pad = (py !== null && px !== null) ? py + "px " + px + "px" : "8px 12px";
             var borderBottom = (hasBorder && bw !== null && bc !== null) ? bw + "px solid " + bc : "none";
-            var tbl = wrap.querySelector(".location-stock-indicator__table");
+            var tbl = wrap.querySelector(".lsi-table");
             if (tbl) {
               if (bStyle === "full" && bw !== null && bc !== null) {
                 tbl.style.border = bw + "px solid " + bc;
@@ -1394,16 +1664,22 @@
             }
           }
         }
+        if (settings.layoutType === "table" && settings.showOrderPickButton) {
+          setTimeout(function () { adjustTableColumnWidthsForMobile(); }, 0);
+        }
+        if (settings.showOrderPickButton) {
+          setTimeout(function () { normalizeButtonWidths(); }, 0);
+        }
 
-        root.querySelectorAll(".location-stock-indicator__region-heading-row[role=\"button\"][data-region-block]:not(.location-stock-indicator__nearby-header), .location-stock-indicator__region-heading-item[role=\"button\"][data-region-block]:not(.location-stock-indicator__nearby-header)").forEach(function (headingEl) {
+        root.querySelectorAll(".lsi-region-heading-row[role=\"button\"][data-region-block]:not(.lsi-nearby-header), .lsi-region-heading-item[role=\"button\"][data-region-block]:not(.lsi-nearby-header)").forEach(function (headingEl) {
           headingEl.addEventListener("click", function () {
             var expanded = this.getAttribute("aria-expanded") === "true";
             var blockId = this.getAttribute("data-region-block");
             var container = this.closest("table") || this.closest("ul");
             if (container) {
-              var dataRows = container.querySelectorAll(".location-stock-indicator__region-data-row[data-region-block=\"" + blockId + "\"], .location-stock-indicator__region-data-item[data-region-block=\"" + blockId + "\"]");
+              var dataRows = container.querySelectorAll(".lsi-region-data-row[data-region-block=\"" + blockId + "\"], .lsi-region-data-item[data-region-block=\"" + blockId + "\"]");
               var show = !expanded;
-              var displayVal = headingEl.classList.contains("location-stock-indicator__region-heading-row") ? "table-row" : "block";
+              var displayVal = headingEl.classList.contains("lsi-region-heading-row") ? "table-row" : "block";
               dataRows.forEach(function (el) {
                 el.style.display = show ? displayVal : "none";
               });
@@ -1423,25 +1699,26 @@
         }
       }
 
-      // 近隣店舗：テーブル/リスト内のアコーディオン行。クリックで開閉＋位置情報取得 → 一番近い1店舗を表示（下部リストには残す）
-      // excludeFromNearby が true のロケーション（本社・倉庫など）は近隣検索対象から除外する
       function bindNearbyAccordion(stocks, containerEl) {
         var nearbyStocks = (stocks || []).filter(function (s) { return !s.excludeFromNearby; });
         var doc = root.ownerDocument || document;
-        var btn = root.querySelector(".location-stock-indicator__nearby-header");
-        var body = doc.getElementById(root.id + "-nearby-body") || root.querySelector(".location-stock-indicator__nearby-body");
+        var btn = root.querySelector(".lsi-nearby-header");
+        var body = doc.getElementById(root.id + "-nearby-body") || root.querySelector(".lsi-nearby-body");
         if (!btn || !body) return;
         var loaded = false;
-        var locWidth = Math.min(80, Math.max(30, Number(settings.locationColWidth) || 70));
+        var locWidth = 70;
         var btnColWidth = 0;
+        var statusWidth = 30;
         if (settings.showOrderPickButton) {
-          btnColWidth = Math.min(45, Math.max(15, Number(settings.orderPickColWidth) || 25));
-          if (locWidth + btnColWidth >= 90) {
-            locWidth = Math.min(locWidth, 80);
-            btnColWidth = Math.min(btnColWidth, 100 - locWidth - 10);
-          }
+          var locShare = Math.min(95, Math.max(5, Number(settings.locationColWidth) || 70));
+          btnColWidth = Math.min(50, Math.max(15, Number(settings.orderPickColWidth) || 25));
+          var remaining = 100 - btnColWidth;
+          locWidth = remaining * (locShare / 100);
+          statusWidth = remaining * ((100 - locShare) / 100);
+        } else {
+          locWidth = Math.min(85, Math.max(25, Number(settings.locationColWidth) || 70));
+          statusWidth = 100 - locWidth;
         }
-        var statusWidth = 100 - locWidth - btnColWidth;
         var bodyRow = body.closest("tr") || body.closest("li");
 
         function applyTableCellStyles(cells) {
@@ -1470,23 +1747,25 @@
           var name = nearest.displayName || nearest.locationName || "";
           var nameHtml = applyClickAction(nearest, name);
           if (settings.layoutType === "table" && bodyRow && bodyRow.tagName === "TR") {
-            var trHtml = '<td class="location-stock-indicator__location" style="width:' + locWidth + '%;">' + nameHtml + '</td>';
-            trHtml += '<td class="location-stock-indicator__status" style="width:' + statusWidth + '%;">' + buildStatusHtml(nearest, status) + '</td>';
-            if (settings.showOrderPickButton) trHtml += '<td class="location-stock-indicator__order-pick-cell location-stock-indicator__order-pick-cell--' + (settings.orderPickBtnAlign || "right") + '" style="width:' + btnColWidth + '%;">' + buildOrderPickButton(nearest) + '</td>';
+            var trHtml = '<td class="lsi-location" style="width:' + locWidth + '%;">' + nameHtml + '</td>';
+            trHtml += '<td class="lsi-status" style="width:' + statusWidth + '%;">' + buildStatusHtml(nearest, status) + '</td>';
+            if (settings.showOrderPickButton) trHtml += '<td class="lsi-order-pick-cell lsi-order-pick-cell--' + (settings.orderPickBtnAlign || "right") + '" style="width:' + btnColWidth + '%;">' + buildOrderPickButton(nearest) + '</td>';
             bodyRow.innerHTML = trHtml;
             applyTableCellStyles(bodyRow.querySelectorAll("td"));
+            setTimeout(function () { if (typeof normalizeButtonWidths === "function") normalizeButtonWidths(); }, 0);
             return;
           }
           var rowHtml;
           if (settings.layoutType === "stacked") {
-            rowHtml = '<div class="location-stock-indicator__stacked-name">' + nameHtml + "</div>" + '<div class="location-stock-indicator__stacked-status">' + buildStatusHtml(nearest, status) + "</div>";
-            if (settings.showOrderPickButton) rowHtml += '<div class="location-stock-indicator__order-pick-wrap location-stock-indicator__order-pick-wrap--' + (settings.orderPickBtnAlign || "right") + '">' + buildOrderPickButton(nearest) + "</div>";
+            rowHtml = '<div class="lsi-stacked-name">' + nameHtml + "</div>" + '<div class="lsi-stacked-status">' + buildStatusHtml(nearest, status) + "</div>";
+            if (settings.showOrderPickButton) rowHtml += '<div class="lsi-order-pick-wrap lsi-order-pick-wrap--' + (settings.orderPickBtnAlign || "right") + '">' + buildOrderPickButton(nearest) + "</div>";
           } else {
             var sep = settings.listSeparator || "： ";
-            rowHtml = '<span class="location-stock-indicator__location">' + nameHtml + "</span>" + sep + '<span class="location-stock-indicator__status">' + buildStatusHtml(nearest, status) + "</span>";
-            if (settings.showOrderPickButton) rowHtml += '<span class="location-stock-indicator__order-pick-wrap location-stock-indicator__order-pick-wrap--' + (settings.orderPickBtnAlign || "right") + '">' + buildOrderPickButton(nearest) + "</span>";
+            rowHtml = '<span class="lsi-location">' + nameHtml + "</span>" + sep + '<span class="lsi-status">' + buildStatusHtml(nearest, status) + "</span>";
+            if (settings.showOrderPickButton) rowHtml += '<span class="lsi-order-pick-wrap lsi-order-pick-wrap--' + (settings.orderPickBtnAlign || "right") + '">' + buildOrderPickButton(nearest) + "</span>";
           }
           body.innerHTML = rowHtml;
+          if (settings.showOrderPickButton) setTimeout(function () { if (typeof normalizeButtonWidths === "function") normalizeButtonWidths(); }, 0);
         }
         function showBodyError(msg) {
           body.innerHTML = "<span>" + msg + "</span>";
@@ -1496,7 +1775,7 @@
           var expanded = btn.getAttribute("aria-expanded") === "true";
           var show = !expanded;
           if (bodyRow) {
-            bodyRow.style.display = show ? (btn.classList.contains("location-stock-indicator__region-heading-row") ? "table-row" : "block") : "none";
+            bodyRow.style.display = show ? (btn.classList.contains("lsi-region-heading-row") ? "table-row" : "block") : "none";
           }
           btn.setAttribute("aria-expanded", show ? "true" : "false");
         }
@@ -1539,7 +1818,6 @@
         });
       }
 
-      // App Proxy 経由で在庫取得
       function fetchStocks(variantId) {
         setMessage("loading", settings.loadingMessage);
 
@@ -1564,7 +1842,6 @@
 
             var appConfig = data.config || {};
 
-            // 閾値
             if (appConfig.thresholds) {
               if (typeof appConfig.thresholds.outOfStockMax === "number") {
                 settings.outOfStockMax = appConfig.thresholds.outOfStockMax;
@@ -1574,7 +1851,6 @@
               }
             }
 
-            // 在庫数表示ルール
             if (appConfig.quantity) {
               var q = appConfig.quantity;
               if (typeof q.quantityLabel === "string") {
@@ -1588,7 +1864,6 @@
               }
             }
 
-            // マーク
             if (appConfig.symbols) {
               var sy = appConfig.symbols;
               if (typeof sy.inStock === "string") {
@@ -1602,7 +1877,6 @@
               }
             }
 
-            // ラベル
             if (appConfig.labels) {
               var lb = appConfig.labels;
               if (typeof lb.inStock === "string") {
@@ -1616,7 +1890,6 @@
               }
             }
 
-            // メッセージ文言
             if (appConfig.messages) {
               var m = appConfig.messages;
               if (typeof m.loading === "string") {
@@ -1630,7 +1903,6 @@
               }
             }
 
-            // グローバル注意書き
             if (
               appConfig.notice &&
               typeof appConfig.notice.text === "string" &&
@@ -1639,18 +1911,15 @@
               settings.noticeText = appConfig.notice.text;
             }
 
-            // 並び順
             if (appConfig.sort && typeof appConfig.sort.mode === "string") {
               settings.sortBy = appConfig.sort.mode;
             }
-            // 上部固定（1 ロケーションを常に先頭に）
             if (typeof appConfig.pinnedLocationId === "string" && appConfig.pinnedLocationId.trim() !== "") {
               settings.pinnedLocationId = appConfig.pinnedLocationId.trim();
             } else {
               settings.pinnedLocationId = null;
             }
 
-            // ロケーション表示ルール
             if (appConfig.locations) {
               var locConf = appConfig.locations;
               if (typeof locConf.mode === "string") {
@@ -1661,7 +1930,6 @@
               }
             }
 
-            // クリックアクション（後方互換）
             if (appConfig.click) {
               var click = appConfig.click;
               if (typeof click.action === "string") {
@@ -1674,12 +1942,10 @@
                 settings.urlTemplate = click.urlTemplate;
               }
             }
-            // ロケーション設定の「リンクを表示する」＋行ごとURL
             if (appConfig.future && typeof appConfig.future.showLocationLinks === "boolean") {
               settings.showLocationLinks = appConfig.future.showLocationLinks;
             }
 
-            // 表示ルール（凡例・注意書きの表示、行の表示内容、区切り文字）
             if (appConfig.display) {
               if (typeof appConfig.display.showLegend === "boolean") settings.showLegend = appConfig.display.showLegend;
               if (typeof appConfig.display.showNotice === "boolean") settings.showNotice = appConfig.display.showNotice;
@@ -1689,7 +1955,6 @@
               settings.rowContentMode = appConfig.quantity.rowContentMode;
             }
 
-            // 将来拡張
             if (appConfig.regionGroups && Array.isArray(appConfig.regionGroups)) {
               settings.regionGroupOrder = appConfig.regionGroups.map(function (g) { return g.name; });
             }
@@ -1717,10 +1982,19 @@
                 settings.orderPickButtonLabel = f.orderPickButtonLabel;
               }
               if (typeof f.orderPickAddingLabel === "string") {
-                settings.orderPickAddingLabel = f.orderPickAddingLabel.trim() || "追加中...";
+                settings.orderPickAddingLabel = f.orderPickAddingLabel.trim();
               }
               if (typeof f.orderPickAddedLabel === "string") {
                 settings.orderPickAddedLabel = f.orderPickAddedLabel.trim() || "追加しました";
+              }
+              if (typeof f.orderPickOutOfStockLabel === "string") {
+                settings.orderPickOutOfStockLabel = f.orderPickOutOfStockLabel.trim() || "Sold Out";
+              }
+              if (typeof f.orderPickModalTitle === "string") {
+                settings.orderPickModalTitle = f.orderPickModalTitle.trim() || "カートに追加しました（{count}点）";
+              }
+              if (typeof f.orderPickModalBody === "string") {
+                settings.orderPickModalBody = f.orderPickModalBody.trim();
               }
               if (typeof f.regionUnsetLabel === "string") {
                 settings.regionUnsetLabel = f.regionUnsetLabel.trim() || "その他";
@@ -1733,18 +2007,15 @@
               }
             }
 
-            // 凡例・注意書きを app 設定で更新し、表示有無・位置を反映
             updateLegendElements();
             updateNoticeElements();
             applyLegendNoticeVisibility();
 
             var stocks = null;
 
-            // 新形式
             if (Array.isArray(data.stocks)) {
               stocks = data.stocks;
             } else if (Array.isArray(data.locations)) {
-              // 旧形式互換
               stocks = data.locations.map(function (loc) {
                 var quantity =
                   typeof loc.quantity === "number"
@@ -1786,12 +2057,10 @@
           });
       }
 
-      // 初期の凡例・注意書きと表示制御（app 側にまだ無い場合はデフォルトで表示）
       updateLegendElements();
       updateNoticeElements();
       applyLegendNoticeVisibility();
 
-      // ▼ バリアント切替
       var lastVariantId = null;
 
       function updateStocksByVariantId(variantId) {
@@ -1803,20 +2072,17 @@
         fetchStocks(variantId);
       }
 
-      // 初期表示
       var initialVariantId = root.dataset.variantId;
       if (initialVariantId) {
         updateStocksByVariantId(initialVariantId);
       }
 
-      // Dawn 等の variant:change
       document.addEventListener("variant:change", function (event) {
         var variant = event.detail && event.detail.variant;
         if (!variant || !variant.id) return;
         updateStocksByVariantId(variant.id);
       });
 
-      // input[name="id"] 監視
       var variantIdInput = document.querySelector('form[action^="/cart/add"] [name="id"]');
       if (variantIdInput) {
         variantIdInput.addEventListener("change", function () {

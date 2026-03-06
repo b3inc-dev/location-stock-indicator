@@ -330,8 +330,11 @@ export async function loader({ request }) {
     nearbyOtherHeading: (config?.future?.nearbyOtherHeading && String(config.future.nearbyOtherHeading).trim()) || "",
     showOrderPickButton: !!config?.future?.showOrderPickButton,
     orderPickButtonLabel: config?.future?.orderPickButtonLabel ?? "この店舗で受け取る",
-    orderPickAddingLabel: config?.future?.orderPickAddingLabel ?? "追加中...",
+    orderPickAddingLabel: config?.future?.orderPickAddingLabel ?? "",
     orderPickAddedLabel: config?.future?.orderPickAddedLabel ?? "追加しました",
+    orderPickOutOfStockLabel: config?.future?.orderPickOutOfStockLabel ?? "Sold Out",
+    orderPickModalTitle: config?.future?.orderPickModalTitle ?? "カートに追加しました（{count}点）",
+    orderPickModalBody: config?.future?.orderPickModalBody ?? "チェックアウトページでお届け先を「受取」を選択して受取ご希望の店舗をご選択ください。",
     orderPickRedirectToCheckout: !!config?.future?.orderPickRedirectToCheckout,
     regionUnsetLabel: (config?.future?.regionUnsetLabel && String(config.future.regionUnsetLabel).trim()) || "その他",
     showLocationLinks: !!config?.future?.showLocationLinks,
@@ -442,8 +445,11 @@ export async function action({ request }) {
     nearbyOtherHeading: (formData.get("future_nearby_other_heading") || "").toString().trim(),
     showOrderPickButton: formData.get("future_show_order_pick_button") === "on",
     orderPickButtonLabel: (formData.get("future_order_pick_button_label") || "この店舗で受け取る").toString().trim(),
-    orderPickAddingLabel: (formData.get("future_order_pick_adding_label") || "追加中...").toString().trim(),
+    orderPickAddingLabel: (formData.get("future_order_pick_adding_label") ?? "").toString().trim(),
     orderPickAddedLabel: (formData.get("future_order_pick_added_label") || "追加しました").toString().trim(),
+    orderPickOutOfStockLabel: (formData.get("future_order_pick_out_of_stock_label") || "Sold Out").toString().trim(),
+    orderPickModalTitle: (formData.get("future_order_pick_modal_title") || "カートに追加しました（{count}点）").toString().trim(),
+    orderPickModalBody: (formData.get("future_order_pick_modal_body") || "チェックアウトページでお届け先を「受取」を選択して受取ご希望の店舗をご選択ください。").toString().trim(),
     orderPickRedirectToCheckout: formData.get("future_order_pick_redirect_to_checkout") === "on",
     regionUnsetLabel: (formData.get("future_region_unset_label") || "その他").toString().trim() || "その他",
     showLocationLinks: formData.get("future_show_location_links") === "on",
@@ -498,8 +504,11 @@ const defaultFuture = {
   nearbyOtherHeading: "",
   showOrderPickButton: false,
   orderPickButtonLabel: "この店舗で受け取る",
-  orderPickAddingLabel: "追加中...",
+  orderPickAddingLabel: "",
   orderPickAddedLabel: "追加しました",
+  orderPickOutOfStockLabel: "Sold Out",
+  orderPickModalTitle: "カートに追加しました（{count}点）",
+  orderPickModalBody: "チェックアウトページでお届け先を「受取」を選択して受取ご希望の店舗をご選択ください。",
   orderPickRedirectToCheckout: false,
   regionUnsetLabel: "その他",
   showLocationLinks: false,
@@ -595,8 +604,11 @@ export default function LocationsConfigPage() {
     formData.set("future_nearby_other_heading", future.nearbyOtherHeading || "");
     formData.set("future_show_order_pick_button", future.showOrderPickButton ? "on" : "");
     formData.set("future_order_pick_button_label", future.orderPickButtonLabel || "この店舗で受け取る");
-    formData.set("future_order_pick_adding_label", future.orderPickAddingLabel || "追加中...");
+    formData.set("future_order_pick_adding_label", future.orderPickAddingLabel ?? "");
     formData.set("future_order_pick_added_label", future.orderPickAddedLabel || "追加しました");
+    formData.set("future_order_pick_out_of_stock_label", future.orderPickOutOfStockLabel || "Sold Out");
+    formData.set("future_order_pick_modal_title", future.orderPickModalTitle ?? "カートに追加しました（{count}点）");
+    formData.set("future_order_pick_modal_body", future.orderPickModalBody ?? "チェックアウトページでお届け先を「受取」を選択して受取ご希望の店舗をご選択ください。");
     formData.set("future_order_pick_redirect_to_checkout", future.orderPickRedirectToCheckout ? "on" : "");
     formData.set("future_region_unset_label", future.regionUnsetLabel || "その他");
     formData.set("future_show_location_links", future.showLocationLinks ? "on" : "");
@@ -949,11 +961,24 @@ export default function LocationsConfigPage() {
               </div>
               <div style={{ marginBottom: 12 }}>
                 <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>追加中の表示（読み込み中）</label>
-                <input type="text" value={future.orderPickAddingLabel} onChange={(e) => setFuture((f) => ({ ...f, orderPickAddingLabel: e.target.value }))} style={selectBaseStyle} placeholder="追加中..." />
+                <input type="text" value={future.orderPickAddingLabel} onChange={(e) => setFuture((f) => ({ ...f, orderPickAddingLabel: e.target.value }))} style={selectBaseStyle} placeholder="空欄＝ローディングマークのみ" />
               </div>
               <div style={{ marginBottom: 12 }}>
                 <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>追加後の表示（成功メッセージ）</label>
                 <input type="text" value={future.orderPickAddedLabel} onChange={(e) => setFuture((f) => ({ ...f, orderPickAddedLabel: e.target.value }))} style={selectBaseStyle} placeholder="追加しました" />
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫なし時の表示（ボタンではなくテキスト）</label>
+                <input type="text" value={future.orderPickOutOfStockLabel} onChange={(e) => setFuture((f) => ({ ...f, orderPickOutOfStockLabel: e.target.value }))} style={selectBaseStyle} placeholder="Sold Out" />
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>カート追加後モーダル：タイトル</label>
+                <input type="text" value={future.orderPickModalTitle} onChange={(e) => setFuture((f) => ({ ...f, orderPickModalTitle: e.target.value }))} style={selectBaseStyle} placeholder="カートに追加しました（{count}点）" />
+                <div style={{ fontSize: 12, color: "#6d7175", marginTop: 4 }}>「{"{count}"}」を点数に置き換えます（例：カートに追加しました（3点））</div>
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>カート追加後モーダル：説明文</label>
+                <textarea value={future.orderPickModalBody} onChange={(e) => setFuture((f) => ({ ...f, orderPickModalBody: e.target.value }))} style={{ ...selectBaseStyle, minHeight: 60 }} placeholder="チェックアウトページでお届け先を「受取」を選択して受取ご希望の店舗をご選択ください。" rows={3} />
               </div>
               <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14 }}>
                 <input type="checkbox" checked={!!future.orderPickRedirectToCheckout} onChange={(e) => setFuture((f) => ({ ...f, orderPickRedirectToCheckout: e.target.checked }))} />

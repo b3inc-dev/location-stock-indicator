@@ -279,26 +279,37 @@
 
     {
       "type": "header",
-      "content": "エリア見出しのデザイン"
+      "content": "エリア/近隣店舗のデザイン"
     },
     {
       "type": "paragraph",
-      "content": "「エリアでグルーピング」ON時の地域見出し行の見た目です。アプリのロケーション設定で指定した値よりこちらが優先されます。"
+      "content": "「エリアでグルーピング」の地域見出し行と「近隣店舗」見出しの両方に同じデザインが反映されます。アプリのロケーション設定で指定した値よりこちらが優先されます。"
+    },
+    {
+      "type": "select",
+      "id": "region_heading_align",
+      "label": "見出しの配置",
+      "default": "left",
+      "options": [
+        { "value": "left", "label": "左寄せ" },
+        { "value": "center", "label": "中央" },
+        { "value": "right", "label": "右寄せ" }
+      ]
     },
     {
       "type": "color",
       "id": "region_heading_background",
-      "label": "エリア見出しの背景色"
+      "label": "背景色"
     },
     {
       "type": "color",
       "id": "region_heading_color",
-      "label": "エリア見出しの文字色"
+      "label": "文字色"
     },
     {
       "type": "range",
       "id": "region_heading_font_size",
-      "label": "エリア見出しの文字サイズ（px）",
+      "label": "文字サイズ（px）",
       "min": 12,
       "max": 20,
       "step": 1,
@@ -307,7 +318,7 @@
     {
       "type": "range",
       "id": "region_heading_padding",
-      "label": "エリア見出しの余白（px）",
+      "label": "余白（px）",
       "min": 0,
       "max": 24,
       "step": 2,
@@ -324,7 +335,7 @@
         { "value": "plus_minus", "label": "プラス・マイナス（+/−）" },
         { "value": "arrow", "label": "矢印（↓/→）" }
       ],
-      "info": "「エリアごとに折りたたみ表示」をONにしたときの見出し右のマークです。"
+      "info": "エリア・近隣店舗の見出しで「折りたたみ表示」をONにしたときの見出し右のマークです。"
     },
     {
       "type": "header",
@@ -385,7 +396,7 @@
       "max": 45,
       "step": 5,
       "default": 25,
-      "info": "テーブル表示でボタン表示時のみ有効です。"
+      "info": "テーブル表示でボタン表示時のみ有効です。\n幅が不足する場合はボタン列はボタン幅の最大値になります。画面の50%を超える場合は、ボタンをロケーション・在庫の下の行に100%幅で表示します（受取不可店舗はボタン行なし）。"
     },
     {
       "type": "select",
@@ -404,7 +415,7 @@
       "id": "custom_css",
       "label": "追加CSS",
       "default": "/* custom CSS */",
-      "info": "ルート要素の ID は block に基づきます。スタイルを上書きする場合は #location-stock-indicator-（blockのID） をセレクタに使えます。"
+      "info": "ルート要素の ID は block に基づきます。スタイルを上書きする場合は #lsi-（blockのID） をセレクタに使えます。"
     }
   ]
 }
