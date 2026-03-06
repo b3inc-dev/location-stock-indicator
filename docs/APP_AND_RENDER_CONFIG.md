@@ -54,9 +54,11 @@
   - 自社用アプリの `SHOPIFY_API_KEY`（= client_id 自社用）  
   - 自社用アプリの `SHOPIFY_API_SECRET`  
   - 同じスコープでよい場合は上記と同じ `SCOPES`  
+  - **`APP_DISTRIBUTION=inhouse`**（必須）… カスタムアプリを「自社用」と判定し、プラン制限なし・全機能（Pro 相当）で動作させる。未設定だと公開アプリ同様に Lite/Pro 判定になり、Lite と表示される。  
   - その他: `DATABASE_URL`、必要なら `RENDER_EXTERNAL_URL` など
 
 ※ 詳細は `docs/DEPLOY_AND_SCOPES.md` の「6. バックエンドの環境変数」を参照してください。
+※ **公開用の Render** では `APP_DISTRIBUTION` は未設定（または `public`）のままでよい。
 
 ---
 
@@ -70,6 +72,14 @@
 | 同じアプリか別アプリか・1 回でよいか | `docs/DEPLOY_AND_SCOPES.md` の「4. デプロイは公開用と自社用に分けて実行しなくて問題ない？」 |
 
 **注意**: API シークレットやパスワードは toml やドキュメントに **書かない** でください。Render の Environment やシークレット管理にだけ入れます。
+
+### 2.3 公開／自社の切り分け（POS Stock との違い）
+
+| 項目 | POS Stock | Location Stock |
+|------|-----------|----------------|
+| **切り分けのタイミング** | **デプロイ時**（`npm run deploy:public` / `deploy:inhouse` で `appUrl.js` の APP_MODE を書き換え→該当 toml で deploy） | **Render の環境変数**（公開用・自社用で **別サービス** なので、自社用の Render にだけ `APP_DISTRIBUTION=inhouse` を設定） |
+| **理由** | POS 拡張が「どちらのバックエンド URL を呼ぶか」を **ビルド時に** 決めるため、デプロイするアプリに合わせて APP_MODE を変える必要がある | ストアフロントは App Proxy の URL が **アプリごとに Partner で設定**されているため、同じコードでよい。バックエンドは「今どちらのサービスか」を **実行時の環境変数** で判定する |
+| **やること** | 公開用デプロイ時は `deploy:public`、自社用は `deploy:inhouse` を実行 | 自社用の Render に **一度** `APP_DISTRIBUTION=inhouse` を設定しておく。以降は push で両方デプロイされる |
 
 ---
 
