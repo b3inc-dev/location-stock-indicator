@@ -61,7 +61,7 @@
 | 項目例 | min | max | step | default | 備考 |
 |--------|-----|-----|------|---------|------|
 | ブロックの文字サイズ（font_size） | 12 | 24 | 1 | 16 | px。スニペット側で em に換算しても可 |
-| エリア見出しの文字サイズ | 12 | 20 | 1 | 14 | px |
+| エリア見出しの文字サイズ | 8 | 20 | 1 | 14 | px |
 
 ※ ボタンの文字サイズは「ボタンの種類」に含め、個別 range は持たない。
 
@@ -84,7 +84,7 @@
 | 最大幅（content_max_width） | 0 | 1200 | 20 | 600 | px。0 のときは 100%（横幅いっぱい） |
 | ロケーション列の幅（%） | 30 | 80 | 5 | 70 | テーブル時。**ボタン表示時も同じ値で効く**（変更しない） |
 | ボタン列の幅（%） | 15 | 45 | 5 | 25 | テーブルでボタン表示時のみ。`order_pick_col_width` |
-| ボタンの文字余白（px） | 4 | 24 | 2 | 8 | `order_pick_btn_padding` |
+| ボタンの文字余白（px） | 0 | 24 | 2 | 8 | `order_pick_btn_padding` |
 
 → 最大幅だけ 0 = 100% の特別扱い。それ以外は range の数値をそのまま使う。
 
@@ -141,7 +141,7 @@
 | 35 | ボタンの種類（スタイル） | order_pick_btn_style | select | 7種類：solid/outline×square/round/pill、ghost |
 | 36 | ボタン背景色 | order_pick_btn_background | color | 未指定時は #f5f5f5 |
 | 37 | ボタン文字色 | order_pick_btn_color | color | 未指定時は #333 |
-| 38 | ボタンの文字余白（px） | order_pick_btn_padding | range | 4〜24、default 8 |
+| 38 | ボタンの文字余白（px） | order_pick_btn_padding | range | 0〜24、default 8 |
 | 39 | ボタン列の幅（テーブル時・%） | order_pick_col_width | range | 15〜45、default 25。区切り線はなし |
 | 40 | ボタンの左右位置 | order_pick_btn_align | select | left/center/right（テーブル・リスト・2行とも反映） |
 | **6. その他** | | | | |
