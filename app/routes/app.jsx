@@ -1,21 +1,33 @@
 // app/routes/app.jsx
 
-import { Outlet, useLoaderData, useNavigation, useRouteError } from "react-router";
+import { Outlet, redirect, useLoaderData, useNavigation, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { authenticate } from "../shopify.server";
+import { getShopPlan } from "../utils/shopPlan.server.js";
 
 export const loader = async ({ request }) => {
-  await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
+  const shopPlan = await getShopPlan(admin, session?.shop);
+
+  // ロケーション数とプランが一致していない場合は、ホームと料金プラン以外へはアクセスさせずプラン変更を促す
+  if (shopPlan.locationPlanMismatch) {
+    const url = new URL(request.url);
+    const path = url.pathname;
+    if (path !== "/app" && path !== "/app/plan" && !path.startsWith("/app/plan?")) {
+      return redirect("/app/plan?mismatch=1");
+    }
+  }
 
   // eslint-disable-next-line no-undef
-  return { apiKey: process.env.SHOPIFY_API_KEY || "" };
+  return { apiKey: process.env.SHOPIFY_API_KEY || "", shopPlan };
 };
 
 export default function App() {
-  const { apiKey } = useLoaderData();
+  const { apiKey, shopPlan } = useLoaderData();
   const navigation = useNavigation();
   const isLoading = navigation.state === "loading";
+  const showPlanLink = shopPlan?.distribution === "public";
 
   return (
     <AppProvider embedded apiKey={apiKey}>
@@ -43,9 +55,10 @@ export default function App() {
         <s-link href="/app/locations">ロケーション設定</s-link>
         <s-link href="/app/settings">在庫表示設定</s-link>
         <s-link href="/app/analytics">分析</s-link>
+        {showPlanLink && <s-link href="/app/plan">料金プラン</s-link>}
       </s-app-nav>
 
-      <Outlet />
+      <Outlet context={{ shopPlan }} />
     </AppProvider>
   );
 }

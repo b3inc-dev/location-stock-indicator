@@ -1,7 +1,7 @@
 // app/routes/app.analytics.jsx
 
 import { useState, useMemo, useCallback } from "react";
-import { useLoaderData } from "react-router";
+import { useLoaderData, useOutletContext, Link } from "react-router";
 import { authenticate } from "../shopify.server";
 import { getAnalyticsDailyData } from "../analytics.server";
 
@@ -105,6 +105,51 @@ function csvEscape(str) {
 
 export default function AppAnalytics() {
   const { locations, dailyData: initialDailyData } = useLoaderData();
+  const outletContext = useOutletContext();
+  const shopPlan = outletContext?.shopPlan ?? null;
+  const isPro = shopPlan?.distribution === "inhouse" || shopPlan?.plan === "pro";
+
+  if (!isPro && shopPlan?.distribution === "public") {
+    return (
+      <s-page heading="分析">
+        <div style={{ padding: "16px", maxWidth: "560px" }}>
+          <div
+            style={{
+              padding: "24px",
+              background: "#fff",
+              borderRadius: "8px",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+              border: "1px solid #e1e3e5",
+              textAlign: "center",
+            }}
+          >
+            <div style={{ fontSize: "16px", fontWeight: 700, color: "#202223", marginBottom: "8px" }}>
+              分析は Pro プランでご利用いただけます
+            </div>
+            <div style={{ fontSize: "14px", color: "#6d7175", marginBottom: "16px", lineHeight: 1.5 }}>
+              エリア表示回数・近隣店舗クリック・店舗受け取りボタンクリックなどの分析機能は、Pro プランにアップグレードするとご利用できます。
+            </div>
+            <Link
+              to="/app/plan"
+              style={{
+                display: "inline-block",
+                padding: "10px 20px",
+                background: "#2c6ecb",
+                color: "#fff",
+                borderRadius: "6px",
+                fontSize: "14px",
+                fontWeight: 600,
+                textDecoration: "none",
+              }}
+            >
+              料金プランを見る
+            </Link>
+          </div>
+        </div>
+      </s-page>
+    );
+  }
+
   const [startDate, setStartDate] = useState(() => getDefaultDateRange().startStr);
   const [endDate, setEndDate] = useState(() => getDefaultDateRange().endStr);
   // 空 = 全て選択。ロケーションIDの Set で「選択中」を表す（空なら全ロケーション表示）
@@ -116,7 +161,10 @@ export default function AppAnalytics() {
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [initialDailyData, startDate, endDate]);
 
-  // 表示するロケーション（未選択＝全て）
+  // 「全て」のみ選択＝空 Set のとき。個別ロケーションは選択されていない状態で表示
+  const isAllLocationsSelected = selectedLocationIds.size === 0;
+
+  // 表示するロケーション（「全て」選択時は全件、それ以外は選択した ID のみ）
   const filteredLocations = useMemo(() => {
     if (selectedLocationIds.size === 0) return locations;
     return locations.filter((loc) => selectedLocationIds.has(loc.id));
@@ -152,8 +200,8 @@ export default function AppAnalytics() {
     (locId) => {
       setSelectedLocationIds((prev) => {
         if (prev.size === 0) {
-          // 現在「全て」→ この1つを外す = この1つ以外を表示
-          return new Set(locations.filter((l) => l.id !== locId).map((l) => l.id));
+          // 現在「全て」→ タップしたロケーションのみ選択
+          return new Set([locId]);
         }
         const next = new Set(prev);
         if (next.has(locId)) next.delete(locId);
@@ -167,8 +215,6 @@ export default function AppAnalytics() {
   const selectAllLocations = useCallback(() => {
     setSelectedLocationIds(new Set());
   }, []);
-
-  const isAllLocationsSelected = selectedLocationIds.size === 0;
 
   const handleDownloadCSV = useCallback(() => {
     const headers = [
@@ -292,7 +338,7 @@ export default function AppAnalytics() {
                   <span style={{ fontWeight: isAllLocationsSelected ? 600 : 500 }}>全て</span>
                 </div>
                 {locations.map((loc) => {
-                  const isSelected = isAllLocationsSelected || selectedLocationIds.has(loc.id);
+                  const isSelected = selectedLocationIds.has(loc.id);
                   return (
                     <div
                       key={loc.id}

@@ -2,6 +2,7 @@
 
 import shopify from "../shopify.server";
 import { recordAnalyticsEvent } from "../analytics.server";
+import { getShopPlan } from "../utils/shopPlan.server.js";
 
 /**
  * バリアント在庫 + ショップメタフィールド(location_stock.config) をまとめて取得
@@ -741,7 +742,28 @@ export async function loader({ request }) {
     const stocks = applyConfigToStocks(baseStocks, rawConfig || {});
 
     // グローバル設定（config）を構築
-    const globalConfig = buildGlobalConfig(rawConfig || {});
+    let globalConfig = buildGlobalConfig(rawConfig || {});
+
+    // Lite のときは Pro 専用機能を強制 OFF（ダウングレード後もストアフロントで出さない）
+    try {
+      const shopPlan = await getShopPlan(admin, session?.shop);
+      const isPro = shopPlan?.distribution === "inhouse" || shopPlan?.plan === "pro";
+      if (!isPro && shopPlan?.distribution === "public") {
+        globalConfig = {
+          ...globalConfig,
+          future: {
+            ...globalConfig.future,
+            groupByRegion: false,
+            regionAccordionEnabled: false,
+            nearbyFirstEnabled: false,
+            nearbyOtherCollapsible: false,
+            showOrderPickButton: false,
+          },
+        };
+      }
+    } catch (_) {
+      // プラン取得失敗時は config をそのまま返す（既存挙動を維持）
+    }
 
     return successJson({
       variantId,

@@ -1,7 +1,7 @@
 // app/routes/app.locations.jsx
 
 import { useRef, useState, useMemo, useEffect } from "react";
-import { useLoaderData, useFetcher, useRevalidator } from "react-router";
+import { useLoaderData, useFetcher, useRevalidator, useOutletContext } from "react-router";
 import shopify from "../shopify.server";
 
 /**
@@ -514,8 +514,66 @@ const defaultFuture = {
   showLocationLinks: false,
 };
 
+/** Pro プラン用バッジ（タイトル横に表示） */
+function ProBadge() {
+  return (
+    <span
+      style={{
+        fontSize: 11,
+        padding: "2px 6px",
+        background: "#2c6ecb",
+        color: "#fff",
+        borderRadius: 4,
+        fontWeight: 600,
+      }}
+    >
+      Pro
+    </span>
+  );
+}
+
+/** Lite のとき Pro 専用セクションをグレーアウト＋編集不可にするラッパー */
+function ProSectionWrapper({ isPro, children }) {
+  if (isPro) return children;
+  return (
+    <div style={{ position: "relative" }}>
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "rgba(240, 240, 240, 0.82)",
+          zIndex: 10,
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "center",
+          paddingTop: 48,
+          borderRadius: 12,
+          pointerEvents: "auto",
+        }}
+      >
+        <span
+          style={{
+            background: "#6d7175",
+            color: "#fff",
+            padding: "8px 16px",
+            borderRadius: 6,
+            fontSize: 14,
+            fontWeight: 500,
+          }}
+        >
+          Pro プランでご利用いただけます
+        </span>
+      </div>
+      <div style={{ pointerEvents: "none", userSelect: "none" }}>{children}</div>
+    </div>
+  );
+}
+
 export default function LocationsConfigPage() {
   const loaderData = useLoaderData();
+  const outletContext = useOutletContext();
+  const shopPlan = outletContext?.shopPlan ?? null;
+  const isPro = shopPlan?.distribution === "inhouse" || shopPlan?.plan === "pro";
   const {
     rows: initialRows,
     shopId,
@@ -591,35 +649,56 @@ export default function LocationsConfigPage() {
   };
 
   const handleSave = () => {
+    // Lite のときは Pro 専用項目を保存しない（OFF で送る）
+    const formFuture = isPro
+      ? future
+      : {
+          ...future,
+          groupByRegion: false,
+          regionAccordionEnabled: false,
+          nearbyFirstEnabled: false,
+          nearbyOtherCollapsible: false,
+          nearbyHeading: "",
+          nearbyOtherHeading: "",
+          showOrderPickButton: false,
+          orderPickButtonLabel: "この店舗で受け取る",
+          orderPickAddingLabel: "",
+          orderPickAddedLabel: "追加しました",
+          orderPickOutOfStockLabel: "Sold Out",
+          orderPickModalTitle: "カートに追加しました（{count}点）",
+          orderPickModalBody: "チェックアウトページでお届け先を「受取」を選択して受取ご希望の店舗をご選択ください。",
+          orderPickRedirectToCheckout: false,
+        };
     const formData = new FormData();
     formData.set("shopId", shopId);
     formData.set("sort_mode", sortMode);
     if (pinnedLocationId) formData.set("pinnedLocationId", pinnedLocationId);
     formData.set("region_groups_json", JSON.stringify(regionGroups));
-    formData.set("future_group_by_region", future.groupByRegion ? "on" : "");
-    formData.set("future_region_accordion", future.regionAccordionEnabled ? "on" : "");
-    formData.set("future_nearby_first", future.nearbyFirstEnabled ? "on" : "");
-    formData.set("future_nearby_other_collapsible", future.nearbyOtherCollapsible ? "on" : "");
-    formData.set("future_nearby_heading", future.nearbyHeading || "");
-    formData.set("future_nearby_other_heading", future.nearbyOtherHeading || "");
-    formData.set("future_show_order_pick_button", future.showOrderPickButton ? "on" : "");
-    formData.set("future_order_pick_button_label", future.orderPickButtonLabel || "この店舗で受け取る");
-    formData.set("future_order_pick_adding_label", future.orderPickAddingLabel ?? "");
-    formData.set("future_order_pick_added_label", future.orderPickAddedLabel || "追加しました");
-    formData.set("future_order_pick_out_of_stock_label", future.orderPickOutOfStockLabel || "Sold Out");
-    formData.set("future_order_pick_modal_title", future.orderPickModalTitle ?? "カートに追加しました（{count}点）");
-    formData.set("future_order_pick_modal_body", future.orderPickModalBody ?? "チェックアウトページでお届け先を「受取」を選択して受取ご希望の店舗をご選択ください。");
-    formData.set("future_order_pick_redirect_to_checkout", future.orderPickRedirectToCheckout ? "on" : "");
-    formData.set("future_region_unset_label", future.regionUnsetLabel || "その他");
-    formData.set("future_show_location_links", future.showLocationLinks ? "on" : "");
+    formData.set("future_group_by_region", formFuture.groupByRegion ? "on" : "");
+    formData.set("future_region_accordion", formFuture.regionAccordionEnabled ? "on" : "");
+    formData.set("future_nearby_first", formFuture.nearbyFirstEnabled ? "on" : "");
+    formData.set("future_nearby_other_collapsible", formFuture.nearbyOtherCollapsible ? "on" : "");
+    formData.set("future_nearby_heading", formFuture.nearbyHeading || "");
+    formData.set("future_nearby_other_heading", formFuture.nearbyOtherHeading || "");
+    formData.set("future_show_order_pick_button", formFuture.showOrderPickButton ? "on" : "");
+    formData.set("future_order_pick_button_label", formFuture.orderPickButtonLabel || "この店舗で受け取る");
+    formData.set("future_order_pick_adding_label", formFuture.orderPickAddingLabel ?? "");
+    formData.set("future_order_pick_added_label", formFuture.orderPickAddedLabel || "追加しました");
+    formData.set("future_order_pick_out_of_stock_label", formFuture.orderPickOutOfStockLabel || "Sold Out");
+    formData.set("future_order_pick_modal_title", formFuture.orderPickModalTitle ?? "カートに追加しました（{count}点）");
+    formData.set("future_order_pick_modal_body", formFuture.orderPickModalBody ?? "チェックアウトページでお届け先を「受取」を選択して受取ご希望の店舗をご選択ください。");
+    formData.set("future_order_pick_redirect_to_checkout", formFuture.orderPickRedirectToCheckout ? "on" : "");
+    formData.set("future_region_unset_label", formFuture.regionUnsetLabel || "その他");
+    formData.set("future_show_location_links", formFuture.showLocationLinks ? "on" : "");
     rows.forEach((r) => {
       formData.append("locationId", r.locationId);
       formData.append("publicName", r.publicName || "");
       formData.append("sortOrder", String(r.sortOrder));
-      formData.append("regionGroupId", r.locationId === pinnedLocationId ? "" : (r.regionGroupId || ""));
+      // Lite のときはエリア・近隣除外は保存しない（Pro 専用のため空で送る）
+      formData.append("regionGroupId", isPro ? (r.locationId === pinnedLocationId ? "" : (r.regionGroupId || "")) : "");
       formData.append("linkUrl", r.linkUrl || "");
       if (r.enabled) formData.append("enabledLocationId", r.locationId);
-      if (r.excludeFromNearby) formData.append("excludeFromNearbyLocationId", r.locationId);
+      if (isPro && r.excludeFromNearby) formData.append("excludeFromNearbyLocationId", r.locationId);
     });
     fetcher.submit(formData, { method: "post" });
   };
@@ -765,7 +844,8 @@ export default function LocationsConfigPage() {
           </div>
         </div>
 
-        {/* エリア設定：最上部にグルーピング・折りたたみ・未設定見出し、その下にグループ一覧 */}
+        {/* エリア/近隣店舗のデザイン（Pro）：エリア設定＋近隣店舗表示設定の見出し */}
+        <ProSectionWrapper isPro={isPro}>
         <div
           style={{
             display: "flex",
@@ -776,7 +856,10 @@ export default function LocationsConfigPage() {
           }}
         >
           <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>エリア設定</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <span style={{ fontWeight: 600, fontSize: 14, color: "#202223" }}>エリア/近隣店舗のデザイン（Proプラン）</span>
+              <ProBadge />
+            </div>
             <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
               「エリアでグルーピング」をONにしたとき、ここで登録したグループ名で商品ページの在庫がまとまって表示されます。表示順は右のカードの並び順（数字・上下ボタン）の通りです。下のロケーション一覧の「エリア」列で各ロケーションをどのグループに含めるか選べます。
             </div>
@@ -900,11 +983,16 @@ export default function LocationsConfigPage() {
             </div>
           </div>
         </div>
+        </ProSectionWrapper>
 
-        {/* 近隣店舗表示設定：左＝タイトル・説明、右＝カード */}
+        {/* 近隣店舗表示設定：左＝タイトル・説明、右＝カード（Pro） */}
+        <ProSectionWrapper isPro={isPro}>
         <div style={{ display: "flex", gap: "24px", alignItems: "flex-start", flexWrap: "wrap", marginBottom: "24px" }}>
           <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>近隣店舗表示設定</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <span style={{ fontWeight: 600, fontSize: 14, color: "#202223" }}>近隣店舗表示設定（Proプラン）</span>
+              <ProBadge />
+            </div>
             <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
               チェックを入れると商品ページの在庫一覧の最上部に「近隣店舗」アコーディオンが表示されます。顧客がクリックすると位置情報の許可が求められ、許可すると一番近い店舗がアコーディオン内に表示されます。本社・倉庫など近隣検索から除外したいロケーションは、下のロケーション一覧の「近隣除外」でONにしてください。
             </div>
@@ -940,11 +1028,16 @@ export default function LocationsConfigPage() {
             </div>
           </div>
         </div>
+        </ProSectionWrapper>
 
-        {/* 店舗受取設定：左＝タイトル・説明、右＝カード */}
+        {/* 店舗受取設定：左＝タイトル・説明、右＝カード（Pro） */}
+        <ProSectionWrapper isPro={isPro}>
         <div style={{ display: "flex", gap: "24px", alignItems: "flex-start", flexWrap: "wrap", marginBottom: "24px" }}>
           <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>店舗受取設定</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <span style={{ fontWeight: 600, fontSize: 14, color: "#202223" }}>店舗受け取りボタン（Proプラン）</span>
+              <ProBadge />
+            </div>
             <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
               「この店舗で受け取る」ボタンを表示すると、各ロケーション行に店舗受け取り用のボタンが表示されます。ボタンをタップするとデフォルトでカートに追加されます。「ボタンタップ後にチェックアウトまでリダイレクトする」をONにすると、カートに追加したあとそのままチェックアウトページへ移動します。ボタンの見た目はテーマのカスタマイザーで変更できます。
             </div>
@@ -987,6 +1080,7 @@ export default function LocationsConfigPage() {
             </div>
           </div>
         </div>
+        </ProSectionWrapper>
 
         {/* ロケーション名のリンク設定：一括でリンク表示ON/OFF ＋ 行ごとにURL入力 */}
         <div style={{ display: "flex", gap: "24px", alignItems: "flex-start", flexWrap: "wrap", marginBottom: "24px" }}>
@@ -1245,9 +1339,16 @@ export default function LocationsConfigPage() {
                           padding: "8px 12px",
                           minWidth: 120,
                           verticalAlign: "middle",
+                          ...(!isPro ? { background: "rgba(240,240,240,0.5)", color: "#6d7175" } : {}),
                         }}
                       >
-                        {row.locationId === pinnedLocationId ? (
+                        {!isPro ? (
+                          <span style={{ fontSize: 13, color: "#6d7175" }} title="Proプランで編集可能">
+                            {row.regionGroupId
+                              ? (regionGroups.find((g) => g.id === row.regionGroupId)?.name ?? "—")
+                              : "—"}
+                          </span>
+                        ) : row.locationId === pinnedLocationId ? (
                           <span style={{ fontSize: 13, color: "#6d7175" }}>上部固定のためエリアは変更できません</span>
                         ) : (
                           <select
@@ -1372,19 +1473,26 @@ export default function LocationsConfigPage() {
                           padding: "8px 12px",
                           textAlign: "center",
                           verticalAlign: "middle",
+                          ...(!isPro ? { background: "rgba(240,240,240,0.5)" } : {}),
                         }}
                       >
-                        <input
-                          type="checkbox"
-                          checked={!!row.excludeFromNearby}
-                          onChange={(e) =>
-                            updateRow(row.locationId, {
-                              excludeFromNearby: e.target.checked,
-                            })
-                          }
-                          style={{ width: 16, height: 16 }}
-                          title="ONにすると近隣店舗の検索対象から外れます（本社・倉庫など）"
-                        />
+                        {!isPro ? (
+                          <span style={{ fontSize: 13, color: "#6d7175" }} title="Proプランで編集可能">
+                            {row.excludeFromNearby ? "ON" : "—"}
+                          </span>
+                        ) : (
+                          <input
+                            type="checkbox"
+                            checked={!!row.excludeFromNearby}
+                            onChange={(e) =>
+                              updateRow(row.locationId, {
+                                excludeFromNearby: e.target.checked,
+                              })
+                            }
+                            style={{ width: 16, height: 16 }}
+                            title="ONにすると近隣店舗の検索対象から外れます（本社・倉庫など）"
+                          />
+                        )}
                       </td>
                       <td
                         style={{

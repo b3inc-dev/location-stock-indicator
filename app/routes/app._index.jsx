@@ -1,6 +1,6 @@
 // app/routes/app._index.jsx
 
-import { Link, useLoaderData } from "react-router";
+import { Link, useLoaderData, useOutletContext } from "react-router";
 import { authenticate } from "../shopify.server";
 
 /**
@@ -126,10 +126,26 @@ function SummaryCard({ title, children, style = {} }) {
 }
 
 /**
- * /app の Home 画面（POS Stock のカード構成に準拠）
+ * /app の Home 画面（POS Stock のカード構成に準拠：プラン・ロケーション数＋導入ステップ）
  */
 export default function AppIndex() {
   const { shop } = useLoaderData();
+  const outletContext = useOutletContext();
+  const shopPlan = outletContext?.shopPlan ?? null;
+  const distribution = shopPlan?.distribution;
+  const plan = shopPlan?.plan;
+  const locationsCount = shopPlan?.locationsCount ?? 0;
+  const isDevelopmentStore = shopPlan?.isDevelopmentStore ?? false;
+  const isInhouse = distribution === "inhouse";
+  const showBillingNote = !isInhouse && isDevelopmentStore;
+
+  const planLabel =
+    plan === "pro"
+      ? "Pro"
+      : plan === "lite"
+        ? "Lite（7日間トライアル中）"
+        : "プランが選択されていません";
+
   return (
     <s-page heading="ホーム">
       <style>{`
@@ -154,11 +170,35 @@ export default function AppIndex() {
       `}</style>
       <div className="HomePage-layout">
         <div className="HomePage-summary">
-          <SummaryCard title="このアプリについて" style={{ marginBottom: "16px" }}>
-            <div style={{ fontSize: "14px", color: "#202223", lineHeight: 1.5 }}>
-              ストアのロケーションごとの在庫を、商品ページに表示するためのアプリです。
-              表示名・並び順・表示／非表示、在庫マークや表示ルールをアプリ側で一括管理できます。
+          <SummaryCard title="現在の料金プラン" style={{ marginBottom: "16px" }}>
+            <div style={{ marginBottom: "8px", fontSize: "18px", fontWeight: 700, color: "#202223" }}>
+              {planLabel}
             </div>
+            {!isInhouse && !plan && (
+              <Link to="/app/plan" style={{ fontSize: "14px", color: "#2c6ecb" }}>
+                料金プランを選択する
+              </Link>
+            )}
+            {!isInhouse && plan === "lite" && (
+              <Link to="/app/plan" style={{ fontSize: "14px", color: "#2c6ecb" }}>
+                アップグレードして全機能を使いましょう
+              </Link>
+            )}
+            {isInhouse && (
+              <span style={{ fontSize: "14px", color: "#6d7175" }}>
+                全機能をご利用いただけます
+              </span>
+            )}
+            {showBillingNote && (
+              <span style={{ fontSize: "14px", color: "#6d7175", display: "block", marginTop: "4px" }}>
+                開発ストアのため課金は発生しません
+              </span>
+            )}
+          </SummaryCard>
+
+          <SummaryCard title="ロケーション数">
+            <span style={{ fontSize: "18px", fontWeight: 700, color: "#202223" }}>{locationsCount}</span>
+            <span style={{ marginLeft: "4px", fontSize: "14px", color: "#6d7175" }}>ロケーション</span>
           </SummaryCard>
         </div>
         <div className="HomePage-steps">
