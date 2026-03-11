@@ -4,6 +4,7 @@ import { Outlet, redirect, useLoaderData, useNavigation, useRouteError } from "r
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { authenticate } from "../shopify.server";
+import { AppNavBar } from "../components/AppNavBar";
 import { getShopPlan } from "../utils/shopPlan.server.js";
 
 export const loader = async ({ request }) => {
@@ -57,6 +58,8 @@ export default function App() {
         <s-link href="/app/analytics">分析</s-link>
         {showPlanLink && <s-link href="/app/plan">料金プラン</s-link>}
       </s-app-nav>
+      {/* 上部メニュー（s-app-nav が表示されない環境用・常に表示） */}
+      <AppNavBar shopPlan={shopPlan} />
 
       <Outlet context={{ shopPlan }} />
     </AppProvider>
