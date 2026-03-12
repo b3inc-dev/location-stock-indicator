@@ -16,7 +16,7 @@ const LOCATIONS_AND_CONFIG_QUERY = `#graphql
         value
       }
     }
-    locations(first: 100) {
+    locations(first: 250) {
       nodes {
         id
         name
@@ -38,7 +38,7 @@ const DELIVERY_PROFILES_QUERY = `#graphql
       nodes {
         profileLocationGroups {
           locationGroup {
-            locations(first: 100) {
+            locations(first: 250) {
               nodes {
                 id
               }

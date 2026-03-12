@@ -81,18 +81,13 @@ export async function getShopPlan(admin, currentShop) {
       `,
       { variables: { first: 250 } }
     );
-    const text = typeof resp?.text === "function" ? await resp.text() : "";
-    if (text && String(text).trim()) {
-      try {
-        const data = JSON.parse(text);
-        const d = data?.data;
-        locationsCount = d?.locations?.nodes?.length ?? 0;
-        isDevelopmentStore = d?.shop?.plan?.partnerDevelopment === true;
-        activeSubscriptions = d?.currentAppInstallation?.activeSubscriptions ?? [];
-        planFromBilling = getPlanFromActiveSubscriptions(activeSubscriptions);
-      } catch {
-        // ignore parse error
-      }
+    const data = await resp.json().catch(() => null);
+    if (data) {
+      const d = data?.data;
+      locationsCount = d?.locations?.nodes?.length ?? 0;
+      isDevelopmentStore = d?.shop?.plan?.partnerDevelopment === true;
+      activeSubscriptions = d?.currentAppInstallation?.activeSubscriptions ?? [];
+      planFromBilling = getPlanFromActiveSubscriptions(activeSubscriptions);
     }
   } catch {
     // ignore

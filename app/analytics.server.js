@@ -37,7 +37,7 @@ function ensureDay(obj) {
 }
 
 function incrementLocationMap(map, locationId, delta = 1) {
-  const id = String(locationId);
+  const id = String(locationId ?? "").trim();
   if (!id) return;
   const next = { ...map };
   next[id] = (next[id] || 0) + delta;

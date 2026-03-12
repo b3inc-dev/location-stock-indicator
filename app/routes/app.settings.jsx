@@ -226,7 +226,7 @@ export async function action({ request }) {
   const displayShowLegend = formData.get("display_show_legend");
   const displayShowNotice = formData.get("display_show_notice");
   const displayRowContentMode = (formData.get("display_row_content_mode") || "symbol_and_quantity").toString().trim();
-  const displayListSeparator = (formData.get("display_list_separator") || "： ").toString().trim();
+  const displayListSeparator = (formData.get("display_list_separator") ?? "： ").toString();
 
   try {
     // まず現在の config を取得
@@ -295,21 +295,12 @@ export async function action({ request }) {
         lowStock: labelLowStock || "残りわずか",
         outOfStock: labelOutOfStock || "在庫なし",
       },
-      // メッセージ文言
+      // メッセージ文言（空文字列も意図的な設定として保存する）
       messages: {
         ...(rawConfig.messages || {}),
-        loading:
-          messageLoading ||
-          rawConfig?.messages?.loading ||
-          "在庫を読み込み中...",
-        empty:
-          messageEmpty ||
-          rawConfig?.messages?.empty ||
-          "現在、この商品の店舗在庫はありません。",
-        error:
-          messageError ||
-          rawConfig?.messages?.error ||
-          "在庫情報の取得に失敗しました。時間をおいて再度お試しください。",
+        loading: messageLoading !== "" ? messageLoading : (rawConfig?.messages?.loading ?? "在庫を読み込み中..."),
+        empty: messageEmpty !== "" ? messageEmpty : (rawConfig?.messages?.empty ?? "現在、この商品の店舗在庫はありません。"),
+        error: messageError !== "" ? messageError : (rawConfig?.messages?.error ?? "在庫情報の取得に失敗しました。時間をおいて再度お試しください。"),
       },
       // 共通注意書き
       notice: {

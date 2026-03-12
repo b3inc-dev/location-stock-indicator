@@ -15,7 +15,7 @@ const VARIANT_INVENTORY_WITH_CONFIG_QUERY = `#graphql
       title
       inventoryItem {
         id
-        inventoryLevels(first: 50) {
+        inventoryLevels(first: 250) {
           edges {
             node {
               id
