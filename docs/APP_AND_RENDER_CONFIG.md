@@ -176,3 +176,20 @@ npx shopify app deploy --force
 ```
 
 バックエンド（Node サーバー）は、それぞれの Render サービスが main ブランチを参照している場合、`git push origin main` でそれぞれ自動デプロイされます。手動で行う場合は、各 Render のダッシュボードから **Manual Deploy** を実行してください。
+
+---
+
+## 6. 他アプリのレビュー用エンドポイント（自社用 Render のみ）
+
+Location Stock の自社用 Render（location-stock-indicator-ciara）を「借りて」、**別の Shopify アプリ**の審査用に次のパスを用意しています。認証だけ通したい場合に利用します。
+
+| パス | 説明 |
+|------|------|
+| `GET /review-app` | レビュー用トップ。200 で `review app ok` を返す。 |
+| `GET /review-app/auth/callback` | レビュー用認証コールバック。200 で `review auth callback ok` を返す。 |
+
+- **有効になる条件**: 環境変数 `APP_DISTRIBUTION=inhouse` のときのみ 200 を返す。公開用 Render では 404 を返す。
+- **実装**: `app/routes/review-app.jsx`（レイアウト）、`app/routes/review-app._index.jsx`、`app/routes/review-app.auth.callback.jsx`。
+- **使い方**: 他アプリの Partners 設定で、App URL や認証コールバック URL を  
+  `https://location-stock-indicator-ciara.onrender.com/review-app` および  
+  `https://location-stock-indicator-ciara.onrender.com/review-app/auth/callback` に設定する。
