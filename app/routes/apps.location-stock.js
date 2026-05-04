@@ -3,6 +3,7 @@
 import shopify from "../shopify.server";
 import { recordAnalyticsEvent } from "../analytics.server";
 import { getShopPlan } from "../utils/shopPlan.server.js";
+import { ensureOfflineAccessTokenFresh } from "../utils/refresh-offline-session.js";
 
 /**
  * バリアント在庫 + ショップメタフィールド(location_stock.config) をまとめて取得
@@ -594,6 +595,14 @@ export async function loader({ request }) {
     const auth = await shopify.authenticate.public.appProxy(request);
     const { admin, session } = auth || {};
 
+    if (session) {
+      try {
+        await ensureOfflineAccessTokenFresh(session);
+      } catch (refreshErr) {
+        console.error("[location-stock] offline token refresh (loader):", refreshErr);
+      }
+    }
+
     if (!admin) {
       logAppProxyError(
         session?.shop,
@@ -804,6 +813,15 @@ export async function action({ request }) {
   try {
     const auth = await shopify.authenticate.public.appProxy(request);
     const { admin, session } = auth || {};
+
+    if (session) {
+      try {
+        await ensureOfflineAccessTokenFresh(session);
+      } catch (refreshErr) {
+        console.error("[location-stock] offline token refresh (action):", refreshErr);
+      }
+    }
+
     if (!admin) {
       return new Response(JSON.stringify({ ok: false, error: "Unauthorized" }), {
         status: 401,
