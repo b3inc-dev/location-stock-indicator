@@ -54,7 +54,8 @@
 - `preview:pr` 時に `package.json` / `package-lock.json` が `origin/main` から変わっていれば、`cd ../ciara-system-preview && npm ci` が必要である旨を表示する（既存環境破壊を避けるため自動実行しない）。
 - Prisma schema / migrations の差分は警告のみ。`db push`・migration apply・production DB 接続・production sync は**絶対に自動実行しない**。
 - Preview worktree が dirty のとき `git reset --hard` / `git clean -fd` は使わない。
-- 既定の Preview パスはリポジトリ隣の `../ciara-system-preview`。書き込み不可な環境では `LOCATION_STOCK_PREVIEW_DIR` で上書きできる。
+- 既定の Preview パスはリポジトリ隣の `../ciara-system-preview`。書き込み不可な環境では `LOCATION_STOCK_PREVIEW_DIR` で上書きできる（**本体 checkout と同じパスは拒否**）。
+- `preview:dev` は `--no-update` 付きで起動し、Shopify アプリの remote URL を dev 用に書き換えない。
 - 本番反映（承認済み PR の main merge 等）は既存の本番リリース手順・承認ゲートに従う。本 workflow 自体は merge / deploy を行わない。
 
 ---

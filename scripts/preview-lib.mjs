@@ -114,6 +114,34 @@ export function sameGitCommonDir(a, b) {
   return path.resolve(a, commonA) === path.resolve(b, commonB);
 }
 
+function realpathOrResolve(p) {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return path.resolve(p);
+  }
+}
+
+/**
+ * Preview path must never be the main checkout, or preview:pr would
+ * switch the developer's working branch via `git checkout -B`.
+ */
+export function assertPreviewPathSafe(root = repoRoot()) {
+  const target = previewPath(root);
+  const rootReal = realpathOrResolve(root);
+  const targetReal = realpathOrResolve(target);
+  if (targetReal === rootReal) {
+    die(
+      [
+        `Preview パスが本体 checkout と同じです。本体 branch を切り替える危険があるため停止します。`,
+        `  path: ${target}`,
+        `  既定: <repo>/../${PREVIEW_DIR_NAME}`,
+        `  LOCATION_STOCK_PREVIEW_DIR を本体以外のディレクトリに設定してください。`,
+      ].join("\n"),
+    );
+  }
+}
+
 export function isWorktreeDirty(dir) {
   const porcelain = gitOutput(["status", "--porcelain"], dir);
   return porcelain.length > 0;
@@ -133,6 +161,7 @@ export function assertPreviewClean(dir) {
 
 export function ensurePreviewWorktree(root = repoRoot()) {
   assertMainRepo(root);
+  assertPreviewPathSafe(root);
   const target = previewPath(root);
 
   if (fs.existsSync(target)) {
@@ -169,26 +198,43 @@ export function ensurePreviewWorktree(root = repoRoot()) {
     allowFail: true,
   }).status === 0;
 
-  if (branchExists) {
-    // Branch exists but worktree missing — attach worktree to existing branch.
-    info(`branch ${PREVIEW_BRANCH} は既存のため、worktree のみ追加します。`);
-    runGit(["worktree", "add", target, PREVIEW_BRANCH], {
-      cwd: root,
-      stdio: "inherit",
-    });
-  } else {
-    runGit(["worktree", "add", "-b", PREVIEW_BRANCH, target, baseRef], {
-      cwd: root,
-      stdio: "inherit",
-    });
+  try {
+    if (branchExists) {
+      // Branch exists but worktree missing — attach worktree to existing branch.
+      info(`branch ${PREVIEW_BRANCH} は既存のため、worktree のみ追加します。`);
+      runGit(["worktree", "add", target, PREVIEW_BRANCH], {
+        cwd: root,
+        stdio: "inherit",
+      });
+    } else {
+      runGit(["worktree", "add", "-b", PREVIEW_BRANCH, target, baseRef], {
+        cwd: root,
+        stdio: "inherit",
+      });
+    }
+  } catch (err) {
+    die(
+      [
+        `Preview worktree の作成に失敗しました: ${target}`,
+        `  ${err.message?.split("\n")[0] || err}`,
+        `  ヒント: git worktree list / git worktree prune を確認し、残骸 path があれば手動整理してください。`,
+        `  禁止: git reset --hard / git clean -fd は使いません。`,
+      ].join("\n"),
+    );
   }
 
   ok(`Preview worktree を作成しました: ${target}`);
   info(`本体 worktree の branch は変更していません。`);
+  if (!fs.existsSync(path.join(target, "node_modules"))) {
+    info(
+      `初回は依存関係インストールが必要な場合があります: cd ${target} && npm ci`,
+    );
+  }
   return { path: target, created: true };
 }
 
 export function requirePreviewWorktree(root = repoRoot()) {
+  assertPreviewPathSafe(root);
   const target = previewPath(root);
   if (!fs.existsSync(target) || !isGitWorktreePath(target)) {
     die(
