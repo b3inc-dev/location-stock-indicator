@@ -1,3 +1,32 @@
+# Location Stock Indicator
+
+Shopifyの商品ページにロケーション別available在庫を表示する埋め込みアプリ。管理画面はReact Router、商品ページはTheme App Extension、在庫取得は認証付きApp Proxy `/apps/location-stock` を使います。
+
+| 対象 | Shopify設定 | Backend |
+|---|---|---|
+| 販売用 | `shopify.app.public.toml` | `location-stock-indicator.onrender.com` |
+| Ciaraカスタム用 | `shopify.app.toml` | `location-stock-indicator-ciara.onrender.com` |
+
+`shopify.app.ciara.toml`は存在しません。設定指定なしのdeploy先を推測しないでください。両Renderは同じmainを監視するため、main mergeは両backendの本番反映です。
+
+## 開発の入口
+
+- [AGENTS.md](AGENTS.md)：Codexの担当・作業分離・承認境界
+- [開発・テスト手順](docs/DEVELOPMENT.md)：開始順、準備、検証、PR記録
+- [PROJECT_CONTEXT](docs/PROJECT_CONTEXT.md) / [ARCHITECTURE](docs/ARCHITECTURE.md) / [BUSINESS_RULES](docs/BUSINESS_RULES.md)：現状構成・依存・仕様
+- [デプロイ手順](docs/DEPLOY_STEPS.md) / [環境・共通運用](docs/APP_AND_RENDER_CONFIG.md)
+- [BACKLOG](docs/BACKLOG.md)：未完了候補（依頼なしに着手しない）
+
+Nodeはpackage.jsonの `>=20.19 <22 || >=22.12` を満たす版を使用。専用worktreeで `npm ci` 後、`npm run lint`、`npm run typecheck`、`npm run build` を実行します。現在test scriptはなく、既存lint失敗もあります。開発ストア・ローカルSQLiteだけで検証し、本番credentialsを品質確認に使わないでください。
+
+スマホからは「対象版・変更したい挙動・期待する結果」をこのチャットへ送れば、Codexが調査からPRまで進めます。未確認の実ストア検証はPRへ残します。main merge・本番操作・URL/scope変更は明示承認待ちです。
+
+---
+
+## 元テンプレートの参考資料
+
+以下はShopify React Routerテンプレートの資料です。既存repoを初期化し直す手順として使わず、このrepoの運用・承認条件は上のdocsを優先してください。
+
 # Shopify App Template - React Router
 
 This is a template for building a [Shopify app](https://shopify.dev/docs/apps/getting-started) using [React Router](https://reactrouter.com/).  It was forked from the [Shopify Remix app template](https://github.com/Shopify/shopify-app-template-remix) and converted to React Router.
@@ -128,7 +157,7 @@ pnpm run build
 
 When you're ready to set up your app in production, you can follow [our deployment documentation](https://shopify.dev/docs/apps/launch/deployment) to host it externally. From there, you have a few options:
 
-- [Google Cloud Run](https://shopify.dev/docs/apps/launch/deployment/deploy-to-google-cloud-run): This tutorial is written specifically for this example repo, and is compatible with the extended steps included in the subsequent [**Build your app**](tutorial) in the **Getting started** docs. It is the most detailed tutorial for taking a React Router-based Shopify app and deploying it to production. It includes configuring permissions and secrets, setting up a production database, and even hosting your apps behind a load balancer across multiple regions. 
+- [Google Cloud Run](https://shopify.dev/docs/apps/launch/deployment/deploy-to-google-cloud-run): This tutorial is written specifically for this example repo, and is compatible with the extended steps included in the subsequent [**Build your app**](https://shopify.dev/docs/apps/getting-started) in the **Getting started** docs. It is the most detailed tutorial for taking a React Router-based Shopify app and deploying it to production. It includes configuring permissions and secrets, setting up a production database, and even hosting your apps behind a load balancer across multiple regions.
 - [Fly.io](https://fly.io/docs/js/shopify/): Leverages the Fly.io CLI to quickly launch Shopify apps to a single machine. 
 - [Render](https://render.com/docs/deploy-shopify-app): This tutorial guides you through using Docker to deploy and install apps on a Dev store. 
 - [Manual deployment guide](https://shopify.dev/docs/apps/launch/deployment/deploy-to-hosting-service): This resource provides general guidance on the requirements of deployment including environment variables, secrets, and persistent data. 

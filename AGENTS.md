@@ -71,3 +71,13 @@ npm run build
 - 未確認の仕様を docs やコードコメントに「仕様」として書くこと。
 - App Proxy の認証をバイパスする経路を追加すること。
 - 公開用と自社用の `SHOPIFY_API_KEY` / `SECRET` を取り違えること（別 Partners アプリ・別 Render）。
+
+## Codex単独での継続開発
+
+通常の担当はCodex。このチャットのユーザー指示とGitHubを正本に、合理的に判断できる調査・専用branch/worktree・実装・検証・自己レビュー・commit・push・PR作成まで自律的に進める。他チャットへの確認を通常工程にしない。独立レビューが必要な場合は読み取りレビューとして行い、ownerを移さない。既存の他tool作業は停止・handoff未確認で編集しない。
+
+開始順、検証、PR必須項目は [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) を参照。Backlogは [docs/BACKLOG.md](docs/BACKLOG.md) の候補一覧であり実行指示ではない。
+
+main merge、production Shopify/Render deploy、本番env・ストア設定変更、App Proxy URL変更、OAuth scope変更は、このチャットの明示承認まで停止する。以前のPRの承認を将来操作へ流用しない。App Proxyの後方互換性とGraphQL response shape・API version・Theme JS/Liquidへの影響を確認する。
+
+実repoの販売用は `shopify.app.public.toml`、Ciara用は `shopify.app.toml`。`shopify.app.ciara.toml` は存在しない。設定指定なしdeployを販売用と推測しない。両Renderがmainを監視するため、backend変更のmain mergeは両版へ影響する。

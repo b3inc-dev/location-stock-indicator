@@ -1,3 +1,5 @@
+> 現行運用（2026-10-04）: 通常ownerはCodex。開発・検証・PR必須項目は [DEVELOPMENT.md](DEVELOPMENT.md)、承認後の環境別手順は [DEPLOY_STEPS.md](DEPLOY_STEPS.md)。PR #2最終監査で両Renderのmain / On Commitとmain反映済みを確認した記録がある。以下の「未確認」「merge待ち」等の監査記述は当時の状態であり、最新証拠を優先する。過去承認は将来の本番操作へ流用しない。
+
 > Agent運用: 以下の本番手順は参照用です。専用branchからPRを作り、main反映は承認済みPRのmergeで行います。本番手動deploy・Shopify release・本番env変更は明示承認後のみ。今回の初期設定では実行しません。
 
 # 公開用・自社用アプリと Render の設定一覧
