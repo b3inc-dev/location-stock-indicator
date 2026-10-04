@@ -20,8 +20,33 @@ export function repoRoot() {
   return path.resolve(__dirname, "..");
 }
 
+/**
+ * Default: repo sibling `../ciara-system-preview`.
+ * Override with LOCATION_STOCK_PREVIEW_DIR when the sibling path is not writable
+ * (e.g. cloud agents whose checkout lives at /workspace).
+ */
 export function previewPath(root = repoRoot()) {
+  const override = process.env.LOCATION_STOCK_PREVIEW_DIR?.trim();
+  if (override) {
+    return path.resolve(override);
+  }
   return path.resolve(root, "..", PREVIEW_DIR_NAME);
+}
+
+function assertParentWritable(target) {
+  const parent = path.dirname(target);
+  try {
+    fs.mkdirSync(parent, { recursive: true });
+    fs.accessSync(parent, fs.constants.W_OK);
+  } catch {
+    die(
+      [
+        `Preview worktree の親ディレクトリに書き込めません: ${parent}`,
+        `  既定パス: <repo>/../${PREVIEW_DIR_NAME}`,
+        `  回避: LOCATION_STOCK_PREVIEW_DIR=/writable/path/${PREVIEW_DIR_NAME} npm run preview:setup`,
+      ].join("\n"),
+    );
+  }
 }
 
 export function runGit(args, { cwd, stdio = "pipe", allowFail = false } = {}) {
@@ -125,6 +150,8 @@ export function ensurePreviewWorktree(root = repoRoot()) {
     return { path: target, created: false };
   }
 
+  assertParentWritable(target);
+
   // Ensure we have origin/main for a clean base without touching current branch.
   runGit(["fetch", "origin", "main"], { cwd: root, stdio: "inherit", allowFail: true });
 
@@ -205,7 +232,18 @@ export function resolvePrHead(prNumber, root = repoRoot()) {
     };
   }
 
-  // Fallback: fetch pull ref
+  const ghErr = (gh.stderr || gh.stdout || "").trim();
+  if (/Could not resolve to a PullRequest|not found|does not exist/i.test(ghErr)) {
+    die(
+      [
+        `PR #${n} は存在しません。`,
+        ghErr,
+        `確認: gh pr view ${n}`,
+      ].join("\n  "),
+    );
+  }
+
+  // Fallback: fetch pull ref (e.g. gh unavailable / auth issue)
   info(`gh で PR #${n} を取得できませんでした。refs/pull/${n}/head を試します…`);
   const fetch = runGit(["fetch", "origin", `pull/${n}/head:refs/preview/pr-${n}`], {
     cwd: root,
@@ -215,7 +253,7 @@ export function resolvePrHead(prNumber, root = repoRoot()) {
     die(
       [
         `PR #${n} が見つからないか取得できませんでした。`,
-        gh.stderr?.trim() || fetch.stderr || "gh / git fetch の両方に失敗",
+        ghErr || fetch.stderr || "gh / git fetch の両方に失敗",
         `確認: gh pr view ${n}`,
       ].join("\n  "),
     );
