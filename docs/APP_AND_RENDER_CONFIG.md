@@ -81,7 +81,7 @@
 |------|-----------|----------------|
 | **切り分けのタイミング** | **デプロイ時**（`npm run deploy:public` / `deploy:inhouse` で `appUrl.js` の APP_MODE を書き換え→該当 toml で deploy） | **Render の環境変数**（公開用・自社用で **別サービス** なので、自社用の Render にだけ `APP_DISTRIBUTION=inhouse` を設定） |
 | **理由** | POS 拡張が「どちらのバックエンド URL を呼ぶか」を **ビルド時に** 決めるため、デプロイするアプリに合わせて APP_MODE を変える必要がある | ストアフロントは App Proxy の URL が **アプリごとに Partner で設定**されているため、同じコードでよい。バックエンドは「今どちらのサービスか」を **実行時の環境変数** で判定する |
-| **やること** | 公開用デプロイ時は `deploy:public`、自社用は `deploy:inhouse` を実行 | 自社用の Render に **一度** `APP_DISTRIBUTION=inhouse` を設定しておく。以降は push で両方デプロイされる |
+| **やること** | 公開用デプロイ時は `deploy:public`、自社用は `deploy:inhouse` を実行 | 自社用の Render に **一度** `APP_DISTRIBUTION=inhouse` を設定しておく。以降は各Renderの監視設定に従い承認済みPRのmain mergeでbackendが反映される（公開用の実設定は未確認） |
 
 ---
 
@@ -183,6 +183,8 @@ npx shopify app deploy --force
 ## Cursor・Codex・Claude Code 共通開発運用
 
 GitHub のコード・Issue・PR を正本とし、共通指示は `AGENTS.md` と本書に保存する。ツールの個人メモだけで仕様を確定しない。
+
+`AGENTS.md`は入口と制約、PROJECT_CONTEXT / ARCHITECTURE / BUSINESS_RULES / SHOPIFY / DECISIONSは横断調査サマリ、本書はowner・引き継ぎ・作業分離・品質・release条件の正本とする。横断サマリから本書へ参照し、共通workflowを複製しない。既存deploy docsのmain直push記述はPR経由に読み替える。
 
 - 1 logical workstream = 1 owner agent/tool = 1 branch/worktree/PR。同じworkstreamを3ツールが同時編集しない。
 - 開始前にGitHub Issue/PRでownerを確認し、担当未確定なら確定してから編集する。別workstreamも変更範囲の重複を確認する。
