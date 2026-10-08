@@ -1823,27 +1823,32 @@
         });
       }
 
+      var lastVariantId = null;
+      var fetchRetryFor = null;
+      function onFetchFailure(vid, code) {
+        lastVariantId = null;
+        if (code) console.error("[location-stock] API error", code);
+        setMessage("error", settings.errorMessage);
+        if (vid && fetchRetryFor !== vid) {
+          fetchRetryFor = vid;
+          setTimeout(function () { fetchStocks(vid); }, 3000);
+        }
+      }
+
       function fetchStocks(variantId) {
         setMessage("loading", settings.loadingMessage);
-
         fetch("/apps/location-stock?variant_id=" + encodeURIComponent(variantId))
           .then(function (res) {
-            if (!res.ok) {
-              throw new Error("HTTP " + res.status);
-            }
+            if (!res.ok) throw new Error("HTTP " + res.status);
             return res.json();
           })
           .then(function (data) {
             try {
             if (!data || data.ok === false) {
-              console.error(
-                "[location-stock] API error",
-                data && data.error,
-                data && data.message
-              );
-              setMessage("error", settings.errorMessage);
+              onFetchFailure(variantId, data && data.error);
               return;
             }
+            fetchRetryFor = null;
 
             var appConfig = data.config || {};
 
@@ -2053,12 +2058,12 @@
               sendAnalyticsEvent("area_display", {});
             } catch (e) {
               console.error("[location-stock] render error", e);
-              setMessage("error", settings.errorMessage);
+              onFetchFailure(variantId, "render");
             }
           })
           .catch(function (err) {
             console.error("[location-stock] fetch error", err);
-            setMessage("error", settings.errorMessage);
+            onFetchFailure(variantId, "network");
           });
       }
 
@@ -2066,12 +2071,9 @@
       updateNoticeElements();
       applyLegendNoticeVisibility();
 
-      var lastVariantId = null;
-
       function updateStocksByVariantId(variantId) {
         if (!variantId) return;
         if (variantId === lastVariantId) return;
-
         lastVariantId = variantId;
         root.dataset.variantId = variantId;
         fetchStocks(variantId);

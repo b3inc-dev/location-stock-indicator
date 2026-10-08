@@ -38,7 +38,7 @@ read_inventory, read_locations, read_products, read_shipping, write_app_proxy, w
 | Webhook | `authenticate.webhook`（compliance 含む） |
 
 - セッションストレージ: `@shopify/shopify-app-session-storage-prisma`
-- 期限切れオフライントークン: `future.expiringOfflineAccessTokens` + `refresh-offline-session.js`（App Proxy loader/action で refresh）
+- 期限切れオフライントークン: `future.expiringOfflineAccessTokens` + `refresh-offline-session.js`（App Proxy で期限前 refresh・失敗時は握りつぶさず再認可エラー、GraphQL 認証失敗後に 1 回 refresh→再試行、refresh 無し非期限付きは token-exchange 移行）。手順: `docs/OFFLINE_SESSION_CIARA_REPRO.md`
 
 Admin GraphQL API バージョン（アプリコード）: `ApiVersion.October25`（`shopify.server.js`）。toml の webhooks `2026-01` とは別に設定されている。
 

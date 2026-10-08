@@ -51,7 +51,7 @@
 
 1. Liquid が `product.selected_or_first_available_variant.id` を `data-variant-id` に出力。
 2. JS が `/apps/location-stock?variant_id=<id>` を fetch。
-3. `authenticate.public.appProxy` → 必要ならオフライントークン refresh（`ensureOfflineAccessTokenFresh`）。
+3. `authenticate.public.appProxy` → オフライントークン確保（`ensureOfflineAccessTokenFresh`。失敗は再認可エラー。GraphQL 認証失敗時は force refresh 後 1 回再試行）。
 4. GraphQL `VariantInventoryWithConfig` で variant + shop metafield。
 5. 別途 `DeliveryProfilesForLocations`（失敗しても在庫返却は継続）。
 6. levels → `baseStocks` → `applyConfigToStocks`（enabled 除外、displayName、sortOrder、regionKey、linkUrl 等）。
