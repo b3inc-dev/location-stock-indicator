@@ -196,6 +196,16 @@ export async function loader({ request }) {
     showLocationLinks: !!config?.future?.showLocationLinks,
   };
 
+  const allowedLocationsModes = ["all", "online_only", "custom_from_app"];
+  const locationsMode =
+    typeof config?.locationsMode === "string" &&
+    allowedLocationsModes.includes(config.locationsMode)
+      ? config.locationsMode
+      : "all";
+  // 未設定は true（Proxy の applyConfigToStocks と互換）
+  const usePublicName =
+    typeof config?.usePublicName === "boolean" ? config.usePublicName : true;
+
   return {
     shopId: shopData.id,
     rows,
@@ -203,6 +213,8 @@ export async function loader({ request }) {
     pinnedLocationId,
     regionGroups,
     future,
+    locationsMode,
+    usePublicName,
   };
 }
 
@@ -311,9 +323,18 @@ export async function action({ request }) {
     showLocationLinks: formData.get("future_show_location_links") === "on",
   };
 
+  const allowedLocationsModes = ["all", "online_only", "custom_from_app"];
+  const locationsModeRaw = (formData.get("locationsMode") || "").toString();
+  const locationsMode = allowedLocationsModes.includes(locationsModeRaw)
+    ? locationsModeRaw
+    : "all";
+  const usePublicName = formData.get("usePublicName") === "on";
+
   const nextConfig = {
     ...currentConfig,
     locations,
+    locationsMode,
+    usePublicName,
     sort: { ...(currentConfig.sort || {}), mode: sortMode },
     pinnedLocationId: pinnedLocationId ?? null,
     regionGroups,
@@ -437,6 +458,8 @@ export default function LocationsConfigPage() {
     pinnedLocationId: initialPinnedLocationId,
     regionGroups: initialRegionGroups,
     future: initialFuture,
+    locationsMode: initialLocationsMode,
+    usePublicName: initialUsePublicName,
   } = loaderData;
   const fetcher = useFetcher();
   const revalidator = useRevalidator();
@@ -445,6 +468,10 @@ export default function LocationsConfigPage() {
   const [pinnedLocationId, setPinnedLocationId] = useState(initialPinnedLocationId);
   const [regionGroups, setRegionGroups] = useState(initialRegionGroups || []);
   const [future, setFuture] = useState(initialFuture || defaultFuture);
+  const [locationsMode, setLocationsMode] = useState(initialLocationsMode || "all");
+  const [usePublicName, setUsePublicName] = useState(
+    typeof initialUsePublicName === "boolean" ? initialUsePublicName : true
+  );
   const justSavedRef = useRef(false);
   const [showSavedFeedback, setShowSavedFeedback] = useState(false);
   const lastHandledSaveRef = useRef(null);
@@ -469,8 +496,26 @@ export default function LocationsConfigPage() {
       sortMode !== initialSortMode ||
       (pinnedLocationId || "") !== (initialPinnedLocationId || "") ||
       JSON.stringify(regionGroups) !== JSON.stringify(initialRegionGroups || []) ||
-      JSON.stringify(future) !== JSON.stringify(initialFuture || defaultFuture),
-    [rows, initialRows, sortMode, initialSortMode, pinnedLocationId, initialPinnedLocationId, regionGroups, initialRegionGroups, future, initialFuture]
+      JSON.stringify(future) !== JSON.stringify(initialFuture || defaultFuture) ||
+      locationsMode !== (initialLocationsMode || "all") ||
+      usePublicName !==
+        (typeof initialUsePublicName === "boolean" ? initialUsePublicName : true),
+    [
+      rows,
+      initialRows,
+      sortMode,
+      initialSortMode,
+      pinnedLocationId,
+      initialPinnedLocationId,
+      regionGroups,
+      initialRegionGroups,
+      future,
+      initialFuture,
+      locationsMode,
+      initialLocationsMode,
+      usePublicName,
+      initialUsePublicName,
+    ]
   );
 
   const saving = fetcher.state !== "idle";
@@ -496,6 +541,10 @@ export default function LocationsConfigPage() {
     setPinnedLocationId(loaderData.pinnedLocationId);
     setRegionGroups(loaderData.regionGroups || []);
     setFuture(loaderData.future || defaultFuture);
+    setLocationsMode(loaderData.locationsMode || "all");
+    setUsePublicName(
+      typeof loaderData.usePublicName === "boolean" ? loaderData.usePublicName : true
+    );
   }, [loaderData]);
 
   // 保存直後にユーザーが再編集した場合は、後から届いた initialRows で上書きしない
@@ -516,6 +565,10 @@ export default function LocationsConfigPage() {
     setPinnedLocationId(initialPinnedLocationId);
     setRegionGroups(initialRegionGroups || []);
     setFuture(initialFuture || defaultFuture);
+    setLocationsMode(initialLocationsMode || "all");
+    setUsePublicName(
+      typeof initialUsePublicName === "boolean" ? initialUsePublicName : true
+    );
   };
 
   const handleSave = () => {
@@ -542,6 +595,8 @@ export default function LocationsConfigPage() {
     const formData = new FormData();
     formData.set("shopId", shopId);
     formData.set("sort_mode", sortMode);
+    formData.set("locationsMode", locationsMode);
+    formData.set("usePublicName", usePublicName ? "on" : "");
     if (pinnedLocationId) formData.set("pinnedLocationId", pinnedLocationId);
     formData.set("region_groups_json", JSON.stringify(regionGroups));
     formData.set("future_group_by_region", formFuture.groupByRegion ? "on" : "");
@@ -665,6 +720,60 @@ export default function LocationsConfigPage() {
   return (
     <s-page heading="ロケーション設定">
       <div style={{ padding: "16px", maxWidth: "1200px", paddingBottom: "88px" }}>
+        {/* 表示ロケーション：locationsMode + usePublicName */}
+        <div
+          style={{
+            display: "flex",
+            gap: "24px",
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+            marginBottom: "24px",
+          }}
+        >
+          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>
+              表示するロケーション
+            </div>
+            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
+              商品ページに出すロケーションの範囲と、公開名の使い方を選びます。「アプリで設定したもののみ」は下の一覧で表示ONにしたロケーションだけが出ます。
+            </div>
+          </div>
+          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+            <div
+              style={{
+                background: "#ffffff",
+                borderRadius: 12,
+                boxShadow: "0 0 0 1px #e1e3e5",
+                padding: 16,
+              }}
+            >
+              <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>
+                表示モード
+              </label>
+              <select
+                value={locationsMode}
+                onChange={(e) => setLocationsMode(e.target.value)}
+                style={{ ...selectBaseStyle, marginBottom: 12 }}
+              >
+                <option value="all">すべてのロケーション</option>
+                <option value="online_only">オンライン注文を履行するロケーションのみ</option>
+                <option value="custom_from_app">アプリで設定したもののみ</option>
+              </select>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14 }}>
+                <input
+                  type="checkbox"
+                  checked={!!usePublicName}
+                  onChange={(e) => setUsePublicName(e.target.checked)}
+                />
+                <span>公開名を表示に使う</span>
+              </label>
+              <div style={{ fontSize: 12, color: "#6d7175", marginTop: 4 }}>
+                OFF のときは Shopify のロケーション名を表示します（一覧の公開名列は保存されます）。
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* 並び順：左＝説明、右＝カード */}
         <div
           style={{

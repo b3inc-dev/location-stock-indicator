@@ -188,7 +188,6 @@
         sortBy: "config_order",
         pinnedLocationId: null,
         locationsMode: "all",
-        usePublicLocationName: false,
         clickAction: "none",
         mapUrlTemplate: "https://maps.google.com/?q={location_name}",
         urlTemplate: "/pages/store-{location_id}",
@@ -344,15 +343,16 @@
         }
 
         if (settings.clickAction === "open_map") {
-          var url = settings.mapUrlTemplate.replace("{location_name}", encodeURIComponent(name));
-          return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + name + '</a>';
+          var mapUrl = settings.mapUrlTemplate.replace("{location_name}", encodeURIComponent(name));
+          return '<a href="' + mapUrl + '" target="_blank" rel="noopener noreferrer">' + name + '</a>';
         }
 
         if (settings.clickAction === "open_url") {
-          var url = settings.urlTemplate
-            .replace("{location_id}", encodeURIComponent(location.id || ""))
+          // stocks は locationId のみ（location.id は未定義 → 置換が空になる）
+          var openUrl = settings.urlTemplate
+            .replace("{location_id}", encodeURIComponent(location.locationId || location.id || ""))
             .replace("{location_name}", encodeURIComponent(name));
-          return '<a href="' + url + '">' + name + '</a>';
+          return '<a href="' + openUrl + '">' + name + '</a>';
         }
 
         return name;
@@ -1244,9 +1244,7 @@
               if (typeof locConf.mode === "string") {
                 settings.locationsMode = locConf.mode;
               }
-              if (typeof locConf.usePublicName === "boolean") {
-                settings.usePublicLocationName = locConf.usePublicName;
-              }
+              // usePublicName は Proxy の displayName で反映（クライアントでは使わない）
             }
 
             if (appConfig.click) {

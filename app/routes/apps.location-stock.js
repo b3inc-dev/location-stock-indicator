@@ -335,6 +335,9 @@ function applyConfigToStocks(stocks, config) {
     ? config.regionGroups
     : [];
   const regionGroupById = new Map(regionGroups.filter((g) => g && g.id).map((g) => [g.id, g.name]));
+  // 未設定は true（従来の displayName = publicName || locationName と互換）
+  const usePublicName =
+    typeof config?.usePublicName === "boolean" ? config.usePublicName : true;
 
   // 設定が無い場合:
   //  - ラベル = 元ロケーション名
@@ -394,9 +397,13 @@ function applyConfigToStocks(stocks, config) {
 
       // メタフィールドで明示設定されたロケーション（リンクURLは「リンクを表示する」がONのときのみ使用）
       const linkUrl = (cfg && typeof cfg.linkUrl === "string" && cfg.linkUrl.trim() !== "") ? cfg.linkUrl.trim() : "";
+      const displayName =
+        usePublicName && cfg.publicName
+          ? cfg.publicName
+          : stock.locationName;
       return {
         ...stock,
-        displayName: cfg.publicName || stock.locationName,
+        displayName,
         sortOrder:
           typeof cfg.sortOrder === "number" ? cfg.sortOrder : 999999,
         fromConfig: true,
@@ -448,7 +455,8 @@ function buildGlobalConfig(raw) {
     },
     locations: {
       mode: "all",          // all / online_only / custom_from_app
-      usePublicName: false, // メタフィールド publicName を使うかどうか
+      // 未設定時は true（従来どおり publicName || locationName）。明示 false のみ Shopify 名
+      usePublicName: true,
     },
     click: {
       action: "none", // none / open_map / open_url
@@ -728,26 +736,40 @@ export async function loader({ request }) {
         const allowed = ["area_display", "nearby_click", "order_pick_click"];
         if (allowed.includes(eventType)) {
           try {
-            const shopIdAttempt = await graphqlWithAuthRetry(
-              admin,
-              session,
-              SHOP_ID_QUERY,
-              undefined,
-              { route: "loader_analytics" }
-            );
-            if (!shopIdAttempt.authFailed) {
-              const shopId = shopIdAttempt.result?.data?.shop?.id;
-              if (shopId) {
-                const payload = {};
-                if (eventType === "nearby_click") {
-                  const ids = url.searchParams.get("locationIds");
-                  payload.locationIds = ids ? ids.split(",").filter(Boolean) : [];
+            // Lite / plan null では記録しない（features.analytics）
+            let analyticsPlan = null;
+            try {
+              analyticsPlan = await getShopPlan(admin, session?.shop, {
+                reportUsage: false,
+              });
+            } catch (planErr) {
+              console.error(
+                "[location-stock] getShopPlan failed (analytics skip):",
+                planErr
+              );
+            }
+            if (analyticsPlan?.features?.analytics) {
+              const shopIdAttempt = await graphqlWithAuthRetry(
+                admin,
+                session,
+                SHOP_ID_QUERY,
+                undefined,
+                { route: "loader_analytics" }
+              );
+              if (!shopIdAttempt.authFailed) {
+                const shopId = shopIdAttempt.result?.data?.shop?.id;
+                if (shopId) {
+                  const payload = {};
+                  if (eventType === "nearby_click") {
+                    const ids = url.searchParams.get("locationIds");
+                    payload.locationIds = ids ? ids.split(",").filter(Boolean) : [];
+                  }
+                  if (eventType === "order_pick_click") {
+                    const id = url.searchParams.get("locationId");
+                    if (id) payload.locationId = id;
+                  }
+                  await recordAnalyticsEvent(admin, shopId, dateStr, eventType, payload);
                 }
-                if (eventType === "order_pick_click") {
-                  const id = url.searchParams.get("locationId");
-                  if (id) payload.locationId = id;
-                }
-                await recordAnalyticsEvent(admin, shopId, dateStr, eventType, payload);
               }
             }
           } catch (analyticsErr) {
@@ -1041,6 +1063,23 @@ export async function action({ request }) {
         JSON.stringify({ ok: false, error: "Invalid event type" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
+    }
+    let analyticsPlan = null;
+    try {
+      analyticsPlan = await getShopPlan(admin, session?.shop, {
+        reportUsage: false,
+      });
+    } catch (planErr) {
+      console.error(
+        "[location-stock] getShopPlan failed (analytics action skip):",
+        planErr
+      );
+    }
+    if (!analyticsPlan?.features?.analytics) {
+      return new Response(JSON.stringify({ ok: true, skipped: "analytics_not_allowed" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
     }
     const payload = {};
     if (eventType === "nearby_click" && Array.isArray(body.locationIds)) {

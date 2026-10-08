@@ -35,6 +35,7 @@ export default function App() {
   const navigation = useNavigation();
   const isLoading = navigation.state === "loading";
   const showPlanLink = shopPlan?.distribution === "public";
+  const showAnalyticsLink = !!shopPlan?.features?.analytics;
 
   return (
     <AppProvider embedded apiKey={apiKey}>
@@ -61,7 +62,7 @@ export default function App() {
       <s-app-nav>
         <s-link href="/app/locations">ロケーション設定</s-link>
         <s-link href="/app/settings">在庫表示設定</s-link>
-        <s-link href="/app/analytics">分析</s-link>
+        {showAnalyticsLink && <s-link href="/app/analytics">分析</s-link>}
         {showPlanLink && <s-link href="/app/plan">料金プラン</s-link>}
       </s-app-nav>
       {/* 上部メニュー（s-app-nav が表示されない環境用・常に表示） */}
