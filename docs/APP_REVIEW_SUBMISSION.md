@@ -144,3 +144,4 @@ Location Stock は、ショップの複数ロケーション（店舗・倉庫�
 - 管理画面 UI ルール：`docs/ADMIN_UI_DESIGN_RULES.md`
 - 店舗受け取りボタン・モーダル：`docs/STORE_PICKUP_BUTTON.md`
 - デプロイ・スコープ・環境変数：`docs/DEPLOY_AND_SCOPES.md`
+- **提出 Runbook（Ready・承認待ち）**：`docs/APP_STORE_SUBMISSION_RUNBOOK.md` — merge／deploy／提出は実行しない
