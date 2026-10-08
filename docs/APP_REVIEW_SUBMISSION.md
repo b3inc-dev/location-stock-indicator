@@ -47,7 +47,8 @@ Location Stock は、ショップの複数ロケーション（店舗・倉庫�
 | **read_products** | To fetch product variant and inventory item data when the storefront requests stock by variant (via App Proxy). Required to show per-location inventory for the selected variant on the product page. |
 | **read_shipping** | To determine, per location, whether shipping and/or local delivery is configured (from delivery profiles). This is used to show “Shipping” / “Local delivery” indicators and to support sort options such as “Shipping first” or “Local delivery first” in the admin and on the storefront. |
 | **write_app_proxy** | To register the App Proxy URL so that the theme block can request inventory and config from the app at `/apps/location-stock?variant_id=...`. The storefront does not have direct Admin API access; the proxy is the only way to return this data to the theme. |
-| **write_products** | （注）現行バージョンでは商品の作成・更新は行っていません。申請時に「将来の機能拡張のため」などで保持している場合のみ記載。不要であればスコープから外すことを検討してください。 |
+
+**削除済みスコープ**: `write_products` — コード上商品の作成・更新は行わず、設定は Shop metafield（`metafieldsSet`）のみ。最小スコープのため両 toml から削除済み。Render の `SCOPES` 環境変数も合わせて更新すること（deploy 承認後）。
 
 **日本語で記載する場合の例：**
 
@@ -81,7 +82,8 @@ Location Stock は、ショップの複数ロケーション（店舗・倉庫�
 3. **ストアフロント**  
    お客様は商品ページで、ロケーション別の在庫・近隣店舗（Pro）・店舗受け取りボタン（Pro）を見て利用できます。分析が有効な場合は、表示やクリックのイベントが App Proxy 経由で送られ、メタフィールドに日別で集計されます。
 4. **課金**  
-   Lite（定額）／Pro（定額＋ロケーション数に応じた従量）を Billing API で管理。詳細は `docs/PLAN_SETTINGS_DESIGN.md` を参照。
+   Lite（定額）／Pro（定額＋ロケーション数に応じた従量）を Billing API で管理。詳細は `docs/PLAN_SETTINGS_DESIGN.md` を参照。  
+   **公開本番でプラン未選択（`plan === null`）のときはストアフロント在庫も出さない**（無料開放なし）。審査員には Lite または Pro を選択してから商品ページを確認するよう Test instructions に書く。
 
 ---
 
@@ -106,26 +108,42 @@ Location Stock は、ショップの複数ロケーション（店舗・倉庫�
 
 ## 6. 申請前チェックリスト
 
-以下は Shopify の審査要件に合わせた確認項目です。申請前に埋めておくと安心です。
+以下は Shopify の審査要件に合わせた確認項目です。申請前に埋めておくと安心です。  
+（リポジトリで確認できる項目は状態を更新。Partner Dashboard / 人手が必要な項目は未完のまま）
+
+### リポジトリ／コードで確認済み
+
+- [x] **Compliance Webhooks（コード）**  
+  両 toml に `compliance_topics` と `uri = "/webhooks/compliance"`。`webhooks.compliance.jsx` で `authenticate.webhook` → 200。
+- [x] **保護された顧客データ（方針）**  
+  集計のみ・PII 非収集（本書 §3）。申請フォームでは「不要」でよい旨を維持。
+- [x] **スコープ最小化解（コード）**  
+  `write_products` を両 toml から削除済み。Permission justification は本書 §2（write_products なし）。
+- [x] **課金ゲートと listing の一致（コード）**  
+  公開・`plan === null` でストアフロント在庫を出さない（`planGate.js` / App Proxy `plan_required`）。詳細は `PLAN_SETTINGS_DESIGN.md` §3.3。
+
+### Partner Dashboard / 運用（人手・承認後）
 
 - [ ] **アプリ名・説明**  
   Partner Dashboard のリスト情報に、上記「短い説明」「長い説明」を反映した。
 - [ ] **アプリアイコン**  
   1200×1200 px（JPEG または PNG）を用意し、申請画面で設定した。
+- [ ] **デモ動画**  
+  審査用の短い操作デモ（インストール→設定→商品ページ表示→プラン選択）を用意した。
 - [ ] **URL・ブランド**  
   ドメインやアプリ名に「Shopify」「Example」を含めていない。
 - [ ] **緊急連絡先**  
   審査・運用で使うメールアドレスと電話番号を登録した。
 - [ ] **API 連絡先メール**  
   「Shopify」という語を含まないメールアドレスを設定した。
-- [ ] **Compliance Webhooks**  
-  `shopify.app.toml` に `compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]` と `uri = "/webhooks/compliance"` を登録済み。`app/routes/webhooks.compliance.jsx` で受信し、`authenticate.webhook(request)` により HMAC 検証（無効時は 401）のうえ 200 で応答する。
-- [ ] **保護された顧客データ**  
-  個人を特定する顧客データを扱う場合は、保護された顧客データアクセスの申請が必要。本アプリは集計のみで PII を扱わないため、通常は「不要」でよい。
+- [ ] **Render 公開側 SCOPES**  
+  環境変数から `write_products` を外し、toml と一致させた（明示承認後の本番操作）。
 - [ ] **オートメーションチェック**  
   Partner Dashboard の審査提出前チェック（認証・リダイレクト・アンインストール・App Bridge 等）を実行し、エラーを解消した。
-- [ ] **スコープ理由**  
-  上記「2. 権限（スコープ）と使用理由」の内容を、申請フォームの Permission justification に記載した。
+- [ ] **スコープ理由の申請フォーム転記**  
+  上記「2. 権限（スコープ）と使用理由」を Permission justification に記載した。
+- [ ] **Test instructions**  
+  審査員に Lite/Pro 選択後に商品ページを見る手順を書いた（未選択時は在庫非表示である旨を含む）。
 
 ---
 
@@ -144,3 +162,4 @@ Location Stock は、ショップの複数ロケーション（店舗・倉庫�
 - 管理画面 UI ルール：`docs/ADMIN_UI_DESIGN_RULES.md`
 - 店舗受け取りボタン・モーダル：`docs/STORE_PICKUP_BUTTON.md`
 - デプロイ・スコープ・環境変数：`docs/DEPLOY_AND_SCOPES.md`
+- **提出 Runbook（Ready・承認待ち）**：`docs/APP_STORE_SUBMISSION_RUNBOOK.md` — merge／deploy／提出は実行しない

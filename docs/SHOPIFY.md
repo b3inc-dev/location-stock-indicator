@@ -15,11 +15,11 @@
 ### スコープ（両 toml 共通）
 
 ```
-read_inventory, read_locations, read_products, read_shipping, write_app_proxy, write_products
+read_inventory, read_locations, read_products, read_shipping, write_app_proxy
 ```
 
 用途の説明: `REQUIREMENTS.md` §14.5、`APP_REVIEW_SUBMISSION.md`。
-※ `write_products` は現行で商品書き込み未使用との記載あり（審査時の説明用に保持、と同 docs）。
+※ `write_products` は未使用のため両 toml から削除済み（Shop metafield のみ。Render `SCOPES` も承認後に合わせる）。
 
 ### Webhooks
 
@@ -38,7 +38,7 @@ read_inventory, read_locations, read_products, read_shipping, write_app_proxy, w
 | Webhook | `authenticate.webhook`（compliance 含む） |
 
 - セッションストレージ: `@shopify/shopify-app-session-storage-prisma`
-- 期限切れオフライントークン: `future.expiringOfflineAccessTokens` + `refresh-offline-session.js`（App Proxy loader/action で refresh）
+- 期限切れオフライントークン: `future.expiringOfflineAccessTokens` + `refresh-offline-session.js`（App Proxy で期限前 refresh・失敗時は握りつぶさず再認可エラー、GraphQL 認証失敗後に 1 回 refresh→再試行、refresh 無し非期限付きは token-exchange 移行）。手順: `docs/OFFLINE_SESSION_CIARA_REPRO.md`
 
 Admin GraphQL API バージョン（アプリコード）: `ApiVersion.October25`（`shopify.server.js`）。toml の webhooks `2026-01` とは別に設定されている。
 
