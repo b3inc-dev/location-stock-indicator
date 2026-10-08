@@ -11,13 +11,19 @@ export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const shopPlan = await getShopPlan(admin, session?.shop);
 
+  const url = new URL(request.url);
+  const path = url.pathname;
+  const isPlanOrHome =
+    path === "/app" || path === "/app/plan" || path.startsWith("/app/plan?");
+
+  // 公開アプリでプラン未選択: ホームと料金プラン以外は選択を促す（無料開放しない）
+  if (shopPlan.planRequired && !isPlanOrHome) {
+    return redirect("/app/plan?required=1");
+  }
+
   // ロケーション数とプランが一致していない場合は、ホームと料金プラン以外へはアクセスさせずプラン変更を促す
-  if (shopPlan.locationPlanMismatch) {
-    const url = new URL(request.url);
-    const path = url.pathname;
-    if (path !== "/app" && path !== "/app/plan" && !path.startsWith("/app/plan?")) {
-      return redirect("/app/plan?mismatch=1");
-    }
+  if (shopPlan.locationPlanMismatch && !isPlanOrHome) {
+    return redirect("/app/plan?mismatch=1");
   }
 
   // eslint-disable-next-line no-undef

@@ -49,7 +49,7 @@
 - **公開用の Render（location-stock-indicator）**  
   - そのアプリの `SHOPIFY_API_KEY`（= client_id 公開用）  
   - そのアプリの `SHOPIFY_API_SECRET`  
-  - `SCOPES`（read_inventory, read_locations, read_products, read_shipping, write_app_proxy, write_products など）  
+  - `SCOPES`（read_inventory, read_locations, read_products, read_shipping, write_app_proxy など。`write_products` は削除済み）  
   - その他: `DATABASE_URL`、必要なら `RENDER_EXTERNAL_URL` など
 
 - **自社用の Render（location-stock-indicator-ciara）**  
