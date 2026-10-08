@@ -18,6 +18,7 @@
 | Theme Liquid 余裕 + schema ~25 | #7 | `shopify app deploy` 承認後 |
 | 機能監査チェックリスト | #8 | docs-only |
 | deliveryProfiles / CI / usage 分離 | #9 | |
+| 提出 Runbook（本ファイル） | #10 | docs-only・Ready 停止 |
 
 未マージのまま提出しない。
 
