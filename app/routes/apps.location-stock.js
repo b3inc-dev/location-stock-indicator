@@ -11,6 +11,14 @@ import {
   ensureOfflineAccessTokenFresh,
   isAdminAuthFailure,
 } from "../utils/refresh-offline-session.js";
+import {
+  DELIVERY_PROFILES_QUERY,
+  buildLocationDeliveryFlags,
+} from "../utils/deliveryProfiles.js";
+import { cacheGet, cacheSet } from "../utils/shortCache.js";
+
+/** deliveryProfiles 短命キャッシュ（ms）— Admin API 連打緩和 */
+const DELIVERY_PROFILES_TTL_MS = 60_000;
 
 /**
  * バリアント在庫 + ショップメタフィールド(location_stock.config) をまとめて取得
@@ -59,124 +67,9 @@ const VARIANT_INVENTORY_WITH_CONFIG_QUERY = `#graphql
   }
 `;
 
-/**
- * 配送プロファイルから locationId → { hasShipping, hasLocalDelivery } を構築（read_shipping が必要）
- */
-const DELIVERY_PROFILES_QUERY = `#graphql
-  query DeliveryProfilesForLocations {
-    deliveryProfiles(first: 50) {
-      nodes {
-        profileLocationGroups {
-          locationGroup {
-            locations(first: 100) {
-              nodes {
-                id
-              }
-            }
-          }
-          locationGroupZones(first: 30) {
-            nodes {
-              zone {
-                name
-              }
-              methodDefinitions(first: 50) {
-                nodes {
-                  active
-                  name
-                  rateProvider {
-                    __typename
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-`;
-
 const SHOP_ID_QUERY = `#graphql
   query ShopId { shop { id } }
 `;
-
-/**
- * 配送方法名から「ローカルデリバリー」かどうかを判定する（API に methodType がないため名前で判定）
- */
-function isLocalDeliveryMethodName(name) {
-  if (!name || typeof name !== "string") return false;
-  const n = name.toLowerCase().trim();
-  return (
-    n.includes("local") ||
-    n.includes("ローカル") ||
-    n.includes("local delivery") ||
-    n.includes("localdelivery") ||
-    n.includes("same-day") ||
-    n.includes("sameday") ||
-    n.includes("same day") ||
-    n.includes("当日") ||
-    n.includes("近距離") ||
-    n.includes("半径") ||
-    n.includes("地域配達")
-  );
-}
-
-/**
- * 接続型で nodes が無い場合は edges から取り出す（REQUIREMENTS §6 と管理画面と同じフォールバック）
- */
-function getNodes(connection) {
-  if (!connection) return [];
-  if (Array.isArray(connection.nodes)) return connection.nodes;
-  if (Array.isArray(connection.edges)) return connection.edges.map((e) => e.node).filter(Boolean);
-  return [];
-}
-
-function buildLocationDeliveryFlags(deliveryProfilesData) {
-  const map = new Map();
-  const nodes = deliveryProfilesData?.deliveryProfiles?.nodes ?? [];
-  for (const profile of nodes) {
-    const groups = profile.profileLocationGroups ?? [];
-    for (const plg of groups) {
-      const locsRaw = plg.locationGroup?.locations;
-      const locNodes = getNodes(locsRaw);
-      const locationIds = locNodes.map((n) => n.id).filter(Boolean);
-      let hasShipping = false;
-      let hasLocalDelivery = false;
-      const zones = getNodes(plg.locationGroupZones);
-      for (const zoneNode of zones) {
-        const zoneName = zoneNode.zone?.name ?? "";
-        if (isLocalDeliveryMethodName(zoneName)) {
-          hasLocalDelivery = true;
-        }
-        const methods = getNodes(zoneNode.methodDefinitions);
-        for (const m of methods) {
-          if (!m.active) continue;
-          const rp = m.rateProvider;
-          if (!rp) continue;
-          const methodName = m.name ?? "";
-          if (rp.__typename === "DeliveryParticipant") {
-            hasShipping = true;
-            if (isLocalDeliveryMethodName(methodName)) hasLocalDelivery = true;
-          } else if (rp.__typename === "DeliveryRateDefinition") {
-            if (isLocalDeliveryMethodName(methodName)) {
-              hasLocalDelivery = true;
-            } else {
-              hasShipping = true;
-            }
-          }
-        }
-      }
-      for (const lid of locationIds) {
-        const cur = map.get(lid) || { hasShipping: false, hasLocalDelivery: false };
-        map.set(lid, {
-          hasShipping: cur.hasShipping || hasShipping,
-          hasLocalDelivery: cur.hasLocalDelivery || hasLocalDelivery,
-        });
-      }
-    }
-  }
-  return map;
-}
 
 /**
  * エラー時にショップ・variant_id・コード・メッセージを JSON で console.error（要件 4）
@@ -918,24 +811,31 @@ export async function loader({ request }) {
       });
     }
 
-    // 配送プロファイルから locationId → { hasShipping, hasLocalDelivery } を取得（read_shipping が必要）
+    // 配送プロファイル（短命キャッシュ。read_shipping が必要）
     let deliveryFlagsByLocationId = new Map();
+    const dpCacheKey = `deliveryProfiles:${session?.shop || "unknown"}`;
     try {
-      const dpAttempt = await graphqlWithAuthRetry(
-        admin,
-        session,
-        DELIVERY_PROFILES_QUERY,
-        undefined,
-        { route: "loader_delivery", variantId }
-      );
-      const dpResult = dpAttempt.authFailed ? null : dpAttempt.result;
-      if (dpResult?.errors?.length) {
-        console.warn(
-          "[location-stock] deliveryProfiles query returned GraphQL errors (要因: スコープ未付与 or API 制限):",
-          JSON.stringify(dpResult.errors, null, 2)
+      const cached = cacheGet(dpCacheKey);
+      if (cached instanceof Map) {
+        deliveryFlagsByLocationId = cached;
+      } else {
+        const dpAttempt = await graphqlWithAuthRetry(
+          admin,
+          session,
+          DELIVERY_PROFILES_QUERY,
+          undefined,
+          { route: "loader_delivery", variantId }
         );
-      } else if (dpResult?.data) {
-        deliveryFlagsByLocationId = buildLocationDeliveryFlags(dpResult.data);
+        const dpResult = dpAttempt.authFailed ? null : dpAttempt.result;
+        if (dpResult?.errors?.length) {
+          console.warn(
+            "[location-stock] deliveryProfiles query returned GraphQL errors (要因: スコープ未付与 or API 制限):",
+            JSON.stringify(dpResult.errors, null, 2)
+          );
+        } else if (dpResult?.data) {
+          deliveryFlagsByLocationId = buildLocationDeliveryFlags(dpResult.data);
+          cacheSet(dpCacheKey, deliveryFlagsByLocationId, DELIVERY_PROFILES_TTL_MS);
+        }
       }
     } catch (dpErr) {
       console.warn("[location-stock] deliveryProfiles fetch failed:", dpErr);
@@ -994,7 +894,9 @@ export async function loader({ request }) {
     // プラン取得失敗時は fail-closed（無料開放・Pro バイパスをしない）。
     let shopPlan = null;
     try {
-      shopPlan = await getShopPlan(admin, session?.shop);
+      shopPlan = await getShopPlan(admin, session?.shop, {
+        reportUsage: false,
+      });
     } catch (planErr) {
       console.error("[location-stock] getShopPlan failed (fail-closed):", planErr);
     }

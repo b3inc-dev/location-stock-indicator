@@ -32,6 +32,7 @@ function getCustomAppStoreIds() {
  * プラン情報を取得する。
  * @param {object} admin - GraphQL を実行する admin オブジェクト
  * @param {string} [currentShop] - ショップドメイン
+ * @param {{ reportUsage?: boolean }} [options] - reportUsage: App Proxy 等の読取経路では false（課金副作用を付けない）
  * @returns {Promise<{
  *   distribution: "inhouse"|"public";
  *   plan: "lite"|"pro"|null;
@@ -49,7 +50,8 @@ function getCustomAppStoreIds() {
  *   maxLocationsForPlan?: number;
  * }>}
  */
-export async function getShopPlan(admin, currentShop) {
+export async function getShopPlan(admin, currentShop, options = {}) {
+  const reportUsage = options.reportUsage !== false;
   const customStoreIds = getCustomAppStoreIds();
   const shopNormalized = currentShop?.trim().toLowerCase();
   const forceInhouse = Boolean(
@@ -131,8 +133,14 @@ export async function getShopPlan(admin, currentShop) {
   };
   const planRequired = requiresPlanSelection(planSnapshot);
 
-  // Pro の従量課金報告（公開・本番・Pro・ロケーション数に応じて）
-  if (distribution === "public" && !isDevelopmentStore && plan === "pro" && locationsCount > 0) {
+  // Pro の従量課金報告（管理 UI 経路のみ。App Proxy GET では reportUsage:false）
+  if (
+    reportUsage &&
+    distribution === "public" &&
+    !isDevelopmentStore &&
+    plan === "pro" &&
+    locationsCount > 0
+  ) {
     const active = activeSubscriptions.filter(
       (s) => String(s?.status || "").toUpperCase() === "ACTIVE"
     );

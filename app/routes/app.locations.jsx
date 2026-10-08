@@ -8,6 +8,11 @@ import shopify from "../shopify.server";
  * ロケーション一覧 + shop メタフィールド(location_stock.config) を取得
  * - localPickupSettingsV2: 店舗受け取り対応の有無（read_locations または read_shipping が必要）
  */
+import {
+  DELIVERY_PROFILES_QUERY,
+  buildLocationDeliveryFlags,
+} from "../utils/deliveryProfiles.js";
+
 const LOCATIONS_AND_CONFIG_QUERY = `#graphql
   query LocationsAndConfig {
     shop {
@@ -29,43 +34,6 @@ const LOCATIONS_AND_CONFIG_QUERY = `#graphql
   }
 `;
 
-/**
- * 配送プロファイルから「配送対応」「ローカルデリバリー対応」をロケーション単位で集計する（read_shipping が必要）
- */
-const DELIVERY_PROFILES_QUERY = `#graphql
-  query DeliveryProfilesForLocations {
-    deliveryProfiles(first: 50) {
-      nodes {
-        profileLocationGroups {
-          locationGroup {
-            locations(first: 250) {
-              nodes {
-                id
-              }
-            }
-          }
-          locationGroupZones(first: 30) {
-            nodes {
-              zone {
-                name
-              }
-              methodDefinitions(first: 50) {
-                nodes {
-                  active
-                  name
-                  rateProvider {
-                    __typename
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-`;
-
 const SAVE_CONFIG_MUTATION = `#graphql
   mutation SaveLocationStockConfig($metafields: [MetafieldsSetInput!]!) {
     metafieldsSet(metafields: $metafields) {
@@ -81,118 +49,6 @@ const SAVE_CONFIG_MUTATION = `#graphql
     }
   }
 `;
-
-/**
- * 配送方法名またはゾーン名から「ローカルデリバリー」かどうかを判定する（API に methodType がないため名前で判定）。
- * 管理画面で「Local Delivery」と表示されるのはゾーン名のため、ゾーン名も参照する。
- */
-function isLocalDeliveryMethodName(name) {
-  if (!name || typeof name !== "string") return false;
-  const n = name.toLowerCase().trim();
-  return (
-    n.includes("local") ||
-    n.includes("ローカル") ||
-    n.includes("local delivery") ||
-    n.includes("localdelivery") ||
-    n.includes("same-day") ||
-    n.includes("sameday") ||
-    n.includes("same day") ||
-    n.includes("当日") ||
-    n.includes("近距離") ||
-    n.includes("半径") ||
-    n.includes("地域配達")
-  );
-}
-
-/**
- * deliveryProfiles のレスポンスから locationId → { hasShipping, hasLocalDelivery } を構築
- * @param {object} deliveryProfilesData - deliveryProfiles クエリのレスポンス
- * @param {{ logDebug?: boolean }} options - logDebug: true でゾーン名・ロケーションIDを console.warn
- */
-function buildLocationDeliveryFlags(deliveryProfilesData, options = {}) {
-  const map = new Map();
-  const debugLog = [];
-  const nodes = deliveryProfilesData?.deliveryProfiles?.nodes ?? [];
-  for (const profile of nodes) {
-    const groups = profile.profileLocationGroups ?? [];
-    for (const plg of groups) {
-      const locsRaw = plg.locationGroup?.locations;
-      const locNodes = locsRaw?.nodes ?? (Array.isArray(locsRaw?.edges) ? locsRaw.edges.map((e) => e.node) : []) ?? [];
-      const locationIds = locNodes.map((n) => n.id).filter(Boolean);
-      let hasShipping = false;
-      let hasLocalDelivery = false;
-      const zoneNames = [];
-      const zonesRaw = plg.locationGroupZones;
-      const zones =
-        zonesRaw?.nodes ??
-        (Array.isArray(zonesRaw?.edges) ? zonesRaw.edges.map((e) => e.node) : []) ??
-        [];
-      for (const zoneNode of zones) {
-        const zoneName = zoneNode.zone?.name ?? "";
-        zoneNames.push(zoneName || "(空)");
-        if (isLocalDeliveryMethodName(zoneName)) {
-          hasLocalDelivery = true;
-        }
-        const methodsRaw = zoneNode.methodDefinitions;
-        const methods =
-          methodsRaw?.nodes ??
-          (Array.isArray(methodsRaw?.edges) ? methodsRaw.edges.map((e) => e.node) : []) ??
-          [];
-        for (const m of methods) {
-          if (!m.active) continue;
-          const rp = m.rateProvider;
-          if (!rp) continue;
-          const methodName = m.name ?? "";
-          if (rp.__typename === "DeliveryParticipant") {
-            hasShipping = true;
-            if (isLocalDeliveryMethodName(methodName)) hasLocalDelivery = true;
-          } else if (rp.__typename === "DeliveryRateDefinition") {
-            if (isLocalDeliveryMethodName(methodName)) {
-              hasLocalDelivery = true;
-            } else {
-              hasShipping = true;
-            }
-          }
-        }
-      }
-      if (options.logDebug && (zoneNames.length > 0 || locationIds.length > 0)) {
-        debugLog.push({
-          locationIds,
-          zoneNames,
-          hasLocalDelivery,
-          hasShipping,
-        });
-      }
-      for (const lid of locationIds) {
-        const cur = map.get(lid) || { hasShipping: false, hasLocalDelivery: false };
-        map.set(lid, {
-          hasShipping: cur.hasShipping || hasShipping,
-          hasLocalDelivery: cur.hasLocalDelivery || hasLocalDelivery,
-        });
-      }
-    }
-  }
-  if (options.logDebug) {
-    const profileCount = nodes.length;
-    const groupCount = nodes.reduce((sum, p) => sum + (p.profileLocationGroups?.length ?? 0), 0);
-    console.warn(
-      "[location-stock] deliveryProfiles: プロファイル数 =",
-      profileCount,
-      "ロケーショングループ数 =",
-      groupCount
-    );
-    if (debugLog.length > 0) {
-      console.warn("[location-stock] deliveryProfiles debug (各グループのゾーン・ロケーション):", JSON.stringify(debugLog, null, 2));
-    }
-    console.warn(
-      "[location-stock] deliveryFlags map:",
-      Object.fromEntries(
-        Array.from(map.entries()).map(([k, v]) => [k, v])
-      )
-    );
-  }
-  return map;
-}
 
 /** 管理画面エラー時に shop・ルートをログに含める（REQUIREMENTS §8） */
 function logLocationsError(shop, context, message, detail) {
