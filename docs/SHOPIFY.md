@@ -15,11 +15,11 @@
 ### スコープ（両 toml 共通）
 
 ```
-read_inventory, read_locations, read_products, read_shipping, write_app_proxy, write_products
+read_inventory, read_locations, read_products, read_shipping, write_app_proxy
 ```
 
 用途の説明: `REQUIREMENTS.md` §14.5、`APP_REVIEW_SUBMISSION.md`。
-※ `write_products` は現行で商品書き込み未使用との記載あり（審査時の説明用に保持、と同 docs）。
+※ `write_products` は未使用のため両 toml から削除済み（Shop metafield のみ。Render `SCOPES` も承認後に合わせる）。
 
 ### Webhooks
 

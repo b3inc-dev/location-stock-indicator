@@ -638,7 +638,7 @@
 | `read_products` | 商品バリアント情報（App Proxy で variant + inventoryLevels） |
 | `read_shipping` | 配送プロファイル（`deliveryProfiles`）・ロケーション別「配送対応」「ローカルデリバリー対応」の判定 |
 | `write_app_proxy` | App Proxy URL の登録（ストアフロントから `/apps/location-stock` でアクセス可能にする） |
-| `write_products` | 現行実装では商品の書き込みは行っていない。テーマ／カート連携はストアフロント側。将来の機能拡張用に保持している場合は審査時に理由を記載すること。 |
+| ~~`write_products`~~ | **削除済み**（商品書き込みなし。設定は Shop metafield）。 |
 
 ### 14.6 データの流れ（要約）
 

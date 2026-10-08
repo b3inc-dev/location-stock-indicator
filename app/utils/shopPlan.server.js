@@ -10,6 +10,11 @@ import {
   calculateUsageAmount,
   reportUsageRecord,
 } from "./billing.js";
+import {
+  isProFeaturesAllowed,
+  isStorefrontInventoryAllowed,
+  requiresPlanSelection,
+} from "./planGate.js";
 
 /**
  * カスタムアプリとして扱うストアのショップドメイン一覧（カンマ区切り）。
@@ -30,9 +35,16 @@ function getCustomAppStoreIds() {
  * @returns {Promise<{
  *   distribution: "inhouse"|"public";
  *   plan: "lite"|"pro"|null;
- *   features: { areas: boolean; nearby: boolean; storePickup: boolean; analytics: boolean };
+ *   features: {
+ *     basicDisplay: boolean;
+ *     areas: boolean;
+ *     nearby: boolean;
+ *     storePickup: boolean;
+ *     analytics: boolean;
+ *   };
  *   locationsCount: number;
  *   isDevelopmentStore: boolean;
+ *   planRequired?: boolean;
  *   locationPlanMismatch?: boolean;
  *   maxLocationsForPlan?: number;
  * }>}
@@ -107,12 +119,17 @@ export async function getShopPlan(admin, currentShop) {
     plan = "lite";
   }
 
+  // plan === null（公開・未契約）は basicDisplay も含め false = 無料開放しない
+  const planSnapshot = { distribution, plan, isDevelopmentStore };
+  const proOk = isProFeaturesAllowed(planSnapshot);
   const features = {
-    areas: distribution === "inhouse" || plan === "pro",
-    nearby: distribution === "inhouse" || plan === "pro",
-    storePickup: distribution === "inhouse" || plan === "pro",
-    analytics: distribution === "inhouse" || plan === "pro",
+    basicDisplay: isStorefrontInventoryAllowed(planSnapshot),
+    areas: proOk,
+    nearby: proOk,
+    storePickup: proOk,
+    analytics: proOk,
   };
+  const planRequired = requiresPlanSelection(planSnapshot);
 
   // Pro の従量課金報告（公開・本番・Pro・ロケーション数に応じて）
   if (distribution === "public" && !isDevelopmentStore && plan === "pro" && locationsCount > 0) {
@@ -154,6 +171,7 @@ export async function getShopPlan(admin, currentShop) {
     features,
     locationsCount,
     isDevelopmentStore,
+    ...(planRequired ? { planRequired: true } : {}),
     ...(locationPlanMismatch ? { locationPlanMismatch: true, maxLocationsForPlan } : {}),
   };
 }
