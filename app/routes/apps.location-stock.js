@@ -3,7 +3,10 @@
 import shopify from "../shopify.server";
 import { recordAnalyticsEvent } from "../analytics.server";
 import { getShopPlan } from "../utils/shopPlan.server.js";
-import { ensureOfflineAccessTokenFresh } from "../utils/refresh-offline-session.js";
+import {
+  ensureOfflineAccessTokenFresh,
+  isAdminAuthFailure,
+} from "../utils/refresh-offline-session.js";
 
 /**
  * バリアント在庫 + ショップメタフィールド(location_stock.config) をまとめて取得
@@ -173,16 +176,220 @@ function buildLocationDeliveryFlags(deliveryProfilesData) {
 
 /**
  * エラー時にショップ・variant_id・コード・メッセージを JSON で console.error（要件 4）
+ * correlation 用に refreshStatus 等の非秘密フィールドを載せる。
  */
-function logAppProxyError(shop, variantId, code, message, err) {
+function logAppProxyError(shop, variantId, code, message, err, extra = {}) {
   console.error(
     "[location-stock] App Proxy error",
     JSON.stringify(
-      { shop, variantId, code, message, err: err ? String(err) : undefined },
+      {
+        shop,
+        variantId,
+        code,
+        message,
+        err: err ? String(err) : undefined,
+        ...extra,
+      },
       null,
       2
     )
   );
+}
+
+/**
+ * App Proxy 開始時の offline token 確保。
+ * refresh / migration 失敗かつ needsReauth のときはエラー応答を返す（握りつぶさない）。
+ * @returns {Promise<null | Response>}
+ */
+async function ensureSessionOrErrorResponse(session, admin, context) {
+  if (!session) {
+    return null;
+  }
+  let refreshResult;
+  try {
+    refreshResult = await ensureOfflineAccessTokenFresh(session);
+  } catch (refreshErr) {
+    logAppProxyError(
+      session?.shop,
+      context?.variantId ?? null,
+      "offline_token_refresh_exception",
+      "オフライントークンの更新中に例外が発生しました。",
+      refreshErr,
+      { route: context?.route }
+    );
+    return errorJson(
+      "session_reauth_required",
+      "アプリの再認可が必要です。Shopify 管理画面からアプリを開いてください。"
+    );
+  }
+
+  if (refreshResult && !refreshResult.ok && refreshResult.needsReauth) {
+    logAppProxyError(
+      session.shop,
+      context?.variantId ?? null,
+      "session_reauth_required",
+      "オフラインセッションの更新に失敗しました。管理画面からアプリを開いて再認可してください。",
+      null,
+      {
+        route: context?.route,
+        refreshStatus: refreshResult.status,
+        refreshDetail: refreshResult.detail,
+      }
+    );
+    return errorJson(
+      "session_reauth_required",
+      "アプリの再認可が必要です。Shopify 管理画面からアプリを開いてください。"
+    );
+  }
+
+  if (refreshResult && !refreshResult.ok) {
+    // needsReauth 以外の失敗（credentials 不足等）も GraphQL 継続せず明示エラー
+    logAppProxyError(
+      session.shop,
+      context?.variantId ?? null,
+      "offline_token_unusable",
+      "オフライントークンを利用できません。",
+      null,
+      {
+        route: context?.route,
+        refreshStatus: refreshResult.status,
+        refreshDetail: refreshResult.detail,
+      }
+    );
+    return errorJson(
+      "offline_token_unusable",
+      "在庫情報を取得できません。しばらくしてから再度お試しください。"
+    );
+  }
+
+  if (!admin) {
+    return null;
+  }
+  return null;
+}
+
+/**
+ * admin.graphql は認証失敗時に Response ではなく例外を投げる
+ * （HttpResponseError / GraphqlQueryError）。成功時のみ JSON body を返す。
+ * @returns {Promise<{ ok: true, result: object } | { ok: false, authFailure: boolean, error: unknown, httpStatus?: number, result?: object }>}
+ */
+async function runAdminGraphql(admin, query, variables) {
+  try {
+    const gqlResponse = await admin.graphql(
+      query,
+      variables ? { variables } : undefined
+    );
+    const result = await gqlResponse.json();
+    // ライブラリが throw しない経路で errors が載る場合にも対応
+    if (isAdminAuthFailure(result?.errors, gqlResponse?.status)) {
+      return {
+        ok: false,
+        authFailure: true,
+        error: result.errors,
+        httpStatus: gqlResponse?.status,
+        result,
+      };
+    }
+    return { ok: true, result };
+  } catch (error) {
+    const httpStatus = error?.response?.code;
+    const authFailure = isAdminAuthFailure(error, httpStatus);
+    return { ok: false, authFailure, error, httpStatus };
+  }
+}
+
+/**
+ * admin.graphql → JSON。認証失敗なら force refresh を 1 回だけ行い再試行する。
+ * 非認証エラーの throw はそのまま再送出せず呼び出し側へ伝播させる。
+ * @returns {Promise<{ result: object, retried: boolean, refreshStatus?: string } | { authFailed: true, refreshStatus?: string, result?: object }>}
+ */
+async function graphqlWithAuthRetry(admin, session, query, variables, context) {
+  const first = await runAdminGraphql(admin, query, variables);
+  if (first.ok) {
+    return { result: first.result, retried: false };
+  }
+  if (!first.authFailure) {
+    // throttle / 5xx / 通常 GraphQL エラー等は従来どおり外枠で扱う
+    throw first.error;
+  }
+
+  logAppProxyError(
+    session?.shop,
+    context?.variantId ?? null,
+    "graphql_auth_failure",
+    "Admin GraphQL が認証エラーを返しました。refresh 後に 1 回再試行します。",
+    first.error,
+    { route: context?.route, httpStatus: first.httpStatus }
+  );
+
+  if (!session) {
+    return { authFailed: true, result: first.result, refreshStatus: "no_session" };
+  }
+
+  let refreshResult;
+  try {
+    refreshResult = await ensureOfflineAccessTokenFresh(session, { force: true });
+  } catch (e) {
+    logAppProxyError(
+      session.shop,
+      context?.variantId ?? null,
+      "offline_token_refresh_exception",
+      "認証エラー後の refresh で例外が発生しました。",
+      e,
+      { route: context?.route }
+    );
+    return { authFailed: true, result: first.result, refreshStatus: "exception" };
+  }
+
+  if (!refreshResult?.ok) {
+    logAppProxyError(
+      session.shop,
+      context?.variantId ?? null,
+      "session_reauth_required",
+      "認証エラー後の refresh に失敗しました。",
+      null,
+      {
+        route: context?.route,
+        refreshStatus: refreshResult?.status,
+        refreshDetail: refreshResult?.detail,
+      }
+    );
+    return {
+      authFailed: true,
+      result: first.result,
+      refreshStatus: refreshResult?.status,
+    };
+  }
+
+  const second = await runAdminGraphql(admin, query, variables);
+  if (second.ok) {
+    return {
+      result: second.result,
+      retried: true,
+      refreshStatus: refreshResult.status,
+    };
+  }
+  if (!second.authFailure) {
+    throw second.error;
+  }
+
+  logAppProxyError(
+    session?.shop,
+    context?.variantId ?? null,
+    "graphql_auth_failure_after_refresh",
+    "refresh 後も Admin GraphQL が認証エラーです。",
+    second.error,
+    {
+      route: context?.route,
+      httpStatus: second.httpStatus,
+      refreshStatus: refreshResult.status,
+    }
+  );
+  return {
+    authFailed: true,
+    result: second.result,
+    refreshStatus: refreshResult.status,
+  };
 }
 
 /**
@@ -595,13 +802,10 @@ export async function loader({ request }) {
     const auth = await shopify.authenticate.public.appProxy(request);
     const { admin, session } = auth || {};
 
-    if (session) {
-      try {
-        await ensureOfflineAccessTokenFresh(session);
-      } catch (refreshErr) {
-        console.error("[location-stock] offline token refresh (loader):", refreshErr);
-      }
-    }
+    const sessionGate = await ensureSessionOrErrorResponse(session, admin, {
+      route: "loader",
+    });
+    if (sessionGate) return sessionGate;
 
     if (!admin) {
       logAppProxyError(
@@ -609,7 +813,8 @@ export async function loader({ request }) {
         null,
         "missing_admin_client",
         "管理画面 API クライアントの初期化に失敗しました。アプリの設定（APIキーなど）を確認してください。",
-        null
+        null,
+        { route: "loader", hasSession: Boolean(session) }
       );
       return errorJson(
         "missing_admin_client",
@@ -626,20 +831,27 @@ export async function loader({ request }) {
         const allowed = ["area_display", "nearby_click", "order_pick_click"];
         if (allowed.includes(eventType)) {
           try {
-            const shopIdRes = await admin.graphql(SHOP_ID_QUERY);
-            const shopIdJson = await shopIdRes.json();
-            const shopId = shopIdJson?.data?.shop?.id;
-            if (shopId) {
-              const payload = {};
-              if (eventType === "nearby_click") {
-                const ids = url.searchParams.get("locationIds");
-                payload.locationIds = ids ? ids.split(",").filter(Boolean) : [];
+            const shopIdAttempt = await graphqlWithAuthRetry(
+              admin,
+              session,
+              SHOP_ID_QUERY,
+              undefined,
+              { route: "loader_analytics" }
+            );
+            if (!shopIdAttempt.authFailed) {
+              const shopId = shopIdAttempt.result?.data?.shop?.id;
+              if (shopId) {
+                const payload = {};
+                if (eventType === "nearby_click") {
+                  const ids = url.searchParams.get("locationIds");
+                  payload.locationIds = ids ? ids.split(",").filter(Boolean) : [];
+                }
+                if (eventType === "order_pick_click") {
+                  const id = url.searchParams.get("locationId");
+                  if (id) payload.locationId = id;
+                }
+                await recordAnalyticsEvent(admin, shopId, dateStr, eventType, payload);
               }
-              if (eventType === "order_pick_click") {
-                const id = url.searchParams.get("locationId");
-                if (id) payload.locationId = id;
-              }
-              await recordAnalyticsEvent(admin, shopId, dateStr, eventType, payload);
             }
           } catch (analyticsErr) {
             console.error("[location-stock] analytics record error:", analyticsErr);
@@ -661,17 +873,32 @@ export async function loader({ request }) {
 
     const variantGid = `gid://shopify/ProductVariant/${variantId}`;
 
-    const gqlResponse = await admin.graphql(
+    const inventoryAttempt = await graphqlWithAuthRetry(
+      admin,
+      session,
       VARIANT_INVENTORY_WITH_CONFIG_QUERY,
-      {
-        variables: { id: variantGid },
-      }
+      { id: variantGid },
+      { route: "loader", variantId }
     );
 
-    const result = await gqlResponse.json();
+    if (inventoryAttempt.authFailed) {
+      return errorJson(
+        "session_reauth_required",
+        "アプリの再認可が必要です。Shopify 管理画面からアプリを開いてください。"
+      );
+    }
+
+    const result = inventoryAttempt.result;
 
     if (result.errors && result.errors.length > 0) {
-      logAppProxyError(session?.shop, variantId, "graphql_error", "在庫情報の取得中にエラーが発生しました。", result.errors);
+      logAppProxyError(
+        session?.shop,
+        variantId,
+        "graphql_error",
+        "在庫情報の取得中にエラーが発生しました。",
+        result.errors,
+        { retried: inventoryAttempt.retried, refreshStatus: inventoryAttempt.refreshStatus }
+      );
       return errorJson("graphql_error", "在庫情報の取得中にエラーが発生しました。");
     }
 
@@ -690,14 +917,20 @@ export async function loader({ request }) {
     // 配送プロファイルから locationId → { hasShipping, hasLocalDelivery } を取得（read_shipping が必要）
     let deliveryFlagsByLocationId = new Map();
     try {
-      const dpRes = await admin.graphql(DELIVERY_PROFILES_QUERY);
-      const dpResult = await dpRes.json();
-      if (dpResult.errors?.length) {
+      const dpAttempt = await graphqlWithAuthRetry(
+        admin,
+        session,
+        DELIVERY_PROFILES_QUERY,
+        undefined,
+        { route: "loader_delivery", variantId }
+      );
+      const dpResult = dpAttempt.authFailed ? null : dpAttempt.result;
+      if (dpResult?.errors?.length) {
         console.warn(
           "[location-stock] deliveryProfiles query returned GraphQL errors (要因: スコープ未付与 or API 制限):",
           JSON.stringify(dpResult.errors, null, 2)
         );
-      } else if (dpResult.data) {
+      } else if (dpResult?.data) {
         deliveryFlagsByLocationId = buildLocationDeliveryFlags(dpResult.data);
       }
     } catch (dpErr) {
@@ -814,12 +1047,16 @@ export async function action({ request }) {
     const auth = await shopify.authenticate.public.appProxy(request);
     const { admin, session } = auth || {};
 
-    if (session) {
-      try {
-        await ensureOfflineAccessTokenFresh(session);
-      } catch (refreshErr) {
-        console.error("[location-stock] offline token refresh (action):", refreshErr);
-      }
+    const sessionGate = await ensureSessionOrErrorResponse(session, admin, {
+      route: "action",
+    });
+    if (sessionGate) {
+      // loader は HTTP 200 + ok:false。action は 401 だが error code は gate と揃える
+      const gateBody = await sessionGate.json();
+      return new Response(JSON.stringify(gateBody), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     if (!admin) {
@@ -828,9 +1065,25 @@ export async function action({ request }) {
         headers: { "Content-Type": "application/json" },
       });
     }
-    const shopIdRes = await admin.graphql(SHOP_ID_QUERY);
-    const shopIdJson = await shopIdRes.json();
-    const shopId = shopIdJson?.data?.shop?.id;
+    const shopIdAttempt = await graphqlWithAuthRetry(
+      admin,
+      session,
+      SHOP_ID_QUERY,
+      undefined,
+      { route: "action" }
+    );
+    if (shopIdAttempt.authFailed) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: "session_reauth_required",
+          message:
+            "アプリの再認可が必要です。Shopify 管理画面からアプリを開いてください。",
+        }),
+        { status: 401, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    const shopId = shopIdAttempt.result?.data?.shop?.id;
     if (!shopId) {
       return new Response(JSON.stringify({ ok: false, error: "Shop not found" }), {
         status: 500,
