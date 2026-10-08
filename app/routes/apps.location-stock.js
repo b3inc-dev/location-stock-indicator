@@ -11,14 +11,11 @@ import {
   ensureOfflineAccessTokenFresh,
   isAdminAuthFailure,
 } from "../utils/refresh-offline-session.js";
-import {
-  DELIVERY_PROFILES_QUERY,
-  buildLocationDeliveryFlags,
-} from "../utils/deliveryProfiles.js";
+import { loadLocationDeliveryFlags } from "../utils/deliveryProfiles.js";
 import { cacheGet, cacheSet } from "../utils/shortCache.js";
 
-/** deliveryProfiles 短命キャッシュ（ms）— Admin API 連打緩和 */
-const DELIVERY_PROFILES_TTL_MS = 60_000;
+/** 配送フラグ短命キャッシュ（ms）— Admin API 連打緩和 */
+const DELIVERY_FLAGS_TTL_MS = 60_000;
 
 /**
  * バリアント在庫 + ショップメタフィールド(location_stock.config) をまとめて取得
@@ -833,34 +830,28 @@ export async function loader({ request }) {
       });
     }
 
-    // 配送プロファイル（短命キャッシュ。read_shipping が必要）
+    // 配送フラグ（MDS: Market.delivery / legacy: deliveryProfiles。短命キャッシュ）
     let deliveryFlagsByLocationId = new Map();
-    const dpCacheKey = `deliveryProfiles:${session?.shop || "unknown"}`;
+    const dpCacheKey = `deliveryFlags:${session?.shop || "unknown"}`;
     try {
       const cached = cacheGet(dpCacheKey);
       if (cached instanceof Map) {
         deliveryFlagsByLocationId = cached;
       } else {
-        const dpAttempt = await graphqlWithAuthRetry(
-          admin,
-          session,
-          DELIVERY_PROFILES_QUERY,
-          undefined,
-          { route: "loader_delivery", variantId }
-        );
-        const dpResult = dpAttempt.authFailed ? null : dpAttempt.result;
-        if (dpResult?.errors?.length) {
-          console.warn(
-            "[location-stock] deliveryProfiles query returned GraphQL errors (要因: スコープ未付与 or API 制限):",
-            JSON.stringify(dpResult.errors, null, 2)
-          );
-        } else if (dpResult?.data) {
-          deliveryFlagsByLocationId = buildLocationDeliveryFlags(dpResult.data);
-          cacheSet(dpCacheKey, deliveryFlagsByLocationId, DELIVERY_PROFILES_TTL_MS);
+        const loaded = await loadLocationDeliveryFlags(admin, session, {
+          allLocationIds: (
+            variant.inventoryItem.inventoryLevels?.edges ?? []
+          )
+            .map((e) => e?.node?.location?.id)
+            .filter(Boolean),
+        });
+        deliveryFlagsByLocationId = loaded.flags;
+        if (loaded.source !== "none") {
+          cacheSet(dpCacheKey, deliveryFlagsByLocationId, DELIVERY_FLAGS_TTL_MS);
         }
       }
     } catch (dpErr) {
-      console.warn("[location-stock] deliveryProfiles fetch failed:", dpErr);
+      console.warn("[location-stock] delivery flags fetch failed:", dpErr);
     }
 
     // 在庫レベルをベースの stocks に変換（配送・店舗受け取りフラグを付与）

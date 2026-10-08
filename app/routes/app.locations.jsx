@@ -8,10 +8,7 @@ import shopify from "../shopify.server";
  * ロケーション一覧 + shop メタフィールド(location_stock.config) を取得
  * - localPickupSettingsV2: 店舗受け取り対応の有無（read_locations または read_shipping が必要）
  */
-import {
-  DELIVERY_PROFILES_QUERY,
-  buildLocationDeliveryFlags,
-} from "../utils/deliveryProfiles.js";
+import { loadLocationDeliveryFlags } from "../utils/deliveryProfiles.js";
 
 const LOCATIONS_AND_CONFIG_QUERY = `#graphql
   query LocationsAndConfig {
@@ -76,38 +73,33 @@ export async function loader({ request }) {
 
   let deliveryFlagsByLocationId = new Map();
   try {
-    const dpRes = await admin.graphql(DELIVERY_PROFILES_QUERY);
-    const dpResult = await dpRes.json();
-
-    if (dpResult.errors?.length) {
+    const debugDelivery =
+      typeof request !== "undefined" &&
+      new URL(request.url).searchParams.get("debug") === "delivery";
+    const locationIds = locations.map((loc) => loc.id).filter(Boolean);
+    const loaded = await loadLocationDeliveryFlags(admin, session, {
+      allLocationIds: locationIds,
+      logDebug: debugDelivery,
+    });
+    deliveryFlagsByLocationId = loaded.flags;
+    if (loaded.source === "none") {
       console.warn(
         "[location-stock]",
         { route: "app.locations", shop },
-        "deliveryProfiles query returned GraphQL errors (要因: スコープ未付与 or API 制限):",
-        JSON.stringify(dpResult.errors, null, 2)
+        "配送フラグを取得できませんでした（read_shipping / read_markets 未付与、API 制限、または MDS 読取失敗の可能性）。"
       );
-    }
-    if (dpResult.data && !dpResult.errors?.length) {
-      const debugDelivery =
-        typeof request !== "undefined" &&
-        new URL(request.url).searchParams.get("debug") === "delivery";
-      deliveryFlagsByLocationId = buildLocationDeliveryFlags(dpResult.data, {
-        logDebug: debugDelivery,
-      });
-      const profileCount = dpResult.data?.deliveryProfiles?.nodes?.length ?? 0;
-      if (profileCount === 0) {
-        console.warn(
-          "[location-stock]",
-          { route: "app.locations", shop },
-          "deliveryProfiles が 0 件です。設定 > 配送で配送プロファイルが作成されているか、merchantOwnedOnly の対象か確認してください。"
-        );
-      }
+    } else if (loaded.source === "deliveryProfiles" && deliveryFlagsByLocationId.size === 0) {
+      console.warn(
+        "[location-stock]",
+        { route: "app.locations", shop },
+        "deliveryProfiles 由来のフラグが 0 件です。設定 > 配送で配送プロファイルが作成されているか確認してください。"
+      );
     }
   } catch (e) {
     console.warn(
       "[location-stock]",
       { route: "app.locations", shop },
-      "Delivery profiles query failed (scope or network):",
+      "Delivery flags query failed (scope or network):",
       e instanceof Error ? e.message : e
     );
   }
