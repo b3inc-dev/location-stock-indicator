@@ -12,8 +12,10 @@ export async function loader({ request }) {
 
   const storeHandle = session.shop.replace(".myshopify.com", "");
   const pricingPlansUrl = `https://admin.shopify.com/store/${storeHandle}/charges/${APP_HANDLE}/pricing_plans`;
+  const url = new URL(request.url);
+  const requiredFromQuery = url.searchParams.get("required") === "1";
 
-  return { shopPlan, pricingPlansUrl };
+  return { shopPlan, pricingPlansUrl, requiredFromQuery };
 }
 
 /** プラン選択ボタン押下: サブスク作成 → Shopify の承認 URL へリダイレクト */
@@ -37,10 +39,11 @@ export async function action({ request }) {
 }
 
 export default function PlanPage() {
-  const { shopPlan, pricingPlansUrl } = useLoaderData();
-  const { plan, locationsCount, distribution, isDevelopmentStore, locationPlanMismatch, maxLocationsForPlan } =
+  const { shopPlan, pricingPlansUrl, requiredFromQuery } = useLoaderData();
+  const { plan, locationsCount, distribution, isDevelopmentStore, locationPlanMismatch, maxLocationsForPlan, planRequired } =
     shopPlan ?? {};
   const isInhouse = distribution === "inhouse";
+  const showRequiredBanner = Boolean(planRequired || requiredFromQuery);
 
   if (isInhouse) {
     return (
@@ -69,6 +72,24 @@ export default function PlanPage() {
   return (
     <s-page heading="料金プラン">
       <div style={{ padding: "16px", maxWidth: "900px" }}>
+        {showRequiredBanner && (
+          <div
+            style={{
+              marginBottom: "16px",
+              padding: "16px",
+              background: "#eaf4ff",
+              border: "1px solid #2c6ecb",
+              borderRadius: "8px",
+            }}
+          >
+            <s-text emphasis="bold">料金プランの選択が必要です</s-text>
+            <div style={{ marginTop: "8px" }}>
+              <s-text size="small">
+                プラン未選択の間は、商品ページのロケーション別在庫は表示されません。Lite または Pro を選択してください。
+              </s-text>
+            </div>
+          </div>
+        )}
         {locationPlanMismatch && maxLocationsForPlan != null && (
           <div
             style={{

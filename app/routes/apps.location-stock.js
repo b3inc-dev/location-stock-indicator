@@ -3,6 +3,10 @@
 import shopify from "../shopify.server";
 import { recordAnalyticsEvent } from "../analytics.server";
 import { getShopPlan } from "../utils/shopPlan.server.js";
+import {
+  isProFeaturesAllowed,
+  isStorefrontInventoryAllowed,
+} from "../utils/planGate.js";
 import { ensureOfflineAccessTokenFresh } from "../utils/refresh-offline-session.js";
 
 /**
@@ -753,25 +757,41 @@ export async function loader({ request }) {
     // グローバル設定（config）を構築
     let globalConfig = buildGlobalConfig(rawConfig || {});
 
-    // Lite のときは Pro 専用機能を強制 OFF（ダウングレード後もストアフロントで出さない）
+    // 課金ゲート: 公開・未契約は在庫非表示。Pro 専用は Lite/未契約で強制 OFF。
+    // プラン取得失敗時は fail-closed（無料開放・Pro バイパスをしない）。
+    let shopPlan = null;
     try {
-      const shopPlan = await getShopPlan(admin, session?.shop);
-      const isPro = shopPlan?.distribution === "inhouse" || shopPlan?.plan === "pro";
-      if (!isPro && shopPlan?.distribution === "public") {
-        globalConfig = {
-          ...globalConfig,
-          future: {
-            ...globalConfig.future,
-            groupByRegion: false,
-            regionAccordionEnabled: false,
-            nearbyFirstEnabled: false,
-            nearbyOtherCollapsible: false,
-            showOrderPickButton: false,
-          },
-        };
-      }
-    } catch (_) {
-      // プラン取得失敗時は config をそのまま返す（既存挙動を維持）
+      shopPlan = await getShopPlan(admin, session?.shop);
+    } catch (planErr) {
+      console.error("[location-stock] getShopPlan failed (fail-closed):", planErr);
+    }
+
+    if (!isStorefrontInventoryAllowed(shopPlan)) {
+      logAppProxyError(
+        session?.shop,
+        variantId,
+        "plan_required",
+        "料金プラン未選択のためストアフロント在庫を返しません。",
+        null
+      );
+      return errorJson(
+        "plan_required",
+        "料金プランを選択すると在庫が表示されます。Shopify 管理画面のアプリからプランを選択してください。"
+      );
+    }
+
+    if (!isProFeaturesAllowed(shopPlan)) {
+      globalConfig = {
+        ...globalConfig,
+        future: {
+          ...globalConfig.future,
+          groupByRegion: false,
+          regionAccordionEnabled: false,
+          nearbyFirstEnabled: false,
+          nearbyOtherCollapsible: false,
+          showOrderPickButton: false,
+        },
+      };
     }
 
     return successJson({
