@@ -258,24 +258,49 @@ export async function applySessionTokensFromDb(session) {
 }
 
 /**
- * GraphQL / Admin API エラーが認証失敗かどうかを判定する（秘密は出さない）。
- * @param {unknown} errors
+ * メッセージ文字列が認証失敗を示すか（秘密は出さない・部分一致を狭く保つ）。
+ * @param {string} msg
+ */
+function messageLooksLikeAuthFailure(msg) {
+  const m = String(msg || "").toLowerCase();
+  return (
+    m.includes("invalid api key or access token") ||
+    m.includes("invalid access token") ||
+    m.includes("expired access token") ||
+    m.includes("access token is invalid") ||
+    m.includes("access token has expired") ||
+    m.includes("unauthorized") ||
+    m.includes("not authorized") ||
+    m.includes("authentication failed") ||
+    m.includes("non-expiring access tokens are no longer accepted")
+  );
+}
+
+/**
+ * GraphQL / Admin API エラーが認証失敗かどうかを判定する。
+ * admin.graphql は失敗時に throw するため、thrown error も受け付ける。
+ * @param {unknown} errors - GraphQL errors 配列、または throw された Error
  * @param {number} [httpStatus]
  */
 export function isAdminAuthFailure(errors, httpStatus) {
   if (httpStatus === 401 || httpStatus === 403) return true;
+
+  // HttpResponseError 等: error.response.code
+  const thrownCode = errors?.response?.code ?? errors?.code;
+  if (thrownCode === 401 || thrownCode === 403) return true;
+
+  if (errors instanceof Error && messageLooksLikeAuthFailure(errors.message)) {
+    return true;
+  }
+
+  // GraphqlQueryError.body.errors.graphQLErrors
+  const graphQLErrors = errors?.body?.errors?.graphQLErrors;
+  if (Array.isArray(graphQLErrors) && graphQLErrors.some((e) => messageLooksLikeAuthFailure(e?.message))) {
+    return true;
+  }
+
   if (!Array.isArray(errors) || errors.length === 0) return false;
-  return errors.some((e) => {
-    const msg = String(e?.message || e || "").toLowerCase();
-    return (
-      msg.includes("invalid api key") ||
-      msg.includes("access token") ||
-      msg.includes("unauthorized") ||
-      msg.includes("authentication") ||
-      msg.includes("not authorized") ||
-      msg.includes("non-expiring access tokens are no longer accepted")
-    );
-  });
+  return errors.some((e) => messageLooksLikeAuthFailure(e?.message || e));
 }
 
 /**

@@ -269,20 +269,48 @@ async function ensureSessionOrErrorResponse(session, admin, context) {
 }
 
 /**
+ * admin.graphql は認証失敗時に Response ではなく例外を投げる
+ * （HttpResponseError / GraphqlQueryError）。成功時のみ JSON body を返す。
+ * @returns {Promise<{ ok: true, result: object } | { ok: false, authFailure: boolean, error: unknown, httpStatus?: number, result?: object }>}
+ */
+async function runAdminGraphql(admin, query, variables) {
+  try {
+    const gqlResponse = await admin.graphql(
+      query,
+      variables ? { variables } : undefined
+    );
+    const result = await gqlResponse.json();
+    // ライブラリが throw しない経路で errors が載る場合にも対応
+    if (isAdminAuthFailure(result?.errors, gqlResponse?.status)) {
+      return {
+        ok: false,
+        authFailure: true,
+        error: result.errors,
+        httpStatus: gqlResponse?.status,
+        result,
+      };
+    }
+    return { ok: true, result };
+  } catch (error) {
+    const httpStatus = error?.response?.code;
+    const authFailure = isAdminAuthFailure(error, httpStatus);
+    return { ok: false, authFailure, error, httpStatus };
+  }
+}
+
+/**
  * admin.graphql → JSON。認証失敗なら force refresh を 1 回だけ行い再試行する。
+ * 非認証エラーの throw はそのまま再送出せず呼び出し側へ伝播させる。
  * @returns {Promise<{ result: object, retried: boolean, refreshStatus?: string } | { authFailed: true, refreshStatus?: string, result?: object }>}
  */
 async function graphqlWithAuthRetry(admin, session, query, variables, context) {
-  const run = async () => {
-    const gqlResponse = await admin.graphql(query, variables ? { variables } : undefined);
-    const httpStatus = gqlResponse?.status;
-    const result = await gqlResponse.json();
-    return { result, httpStatus };
-  };
-
-  let { result, httpStatus } = await run();
-  if (!isAdminAuthFailure(result?.errors, httpStatus)) {
-    return { result, retried: false };
+  const first = await runAdminGraphql(admin, query, variables);
+  if (first.ok) {
+    return { result: first.result, retried: false };
+  }
+  if (!first.authFailure) {
+    // throttle / 5xx / 通常 GraphQL エラー等は従来どおり外枠で扱う
+    throw first.error;
   }
 
   logAppProxyError(
@@ -290,12 +318,12 @@ async function graphqlWithAuthRetry(admin, session, query, variables, context) {
     context?.variantId ?? null,
     "graphql_auth_failure",
     "Admin GraphQL が認証エラーを返しました。refresh 後に 1 回再試行します。",
-    result?.errors,
-    { route: context?.route, httpStatus }
+    first.error,
+    { route: context?.route, httpStatus: first.httpStatus }
   );
 
   if (!session) {
-    return { authFailed: true, result, refreshStatus: "no_session" };
+    return { authFailed: true, result: first.result, refreshStatus: "no_session" };
   }
 
   let refreshResult;
@@ -310,7 +338,7 @@ async function graphqlWithAuthRetry(admin, session, query, variables, context) {
       e,
       { route: context?.route }
     );
-    return { authFailed: true, result, refreshStatus: "exception" };
+    return { authFailed: true, result: first.result, refreshStatus: "exception" };
   }
 
   if (!refreshResult?.ok) {
@@ -328,29 +356,40 @@ async function graphqlWithAuthRetry(admin, session, query, variables, context) {
     );
     return {
       authFailed: true,
-      result,
+      result: first.result,
       refreshStatus: refreshResult?.status,
     };
   }
 
-  ({ result, httpStatus } = await run());
-  if (isAdminAuthFailure(result?.errors, httpStatus)) {
-    logAppProxyError(
-      session?.shop,
-      context?.variantId ?? null,
-      "graphql_auth_failure_after_refresh",
-      "refresh 後も Admin GraphQL が認証エラーです。",
-      result?.errors,
-      { route: context?.route, httpStatus, refreshStatus: refreshResult.status }
-    );
+  const second = await runAdminGraphql(admin, query, variables);
+  if (second.ok) {
     return {
-      authFailed: true,
-      result,
+      result: second.result,
+      retried: true,
       refreshStatus: refreshResult.status,
     };
   }
+  if (!second.authFailure) {
+    throw second.error;
+  }
 
-  return { result, retried: true, refreshStatus: refreshResult.status };
+  logAppProxyError(
+    session?.shop,
+    context?.variantId ?? null,
+    "graphql_auth_failure_after_refresh",
+    "refresh 後も Admin GraphQL が認証エラーです。",
+    second.error,
+    {
+      route: context?.route,
+      httpStatus: second.httpStatus,
+      refreshStatus: refreshResult.status,
+    }
+  );
+  return {
+    authFailed: true,
+    result: second.result,
+    refreshStatus: refreshResult.status,
+  };
 }
 
 /**
@@ -1012,15 +1051,12 @@ export async function action({ request }) {
       route: "action",
     });
     if (sessionGate) {
-      return new Response(
-        JSON.stringify({
-          ok: false,
-          error: "session_reauth_required",
-          message:
-            "アプリの再認可が必要です。Shopify 管理画面からアプリを開いてください。",
-        }),
-        { status: 401, headers: { "Content-Type": "application/json" } }
-      );
+      // loader は HTTP 200 + ok:false。action は 401 だが error code は gate と揃える
+      const gateBody = await sessionGate.json();
+      return new Response(JSON.stringify(gateBody), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     if (!admin) {
