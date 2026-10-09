@@ -89,14 +89,16 @@
 
 ## 8. クリック動作
 
+**主経路（管理 UI あり）**: ロケーション設定の「リンクを表示する」＋行ごと `linkUrl`（`REQUIREMENTS.md` §2.5）。`click.action` 用の管理 UI は設けない。
+
 優先順（`applyClickAction`）:
 
-1. `showLocationLinks` かつ `linkUrl` 非空 → `<a href=linkUrl>`（http 始まりは `target=_blank`）。
-2. 後方互換: `click.action === open_map` → `mapUrlTemplate`。
-3. `click.action === open_url` → `urlTemplate`。
+1. `showLocationLinks` かつ `linkUrl` 非空 → `<a href=linkUrl>`（http 始まりは `target=_blank`）。← **推奨・主経路**
+2. 後方互換: `click.action === open_map` → `mapUrlTemplate`（メタフィールド直編集のみ。管理 UI なし）。
+3. `click.action === open_url` → `urlTemplate`（同上。`{location_id}` は stock の `locationId`）。
 4. それ以外はテキスト。
 
-`showLocationLinks` / 行ごと `linkUrl` はロケーション設定で保存（`REQUIREMENTS.md` §2.5）。
+`showLocationLinks` / 行ごと `linkUrl` はロケーション設定で保存。
 
 ## 9. エリア・近隣・店舗受け取り（Pro / inhouse）
 
