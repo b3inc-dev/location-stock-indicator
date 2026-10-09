@@ -118,3 +118,7 @@
 - Lite: ロケーション最大 10。超過で `locationPlanMismatch` → `/app/plan` へ誘導（`app.jsx`）。
 - 料金・機能表の正: `PLAN_SETTINGS_DESIGN.md` / `REQUIREMENTS.md` §13。
 - `FORCE_PLAN_LITE=1` で Lite 強制（開発確認用）。
+
+## 後方互換性の確認
+
+Proxy成功時の `ok` / `variantId` / `variantTitle` / `stocks` / `config` と、stockのlocation識別子・名称・available数量・fulfillsOnlineOrdersをTheme側とのcontractとして確認する。HTTP200でも `ok:false` のエラーがある。既存形状・閾値・variantイベント・公開Lite/ProとCiara inhouseの表示差を無断で再設計しない。変更時の検証項目は [DEVELOPMENT.md](DEVELOPMENT.md)。

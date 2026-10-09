@@ -63,7 +63,7 @@
 | Shopify dev store / `shopify app dev` | スクリプトあり（運用は手動） |
 | Theme preview | Extension + テーマエディタ（手順は既存 docs） |
 | lint / typecheck / build | npm scripts あり。**CI ワークフローなし** |
-| GitHub → Render | Ciara main / On Commit確認済み、公開用実設定は未確認。main mergeは本番backend release。Shopify releaseは別経路。運用・承認条件は `APP_AND_RENDER_CONFIG.md` を正本とする |
+| GitHub → Render | Ciara main / On Commit確認済み、公開用もPR #2最終監査でmain / On Commit確認済み（DEPLOY_STEPS参照）。main mergeは本番backend release。Shopify releaseは別経路。運用・承認条件は `APP_AND_RENDER_CONFIG.md` を正本とする |
 
 ---
 
@@ -87,3 +87,9 @@
 - フロー: [`ARCHITECTURE.md`](./ARCHITECTURE.md)
 - 業務ルール: [`BUSINESS_RULES.md`](./BUSINESS_RULES.md)
 - Shopify 設定: [`SHOPIFY.md`](./SHOPIFY.md)
+
+## G. Codex単独継続開発の運用判断（2026-10-04）
+
+ユーザー指示に基づき通常ownerをCodexとし、このチャットからPRまで自律的に進める。既存の他tool ownerのbranchはhandoff前に編集しない。仕様・API・アプリ設定の再設計は行わない。設定名は実repoのpublic/default対応を維持し、不存在のciara設定へrenameしない。
+
+main mergeは両backendの本番反映として明示承認待ち。既存の初期設定例外承認は将来の品質失敗・releaseを承認するものではない。開発・検証は [DEVELOPMENT.md](DEVELOPMENT.md)、実行候補は [BACKLOG.md](BACKLOG.md)。

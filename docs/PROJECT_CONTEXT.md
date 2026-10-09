@@ -84,3 +84,7 @@ shopify.app.public.toml           # 公開用
 - [`SHOPIFY.md`](./SHOPIFY.md)
 - [`DECISIONS.md`](./DECISIONS.md)
 - ルート [`AGENTS.md`](../AGENTS.md)
+
+## Codex単独開発の案内
+
+通常担当はCodex。作業開始・環境準備・品質・PR必須項目は [DEVELOPMENT.md](DEVELOPMENT.md)、候補は [BACKLOG.md](BACKLOG.md)。実際の販売/Ciara設定名と本番反映の承認境界は [DEPLOY_STEPS.md](DEPLOY_STEPS.md) を参照。docs/agent整備でアプリ挙動を変更しない。

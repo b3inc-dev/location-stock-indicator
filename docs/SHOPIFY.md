@@ -112,7 +112,7 @@ npm run dev:custom
 
 owner・引き継ぎ・品質ゲート・承認条件と環境別の実設定は [`APP_AND_RENDER_CONFIG.md`](./APP_AND_RENDER_CONFIG.md) を正本とする。共通規則を本書に複製しない。
 
-1. 専用branchをpushしてPRを作成する。mainへのdirect commit/pushは禁止。Ciaraのmain / On Commitは初期設定監査で確認済みで、main mergeはbackend production releaseとなる。公開用Renderの実設定は未確認。
+1. 専用branchをpushしてPRを作成する。mainへのdirect commit/pushは禁止。Ciaraのmain / On Commitは初期設定監査で確認済みで、main mergeはbackend production releaseとなる。公開用もPR #2最終監査でmain / On Commit確認済み（DEPLOY_STEPS参照）。
 2. 拡張・App Proxy設定のShopify反映は公開用／自社用それぞれの別release経路。旧deploy docsのコマンドは参照用で、本依頼ではmerge・deploy・publish・rollbackを停止する。
 3. リポジトリ内GitHub Actionsワークフローなし。品質結果はPRに記録し、既存lint失敗をGreenと扱わない。本番DBへの接続・migrationを品質確認に使わない。
 
