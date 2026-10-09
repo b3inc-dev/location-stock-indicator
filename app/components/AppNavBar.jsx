@@ -8,12 +8,15 @@ export function AppNavBar({ shopPlan }) {
   const location = useLocation();
   const search = location.search || "";
   const showPlanLink = shopPlan?.distribution === "public";
+  const showAnalyticsLink = !!shopPlan?.features?.analytics;
 
   const items = [
     { path: "/app/locations", label: "ロケーション設定" },
     { path: "/app/settings", label: "在庫表示設定" },
-    { path: "/app/analytics", label: "分析" },
   ];
+  if (showAnalyticsLink) {
+    items.push({ path: "/app/analytics", label: "分析" });
+  }
   if (showPlanLink) {
     items.push({ path: "/app/plan", label: "料金プラン" });
   }
