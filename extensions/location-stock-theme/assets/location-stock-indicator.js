@@ -171,6 +171,26 @@
         bodyEl.textContent = text || "";
       }
 
+      // Theme schema may send top_left…bottom_right; boot Liquid normally
+      // already splits to top|bottom + left|center|right. Normalize both forms.
+      function normalizePlacement(positionValue, alignValue) {
+        var pos = positionValue || "bottom";
+        var align = alignValue || "left";
+        if (typeof pos === "string" && pos.indexOf("_") !== -1) {
+          var parts = pos.split("_");
+          if (parts.length >= 2) {
+            pos = parts[0];
+            align = parts[1];
+          }
+        }
+        if (pos !== "top" && pos !== "bottom") pos = "bottom";
+        if (align !== "left" && align !== "center" && align !== "right") align = "left";
+        return { position: pos, align: align };
+      }
+
+      var legendPlacement = normalizePlacement(boot.legendPosition, null);
+      var noticePlacement = normalizePlacement(boot.noticePosition, boot.noticeAlign);
+
       var settings = {
         outOfStockMax: 0,
         inStockMin: 5,
@@ -188,7 +208,6 @@
         sortBy: "config_order",
         pinnedLocationId: null,
         locationsMode: "all",
-        usePublicLocationName: false,
         clickAction: "none",
         mapUrlTemplate: "https://maps.google.com/?q={location_name}",
         urlTemplate: "/pages/store-{location_id}",
@@ -203,10 +222,10 @@
         listSeparator: "： ",
         showLegend: true,
         showNotice: false,
-        legendPosition: boot.legendPosition,
-        noticePosition: boot.noticePosition,
+        legendPosition: legendPlacement.position,
+        noticePosition: noticePlacement.position,
         noticeText: "",
-        noticeAlign: boot.noticeAlign,
+        noticeAlign: noticePlacement.align,
         noticeMargin: boot.rowPaddingY,
         groupByRegion: false,
         regionAccordionEnabled: false,
@@ -344,15 +363,16 @@
         }
 
         if (settings.clickAction === "open_map") {
-          var url = settings.mapUrlTemplate.replace("{location_name}", encodeURIComponent(name));
-          return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + name + '</a>';
+          var mapUrl = settings.mapUrlTemplate.replace("{location_name}", encodeURIComponent(name));
+          return '<a href="' + mapUrl + '" target="_blank" rel="noopener noreferrer">' + name + '</a>';
         }
 
         if (settings.clickAction === "open_url") {
-          var url = settings.urlTemplate
-            .replace("{location_id}", encodeURIComponent(location.id || ""))
+          // stocks は locationId のみ（location.id は未定義 → 置換が空になる）
+          var openUrl = settings.urlTemplate
+            .replace("{location_id}", encodeURIComponent(location.locationId || location.id || ""))
             .replace("{location_name}", encodeURIComponent(name));
-          return '<a href="' + url + '">' + name + '</a>';
+          return '<a href="' + openUrl + '">' + name + '</a>';
         }
 
         return name;
@@ -1260,9 +1280,7 @@
               if (typeof locConf.mode === "string") {
                 settings.locationsMode = locConf.mode;
               }
-              if (typeof locConf.usePublicName === "boolean") {
-                settings.usePublicLocationName = locConf.usePublicName;
-              }
+              // usePublicName は Proxy の displayName で反映（クライアントでは使わない）
             }
 
             if (appConfig.click) {

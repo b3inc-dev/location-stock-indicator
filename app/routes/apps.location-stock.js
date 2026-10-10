@@ -14,14 +14,11 @@ import {
   ensureOfflineAccessTokenFresh,
   isAdminAuthFailure,
 } from "../utils/refresh-offline-session.js";
-import {
-  DELIVERY_PROFILES_QUERY,
-  buildLocationDeliveryFlags,
-} from "../utils/deliveryProfiles.js";
+import { loadLocationDeliveryFlags } from "../utils/deliveryProfiles.js";
 import { cacheGet, cacheSet } from "../utils/shortCache.js";
 
-/** deliveryProfiles 短命キャッシュ（ms）— Admin API 連打緩和 */
-const DELIVERY_PROFILES_TTL_MS = 60_000;
+/** 配送フラグ短命キャッシュ（ms）— Admin API 連打緩和 */
+const DELIVERY_FLAGS_TTL_MS = 60_000;
 
 /**
  * バリアント在庫 + ショップメタフィールド(location_stock.config) をまとめて取得
@@ -338,6 +335,9 @@ function applyConfigToStocks(stocks, config) {
     ? config.regionGroups
     : [];
   const regionGroupById = new Map(regionGroups.filter((g) => g && g.id).map((g) => [g.id, g.name]));
+  // 未設定は true（従来の displayName = publicName || locationName と互換）
+  const usePublicName =
+    typeof config?.usePublicName === "boolean" ? config.usePublicName : true;
 
   // 設定が無い場合:
   //  - ラベル = 元ロケーション名
@@ -397,9 +397,13 @@ function applyConfigToStocks(stocks, config) {
 
       // メタフィールドで明示設定されたロケーション（リンクURLは「リンクを表示する」がONのときのみ使用）
       const linkUrl = (cfg && typeof cfg.linkUrl === "string" && cfg.linkUrl.trim() !== "") ? cfg.linkUrl.trim() : "";
+      const displayName =
+        usePublicName && cfg.publicName
+          ? cfg.publicName
+          : stock.locationName;
       return {
         ...stock,
-        displayName: cfg.publicName || stock.locationName,
+        displayName,
         sortOrder:
           typeof cfg.sortOrder === "number" ? cfg.sortOrder : 999999,
         fromConfig: true,
@@ -451,7 +455,8 @@ function buildGlobalConfig(raw) {
     },
     locations: {
       mode: "all",          // all / online_only / custom_from_app
-      usePublicName: false, // メタフィールド publicName を使うかどうか
+      // 未設定時は true（従来どおり publicName || locationName）。明示 false のみ Shopify 名
+      usePublicName: true,
     },
     click: {
       action: "none", // none / open_map / open_url
@@ -731,26 +736,40 @@ export async function loader({ request }) {
         const allowed = ["area_display", "nearby_click", "order_pick_click"];
         if (allowed.includes(eventType)) {
           try {
-            const shopIdAttempt = await graphqlWithAuthRetry(
-              admin,
-              session,
-              SHOP_ID_QUERY,
-              undefined,
-              { route: "loader_analytics" }
-            );
-            if (!shopIdAttempt.authFailed) {
-              const shopId = shopIdAttempt.result?.data?.shop?.id;
-              if (shopId) {
-                const payload = {};
-                if (eventType === "nearby_click") {
-                  const ids = url.searchParams.get("locationIds");
-                  payload.locationIds = ids ? ids.split(",").filter(Boolean) : [];
+            // Lite / plan null では記録しない（features.analytics）
+            let analyticsPlan = null;
+            try {
+              analyticsPlan = await getShopPlan(admin, session?.shop, {
+                reportUsage: false,
+              });
+            } catch (planErr) {
+              console.error(
+                "[location-stock] getShopPlan failed (analytics skip):",
+                planErr
+              );
+            }
+            if (analyticsPlan?.features?.analytics) {
+              const shopIdAttempt = await graphqlWithAuthRetry(
+                admin,
+                session,
+                SHOP_ID_QUERY,
+                undefined,
+                { route: "loader_analytics" }
+              );
+              if (!shopIdAttempt.authFailed) {
+                const shopId = shopIdAttempt.result?.data?.shop?.id;
+                if (shopId) {
+                  const payload = {};
+                  if (eventType === "nearby_click") {
+                    const ids = url.searchParams.get("locationIds");
+                    payload.locationIds = ids ? ids.split(",").filter(Boolean) : [];
+                  }
+                  if (eventType === "order_pick_click") {
+                    const id = url.searchParams.get("locationId");
+                    if (id) payload.locationId = id;
+                  }
+                  await recordAnalyticsEvent(admin, shopId, dateStr, eventType, payload);
                 }
-                if (eventType === "order_pick_click") {
-                  const id = url.searchParams.get("locationId");
-                  if (id) payload.locationId = id;
-                }
-                await recordAnalyticsEvent(admin, shopId, dateStr, eventType, payload);
               }
             }
           } catch (analyticsErr) {
@@ -814,34 +833,28 @@ export async function loader({ request }) {
       });
     }
 
-    // 配送プロファイル（短命キャッシュ。read_shipping が必要）
+    // 配送フラグ（MDS: Market.delivery / legacy: deliveryProfiles。短命キャッシュ）
     let deliveryFlagsByLocationId = new Map();
-    const dpCacheKey = `deliveryProfiles:${session?.shop || "unknown"}`;
+    const dpCacheKey = `deliveryFlags:${session?.shop || "unknown"}`;
     try {
       const cached = cacheGet(dpCacheKey);
       if (cached instanceof Map) {
         deliveryFlagsByLocationId = cached;
       } else {
-        const dpAttempt = await graphqlWithAuthRetry(
-          admin,
-          session,
-          DELIVERY_PROFILES_QUERY,
-          undefined,
-          { route: "loader_delivery", variantId }
-        );
-        const dpResult = dpAttempt.authFailed ? null : dpAttempt.result;
-        if (dpResult?.errors?.length) {
-          console.warn(
-            "[location-stock] deliveryProfiles query returned GraphQL errors (要因: スコープ未付与 or API 制限):",
-            JSON.stringify(dpResult.errors, null, 2)
-          );
-        } else if (dpResult?.data) {
-          deliveryFlagsByLocationId = buildLocationDeliveryFlags(dpResult.data);
-          cacheSet(dpCacheKey, deliveryFlagsByLocationId, DELIVERY_PROFILES_TTL_MS);
+        const loaded = await loadLocationDeliveryFlags(admin, session, {
+          allLocationIds: (
+            variant.inventoryItem.inventoryLevels?.edges ?? []
+          )
+            .map((e) => e?.node?.location?.id)
+            .filter(Boolean),
+        });
+        deliveryFlagsByLocationId = loaded.flags;
+        if (loaded.source !== "none") {
+          cacheSet(dpCacheKey, deliveryFlagsByLocationId, DELIVERY_FLAGS_TTL_MS);
         }
       }
     } catch (dpErr) {
-      console.warn("[location-stock] deliveryProfiles fetch failed:", dpErr);
+      console.warn("[location-stock] delivery flags fetch failed:", dpErr);
     }
 
     // 在庫レベルをベースの stocks に変換（配送・店舗受け取りフラグを付与）
@@ -1072,6 +1085,23 @@ export async function action({ request }) {
         JSON.stringify({ ok: false, error: "Invalid event type" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
+    }
+    let analyticsPlan = null;
+    try {
+      analyticsPlan = await getShopPlan(admin, session?.shop, {
+        reportUsage: false,
+      });
+    } catch (planErr) {
+      console.error(
+        "[location-stock] getShopPlan failed (analytics action skip):",
+        planErr
+      );
+    }
+    if (!analyticsPlan?.features?.analytics) {
+      return new Response(JSON.stringify({ ok: true, skipped: "analytics_not_allowed" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
     }
     const payload = {};
     if (eventType === "nearby_click" && Array.isArray(body.locationIds)) {

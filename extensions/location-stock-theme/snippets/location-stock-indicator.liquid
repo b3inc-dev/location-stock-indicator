@@ -77,6 +77,42 @@
 
     assign heading_font_size_px = s.heading_font_size | default: 18
     assign region_heading_align = s.region_heading_align | default: 'left'
+
+    assign heading_tag = s.heading_level | default: 'h3'
+    unless heading_tag == 'h2' or heading_tag == 'h3'
+      assign heading_tag = 'h3'
+    endunless
+
+    # legend/notice: new top_left…; legacy top|bottom + *_align also supported
+    assign legend_placement = s.legend_position | default: 'bottom_left'
+    assign legend_pos = 'bottom'
+    assign legend_align = 'left'
+    if legend_placement == 'top_left' or legend_placement == 'top_center' or legend_placement == 'top_right' or legend_placement == 'bottom_left' or legend_placement == 'bottom_center' or legend_placement == 'bottom_right'
+      assign legend_parts = legend_placement | split: '_'
+      assign legend_pos = legend_parts[0]
+      assign legend_align = legend_parts[1]
+    elsif legend_placement == 'top' or legend_placement == 'bottom'
+      assign legend_pos = legend_placement
+      assign legend_align = s.legend_align | default: 'left'
+      unless legend_align == 'left' or legend_align == 'center' or legend_align == 'right'
+        assign legend_align = 'left'
+      endunless
+    endif
+
+    assign notice_placement = s.notice_position | default: 'bottom_left'
+    assign notice_pos = 'bottom'
+    assign notice_align = 'left'
+    if notice_placement == 'top_left' or notice_placement == 'top_center' or notice_placement == 'top_right' or notice_placement == 'bottom_left' or notice_placement == 'bottom_center' or notice_placement == 'bottom_right'
+      assign notice_parts = notice_placement | split: '_'
+      assign notice_pos = notice_parts[0]
+      assign notice_align = notice_parts[1]
+    elsif notice_placement == 'top' or notice_placement == 'bottom'
+      assign notice_pos = notice_placement
+      assign notice_align = s.notice_align | default: 'left'
+      unless notice_align == 'left' or notice_align == 'center' or notice_align == 'right'
+        assign notice_align = 'left'
+      endunless
+    endif
   %}
 
   <div
@@ -97,33 +133,30 @@
   >
     <div class="lsi-inner">
       {% if s.heading_text != blank %}
-        {% assign heading_tag = 'h3' %}
-        {% assign heading_class = 'lsi-heading' %}
-
-        <{{ heading_tag }} class="{{ heading_class }}">
+        <{{ heading_tag }} class="lsi-heading">
           {{ s.heading_text }}
         </{{ heading_tag }}>
       {% endif %}
 
       <div
-        class="lsi-legend lsi-legend--{{ s.legend_align | default: 'left' }} lsi-legend--position-top"
+        class="lsi-legend lsi-legend--{{ legend_align }} lsi-legend--position-top"
         data-role="legend"
         data-legend-position="top"
       ></div>
 
-      <div class="lsi-notice lsi-notice--top lsi-notice--align-{{ s.notice_align | default: 'left' }}" data-role="notice" data-notice-position="top"></div>
+      <div class="lsi-notice lsi-notice--top lsi-notice--align-{{ notice_align }}" data-role="notice" data-notice-position="top"></div>
 
       <div class="lsi-body lsi-message--loading">
         在庫を読み込み中...
       </div>
 
       <div
-        class="lsi-legend lsi-legend--{{ s.legend_align | default: 'left' }} lsi-legend--position-bottom"
+        class="lsi-legend lsi-legend--{{ legend_align }} lsi-legend--position-bottom"
         data-role="legend"
         data-legend-position="bottom"
       ></div>
 
-      <div class="lsi-notice lsi-notice--bottom lsi-notice--align-{{ s.notice_align | default: 'left' }}" data-role="notice" data-notice-position="bottom"></div>
+      <div class="lsi-notice lsi-notice--bottom lsi-notice--align-{{ notice_align }}" data-role="notice" data-notice-position="bottom"></div>
     </div>
     <div class="lsi-cart-m" aria-modal="true" role="dialog" hidden>
       <div class="lsi-cart-m-bd"></div>
@@ -753,9 +786,9 @@
       "lowStockColor": {{ low_stock_color | json }},
       "outOfStockColor": {{ out_of_stock_color | json }},
       "locationColWidth": {{ s.location_col_width | default: 70 | json }},
-      "legendPosition": {{ s.legend_position | default: 'bottom' | json }},
-      "noticePosition": {{ s.notice_position | default: 'bottom' | json }},
-      "noticeAlign": {{ s.notice_align | default: 'left' | json }},
+      "legendPosition": {{ legend_pos | json }},
+      "noticePosition": {{ notice_pos | json }},
+      "noticeAlign": {{ notice_align | json }},
       "rowPaddingY": {{ row_padding_y | default: 8 | json }},
       "accordionIcon": {{ s.accordion_icon | default: 'chevron' | json }},
       "regionHeadingBackground": {{ region_heading_background | json }},

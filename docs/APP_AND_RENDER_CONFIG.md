@@ -79,9 +79,9 @@
 
 | 項目 | POS Stock | Location Stock |
 |------|-----------|----------------|
-| **切り分けのタイミング** | **デプロイ時**（`npm run deploy:public` / `deploy:inhouse` で `appUrl.js` の APP_MODE を書き換え→該当 toml で deploy） | **Render の環境変数**（公開用・自社用で **別サービス** なので、自社用の Render にだけ `APP_DISTRIBUTION=inhouse` を設定） |
+| **切り分けのタイミング** | **デプロイ時**（`deploy:public` / `deploy:inhouse` 等で `appUrl.js` の APP_MODE を書き換え→該当 toml で deploy。※ POS Stock 側の script 名） | **Render の環境変数**（公開用・自社用で **別サービス** なので、自社用の Render にだけ `APP_DISTRIBUTION=inhouse` を設定） |
 | **理由** | POS 拡張が「どちらのバックエンド URL を呼ぶか」を **ビルド時に** 決めるため、デプロイするアプリに合わせて APP_MODE を変える必要がある | ストアフロントは App Proxy の URL が **アプリごとに Partner で設定**されているため、同じコードでよい。バックエンドは「今どちらのサービスか」を **実行時の環境変数** で判定する |
-| **やること** | 公開用デプロイ時は `deploy:public`、自社用は `deploy:inhouse` を実行 | 自社用の Render に **一度** `APP_DISTRIBUTION=inhouse` を設定しておく。以降は各Renderの監視設定に従い承認済みPRのmain mergeでbackendが反映される（公開用の実設定は未確認） |
+| **やること** | 公開用／自社用でそれぞれ該当 script → toml を切り替えて deploy | **本リポジトリに `deploy:public` / `deploy:inhouse` script はない**（`package.json` の `deploy` は `shopify app deploy` のみ）。公開用は `npx shopify app config use shopify.app.public.toml` → `npx shopify app deploy`、自社用は `shopify.app.toml` を指定して同様（§4・§5）。自社用 Render に **一度** `APP_DISTRIBUTION=inhouse` を設定。以降は各 Render の監視設定に従い承認済み PR の main merge で backend が反映される（公開用の実設定は未確認） |
 
 ---
 

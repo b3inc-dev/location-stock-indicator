@@ -82,3 +82,14 @@ Render（Ciara）のログとブラウザ Network / Console を同じ時刻で�
 
 `refreshToken` が無い offline session は、非期限付きトークンなら公式 token-exchange（`expiring=1`）で移行を試行する。失敗時は `session_reauth_required` を返し、商人に管理画面からのアプリ再オープンを促す。  
 **DB を手で書き換えない。**
+
+---
+
+## 6. 実地テスト実施状況
+
+| 項目 | 状態 |
+|------|------|
+| Ciara 放置（§2） | **未実施**（本番操作・長時間観測はユーザー承認後） |
+| 公開 dev store 同シナリオ | **未実施** |
+
+短縮確認（承認後）: §2 の 1→6 を実行し、§3 で Render ログと Network を突き合わせ、§4 の合格／不合格で記録する。

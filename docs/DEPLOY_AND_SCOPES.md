@@ -123,7 +123,7 @@ App Proxy で「管理画面 API クライアントの初期化に失敗しま�
 |--------|------|------|
 | `SHOPIFY_API_KEY` | アプリの API キー（Client ID） | Partners ダッシュボードのアプリ → クライアント ID |
 | `SHOPIFY_API_SECRET` | アプリの API シークレット | 同じく「クライアントのシークレット」 |
-| `SCOPES` または `SHOPIFY_API_SCOPES` | スコープ一覧（カンマ区切り） | 例: `read_products,read_inventory,read_locations,read_shipping,...` |
+| `SCOPES` または `SHOPIFY_API_SCOPES` | スコープ一覧（カンマ区切り） | 例: `read_products,read_inventory,read_locations,read_shipping,read_markets,write_app_proxy`（`read_markets` は MDS Option B・PR #12 マージ後。toml と一致させる） |
 
 このほか、**セッション保存**（Prisma 等）用の `DATABASE_URL` や、デプロイ先が求める変数（例: Render の `RENDER_EXTERNAL_URL`）も必要に応じて設定します。
 
@@ -153,7 +153,7 @@ App Proxy で「管理画面 API クライアントの初期化に失敗しま�
 | やりたいこと | やること |
 |--------------|----------|
 | デプロイできたか確認する | Partners のアプリ → バージョン一覧で最新バージョンと日時を確認 |
-| 配送対応・ローカルデリバリー対応を表示する | 各ストアで「権限の更新」または再インストールして read_shipping を承認 |
+| 配送対応・ローカルデリバリー対応を表示する | 各ストアで「権限の更新」または再インストールして read_shipping（および MDS 時は read_markets）を承認。申告手順は `MARKET_DRIVEN_SHIPPING_ATTESTATION.md` |
 | dev で確認する | 開発ストアでも上記の権限更新を行えば dev プレビューで表示可能 |
 | 公開用・自社用のデプロイ | 同じアプリなら 1 回のデプロイでよい（別アプリなら別デプロイ） |
 | ローカルデリバリー対応が表示されない | 配送方法名に「local」「ローカル」「当日」「近距離」などを含める（セクション 5 参照） |

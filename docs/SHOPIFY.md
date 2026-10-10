@@ -21,6 +21,8 @@ read_inventory, read_locations, read_products, read_shipping, write_app_proxy
 用途の説明: `REQUIREMENTS.md` §14.5、`APP_REVIEW_SUBMISSION.md`。
 ※ `write_products` は未使用のため両 toml から削除済み（Shop metafield のみ。Render `SCOPES` も承認後に合わせる）。
 
+**マーケット主導配送（Option B・PR #12 マージ後）**: 両 toml に `read_markets` を追加。MDS 店は `Market.delivery`、legacy は `deliveryProfiles`。手順・自己申告は `docs/MARKET_DRIVEN_SHIPPING_ATTESTATION.md`（フォーム送信は人手）。
+
 ### Webhooks
 
 - `app/uninstalled` → `/webhooks/app/uninstalled`
@@ -84,7 +86,7 @@ Admin GraphQL API バージョン（アプリコード）: `ApiVersion.October25
   - `quantities(names: "available")`
 - `shop.metafield(namespace: "location_stock", key: "config")`
 
-配送: `deliveryProfiles(first: 50)` → location groups / zones / methodDefinitions。
+配送: legacy は `deliveryProfiles(first: 50)` → location groups / zones / methodDefinitions。MDS（`ShopFeatures.marketDrivenShipping`）は `Market.delivery.shipping`（Admin API 2026-07、実装は PR #12）。
 
 ## 7. 開発・プレビュー
 
