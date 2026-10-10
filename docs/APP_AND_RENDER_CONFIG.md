@@ -30,6 +30,34 @@
   自社用（カスタムアプリ）で dev したいときは `npm run dev:custom` を使います。
 - 一度 `config use` した toml は、次に別の toml を指定するまで「現在の設定」として残ります。そのため、公開用で dev したあと、`npm run dev` だけ実行すると、次回も公開用のままになります。自社用に戻したいときは `npx shopify app config use shopify.app.toml` を実行してください。
 
+### PR Preview Workflow
+
+オープンな PR の最新 HEAD を、本体 worktree の branch を切り替えずにローカル確認するための手順です。Preview 専用 worktree はリポジトリ隣の `../ciara-system-preview` です。通常の `npm run dev`（port 3000）と競合しないよう、Preview は **port 3001** 固定です。
+
+```text
+初回: npm run preview:setup → cd ../ciara-system-preview → npm run preview:dev
+以後: npm run preview:pr -- <PR番号>
+ブラウザ: http://127.0.0.1:3001
+確認後の指示例: 「プレビュー確認済み。問題ないので本番反映まで進めて。」→ 既存 production release workflow へ
+```
+
+`preview:setup` / `preview:pr` は本体リポジトリで実行する。`preview:dev` は Preview worktree 内、または本体から（Preview worktree を指定して起動）のどちらでもよい。
+
+| コマンド | 役割 |
+|----------|------|
+| `npm run preview:setup` | Preview 専用 worktree を安全に作成、または既存を再利用（二重作成しない）。本体 branch は切り替えない |
+| `npm run preview:pr -- <PR番号>` | 指定 PR の最新 HEAD へ Preview worktree だけを切替（`gh`、失敗時は `refs/pull/<PR>/head`）。存在しない PR は明確にエラー。dirty（未コミット変更）なら破棄せず停止 |
+| `npm run preview:dev` | Preview を `http://127.0.0.1:3001` で起動（`--localhost-port 3001 --use-localhost --no-update`） |
+
+補足:
+
+- `preview:pr` 時に `package.json` / `package-lock.json` が `origin/main` から変わっていれば、`cd ../ciara-system-preview && npm ci` が必要である旨を表示する（既存環境破壊を避けるため自動実行しない）。
+- Prisma schema / migrations の差分は警告のみ。`db push`・migration apply・production DB 接続・production sync は**絶対に自動実行しない**。
+- Preview worktree が dirty のとき `git reset --hard` / `git clean -fd` は使わない。
+- 既定の Preview パスはリポジトリ隣の `../ciara-system-preview`。書き込み不可な環境では `LOCATION_STOCK_PREVIEW_DIR` で上書きできる（**本体 checkout と同じパスは拒否**）。
+- `preview:dev` は `--no-update` 付きで起動し、Shopify アプリの remote URL を dev 用に書き換えない。
+- 本番反映（承認済み PR の main merge 等）は既存の本番リリース手順・承認ゲートに従う。本 workflow 自体は merge / deploy を行わない。
+
 ---
 
 ## 2. 各環境で必要な設定
