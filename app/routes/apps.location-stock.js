@@ -717,13 +717,14 @@ export async function loader({ request }) {
         session?.shop,
         null,
         "missing_admin_client",
-        "管理画面 API クライアントの初期化に失敗しました。アプリの設定（APIキーなど）を確認してください。",
+        "管理画面 API クライアントの初期化に失敗しました（offline session 未取得の可能性）。",
         null,
         { route: "loader", hasSession: Boolean(session) }
       );
+      // ストアフロント向け: 技術用語（APIキー等）を避け、session_reauth / plan_* と文言を分離
       return errorJson(
         "missing_admin_client",
-        "管理画面 API クライアントの初期化に失敗しました。アプリの設定（APIキーなど）を確認してください。"
+        "在庫情報を表示できません。ストア管理者が Shopify 管理画面からアプリを一度開くと改善することがあります。"
       );
     }
 
@@ -941,7 +942,7 @@ export async function loader({ request }) {
       );
       return errorJson(
         "plan_lookup_failed",
-        "在庫情報の取得に失敗しました。時間をおいて再度お試しください。"
+        "プラン情報の確認に失敗したため在庫を表示できません。時間をおいて再度お試しください。"
       );
     }
 
