@@ -3,21 +3,61 @@
 import { Link, useLoaderData, useOutletContext } from "react-router";
 import { authenticate } from "../shopify.server";
 
+/** Theme App Extension の app block handle（blocks/*.liquid のファイル名） */
+const THEME_APP_BLOCK_HANDLE = "location-stock-indicator";
+
+/**
+ * 商品テンプレートへ app block を追加するテーマエディタ deep link。
+ * @see https://shopify.dev/docs/apps/build/online-store/theme-app-extensions/configuration#deep-linking
+ */
+function buildThemeAppBlockDeepLink(shop, apiKey) {
+  if (!shop || !apiKey) return null;
+  const params = new URLSearchParams({
+    template: "product",
+    addAppBlockId: `${apiKey}/${THEME_APP_BLOCK_HANDLE}`,
+    target: "newAppsSection",
+  });
+  return `https://${shop}/admin/themes/current/editor?${params.toString()}`;
+}
+
 /**
  * Home 画面用 loader
  * - セッション確認（未ログインなら Shopify 側へリダイレクト）
- * - shop ドメインだけ UI に渡しておく（表示に使いたいとき用）
+ * - shop / apiKey を deep link 生成用に渡す
  */
 export async function loader({ request }) {
   const { session } = await authenticate.admin(request);
 
   return {
     shop: session.shop, // 例: "location-stock-indicator.myshopify.com"
+    // eslint-disable-next-line no-undef
+    apiKey: process.env.SHOPIFY_API_KEY || "",
   };
 }
 
-/** POS Stock の StepCard に準拠：タイトル・説明・ボタンのカード */
-function StepCard({ title, description, buttonLabel, to }) {
+const stepButtonStyle = {
+  display: "inline-block",
+  padding: "8px 16px",
+  background: "#2c6ecb",
+  color: "#fff",
+  borderRadius: "6px",
+  fontSize: "14px",
+  textDecoration: "none",
+  fontWeight: 500,
+};
+
+/** POS Stock の StepCard に準拠：タイトル・説明・ボタンのカード（内部 Link または外部 href） */
+function StepCard({ title, description, buttonLabel, to, href }) {
+  const action = href ? (
+    <a href={href} target="_blank" rel="noopener noreferrer" style={stepButtonStyle}>
+      {buttonLabel}
+    </a>
+  ) : (
+    <Link to={to} style={stepButtonStyle}>
+      {buttonLabel}
+    </Link>
+  );
+
   return (
     <div
       style={{
@@ -34,21 +74,7 @@ function StepCard({ title, description, buttonLabel, to }) {
       <div style={{ marginBottom: "12px", fontSize: "14px", color: "#6d7175", lineHeight: 1.4 }}>
         {description}
       </div>
-      <Link
-        to={to}
-        style={{
-          display: "inline-block",
-          padding: "8px 16px",
-          background: "#2c6ecb",
-          color: "#fff",
-          borderRadius: "6px",
-          fontSize: "14px",
-          textDecoration: "none",
-          fontWeight: 500,
-        }}
-      >
-        {buttonLabel}
-      </Link>
+      {action}
     </div>
   );
 }
@@ -87,19 +113,54 @@ function DeliveryProfileCard({ shop }) {
           href={deliverySettingsUrl}
           target="_blank"
           rel="noopener noreferrer"
-          style={{
-            display: "inline-block",
-            padding: "8px 16px",
-            fontSize: "14px",
-            fontWeight: 500,
-            color: "#fff",
-            background: "#2c6ecb",
-            borderRadius: "6px",
-            textDecoration: "none",
-          }}
+          style={stepButtonStyle}
         >
           配送設定を開く
         </a>
+      )}
+    </div>
+  );
+}
+
+/**
+ * テーマに app block を追加する導入ステップ（App Store 要件 5.1.3）
+ * deep link が使えない場合は手動手順のみ表示
+ */
+function ThemeBlockSetupCard({ deepLinkUrl }) {
+  return (
+    <div
+      style={{
+        marginBottom: "16px",
+        padding: "16px",
+        background: "#fff",
+        borderRadius: "8px",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+      }}
+    >
+      <div style={{ marginBottom: "8px", fontSize: "14px", fontWeight: 600, color: "#6d7175" }}>
+        3. テーマにブロックを追加
+      </div>
+      <div style={{ marginBottom: "12px", fontSize: "14px", color: "#6d7175", lineHeight: 1.5 }}>
+        商品ページに「Location stock indicator」ブロックを追加すると、ロケーション別の在庫が表示されます。
+        下のボタンからテーマエディタを開き、プレビューを確認してテーマを保存してください。
+      </div>
+      <div style={{ marginBottom: "12px", fontSize: "13px", color: "#6d7175", lineHeight: 1.5 }}>
+        <strong style={{ color: "#202223" }}>手動で追加する場合：</strong>
+        オンラインストア → テーマ → カスタマイズ → 商品ページ →「アプリ」から「Location stock indicator」を追加して保存。
+      </div>
+      {deepLinkUrl ? (
+        <a
+          href={deepLinkUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={stepButtonStyle}
+        >
+          テーマエディタでブロックを追加
+        </a>
+      ) : (
+        <span style={{ fontSize: "13px", color: "#6d7175" }}>
+          テーマエディタへのリンクを準備できませんでした。上記の手動手順でブロックを追加してください。
+        </span>
       )}
     </div>
   );
@@ -129,7 +190,7 @@ function SummaryCard({ title, children, style = {} }) {
  * /app の Home 画面（POS Stock のカード構成に準拠：プラン・ロケーション数＋導入ステップ）
  */
 export default function AppIndex() {
-  const { shop } = useLoaderData();
+  const { shop, apiKey } = useLoaderData();
   const outletContext = useOutletContext();
   const shopPlan = outletContext?.shopPlan ?? null;
   const distribution = shopPlan?.distribution;
@@ -138,6 +199,7 @@ export default function AppIndex() {
   const isDevelopmentStore = shopPlan?.isDevelopmentStore ?? false;
   const isInhouse = distribution === "inhouse";
   const showBillingNote = !isInhouse && isDevelopmentStore;
+  const themeDeepLinkUrl = buildThemeAppBlockDeepLink(shop, apiKey);
 
   const planLabel =
     plan === "pro"
@@ -215,6 +277,7 @@ export default function AppIndex() {
             buttonLabel="在庫表示設定を開く"
             to="/app/settings"
           />
+          <ThemeBlockSetupCard deepLinkUrl={themeDeepLinkUrl} />
         </div>
       </div>
     </s-page>
