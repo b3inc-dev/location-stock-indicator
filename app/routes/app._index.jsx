@@ -2,6 +2,7 @@
 
 import { Link, useLoaderData, useOutletContext } from "react-router";
 import { authenticate } from "../shopify.server";
+import { createT, resolveAdminLocale } from "../i18n/adminI18n.js";
 
 /**
  * Home 画面用 loader
@@ -57,7 +58,7 @@ function StepCard({ title, description, buttonLabel, to }) {
  * 配送プロファイルの案内カード（ロケーション設定の下に表示）
  * 「配送対応」「ローカルデリバリー対応」は Shopify の配送設定で決まる旨と、配送設定を開くボタン
  */
-function DeliveryProfileCard({ shop }) {
+function DeliveryProfileCard({ shop, t }) {
   const deliverySettingsUrl = shop ? `https://${shop}/admin/settings/shipping` : null;
   return (
     <div
@@ -71,16 +72,16 @@ function DeliveryProfileCard({ shop }) {
       }}
     >
       <div style={{ marginBottom: "8px", fontSize: "14px", fontWeight: 600, color: "#6d7175" }}>
-        「配送対応」「ローカルデリバリー対応」について
+        {t("home.deliveryTitle")}
       </div>
       <div style={{ marginBottom: "12px", fontSize: "14px", color: "#6d7175", lineHeight: 1.5 }}>
-        ロケーション一覧の「配送対応」「ローカルデリバリー対応」は、Shopify の
-        <strong style={{ color: "#202223" }}> 配送プロファイル</strong>
-        の設定から取得しています。ロケーションをプロファイルのロケーショングループに割り当て、ゾーン（例：通常配送は「アジア」、ローカルデリバリーは「Local Delivery」や「東京都」など）を作成すると反映されます。並び順の「配送対応を優先」「ローカルデリバリーを優先」も同じ設定を使います。
+        {t("home.deliveryBodyBefore")}
+        <strong style={{ color: "#202223" }}>{t("home.deliveryBodyStrong")}</strong>
+        {t("home.deliveryBodyAfter")}
       </div>
       <div style={{ marginBottom: "12px", fontSize: "13px", color: "#6d7175", lineHeight: 1.5 }}>
-        <strong style={{ color: "#202223" }}>手順の例：</strong>
-        設定 → 配送と配達 → 配送プロファイルでロケーションを追加し、該当するゾーンを設定してください。ローカルデリバリーの場合は、ゾーン名に「Local delivery」「ローカル」「東京都」などが含まれると「ローカルデリバリー対応」と表示されます。
+        <strong style={{ color: "#202223" }}>{t("home.deliveryStepsLabel")}</strong>
+        {t("home.deliverySteps")}
       </div>
       {deliverySettingsUrl && (
         <a
@@ -98,7 +99,7 @@ function DeliveryProfileCard({ shop }) {
             textDecoration: "none",
           }}
         >
-          配送設定を開く
+          {t("home.deliveryOpen")}
         </a>
       )}
     </div>
@@ -132,6 +133,9 @@ export default function AppIndex() {
   const { shop } = useLoaderData();
   const outletContext = useOutletContext();
   const shopPlan = outletContext?.shopPlan ?? null;
+  const t =
+    outletContext?.t ||
+    createT(resolveAdminLocale(shopPlan));
   const distribution = shopPlan?.distribution;
   const plan = shopPlan?.plan;
   const locationsCount = shopPlan?.locationsCount ?? 0;
@@ -143,11 +147,11 @@ export default function AppIndex() {
     plan === "pro"
       ? "Pro"
       : plan === "lite"
-        ? "Lite（7日間トライアル中）"
-        : "プランが選択されていません";
+        ? t("home.planLiteTrial")
+        : t("home.planNotSelected");
 
   return (
-    <s-page heading="ホーム">
+    <s-page heading={t("home.heading")}>
       <style>{`
         .HomePage-layout {
           padding: 16px;
@@ -170,49 +174,49 @@ export default function AppIndex() {
       `}</style>
       <div className="HomePage-layout">
         <div className="HomePage-summary">
-          <SummaryCard title="現在の料金プラン" style={{ marginBottom: "16px" }}>
+          <SummaryCard title={t("home.currentPlan")} style={{ marginBottom: "16px" }}>
             <div style={{ marginBottom: "8px", fontSize: "18px", fontWeight: 700, color: "#202223" }}>
               {planLabel}
             </div>
             {!isInhouse && !plan && (
               <Link to="/app/plan" style={{ fontSize: "14px", color: "#2c6ecb" }}>
-                料金プランを選択する
+                {t("home.selectPlan")}
               </Link>
             )}
             {!isInhouse && plan === "lite" && (
               <Link to="/app/plan" style={{ fontSize: "14px", color: "#2c6ecb" }}>
-                アップグレードして全機能を使いましょう
+                {t("home.upgradeCta")}
               </Link>
             )}
             {isInhouse && (
               <span style={{ fontSize: "14px", color: "#6d7175" }}>
-                全機能をご利用いただけます
+                {t("home.allFeatures")}
               </span>
             )}
             {showBillingNote && (
               <span style={{ fontSize: "14px", color: "#6d7175", display: "block", marginTop: "4px" }}>
-                開発ストアのため課金は発生しません
+                {t("home.devStoreNoBilling")}
               </span>
             )}
           </SummaryCard>
 
-          <SummaryCard title="ロケーション数">
+          <SummaryCard title={t("home.locationCount")}>
             <span style={{ fontSize: "18px", fontWeight: 700, color: "#202223" }}>{locationsCount}</span>
-            <span style={{ marginLeft: "4px", fontSize: "14px", color: "#6d7175" }}>ロケーション</span>
+            <span style={{ marginLeft: "4px", fontSize: "14px", color: "#6d7175" }}>{t("home.locationUnit")}</span>
           </SummaryCard>
         </div>
         <div className="HomePage-steps">
           <StepCard
-            title="1. ロケーション設定"
-            description="各ロケーションの「公開名」「並び順」「表示／非表示」をまとめて管理します。店舗名の表示順や、一覧に出したくないロケーションの制御を行います。"
-            buttonLabel="ロケーション設定を開く"
+            title={t("home.step1Title")}
+            description={t("home.step1Desc")}
+            buttonLabel={t("home.step1Button")}
             to="/app/locations"
           />
-          <DeliveryProfileCard shop={shop} />
+          <DeliveryProfileCard shop={shop} t={t} />
           <StepCard
-            title="2. 在庫表示設定"
-            description="在庫マーク（◯△✕）、並び順、在庫数の表示ルール、在庫ステータスのラベル、ロケーション名クリック時の動作など、在庫表示ロジックをまとめて管理する画面です。"
-            buttonLabel="在庫表示設定を開く"
+            title={t("home.step2Title")}
+            description={t("home.step2Desc")}
+            buttonLabel={t("home.step2Button")}
             to="/app/settings"
           />
         </div>

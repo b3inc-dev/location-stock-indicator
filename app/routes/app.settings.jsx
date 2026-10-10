@@ -1,8 +1,14 @@
 // app/routes/app.settings.jsx
 
 import { useState, useMemo, useEffect, useRef } from "react";
-import { useLoaderData, useFetcher } from "react-router";
+import { useLoaderData, useFetcher, useOutletContext } from "react-router";
 import { authenticate } from "../shopify.server";
+import { getShopPlan } from "../utils/shopPlan.server.js";
+import {
+  createT,
+  getStorefrontConfigDefaults,
+  resolveAdminLocale,
+} from "../i18n/adminI18n.js";
 
 // shop の location_stock.config を読むクエリ
 const SHOP_CONFIG_QUERY = `#graphql
@@ -49,6 +55,10 @@ const SET_LOCATION_STOCK_CONFIG_MUTATION = `#graphql
  */
 export async function loader({ request }) {
   const { admin, session } = await authenticate.admin(request);
+  const shopPlan = await getShopPlan(admin, session?.shop);
+  const locale = resolveAdminLocale(shopPlan);
+  const defaults = getStorefrontConfigDefaults(locale);
+  const t = createT(locale);
 
   const gqlResponse = await admin.graphql(SHOP_CONFIG_QUERY);
   const result = await gqlResponse.json();
@@ -60,7 +70,7 @@ export async function loader({ request }) {
     console.error("[location-stock]", { route: "app.settings", shop: session?.shop ?? "(unknown)" }, "shopId is null in LocationStockConfig");
     return {
       ok: false,
-      error: "shop ID が取得できませんでした。（metafieldsSet の ownerId）",
+      error: t("errors.shopIdMissing"),
     };
   }
 
@@ -96,28 +106,28 @@ export async function loader({ request }) {
 
   // 在庫数テキスト・単位（quantity の文言系）
   const quantityTexts = {
-    label: rawConfig?.quantity?.quantityLabel ?? "在庫",
+    label: rawConfig?.quantity?.quantityLabel ?? defaults.quantityLabel,
     wrapperBefore: rawConfig?.quantity?.wrapperBefore ?? "(",
     wrapperAfter: rawConfig?.quantity?.wrapperAfter ?? ")",
   };
 
   // ステータスラベル
   const labels = {
-    inStock: rawConfig?.labels?.inStock ?? "在庫あり",
-    lowStock: rawConfig?.labels?.lowStock ?? "残りわずか",
-    outOfStock: rawConfig?.labels?.outOfStock ?? "在庫なし",
+    inStock: rawConfig?.labels?.inStock ?? defaults.labels.inStock,
+    lowStock: rawConfig?.labels?.lowStock ?? defaults.labels.lowStock,
+    outOfStock: rawConfig?.labels?.outOfStock ?? defaults.labels.outOfStock,
   };
 
   // メッセージ文言
   const messages = {
     loading:
-      rawConfig?.messages?.loading ?? "在庫を読み込み中...",
+      rawConfig?.messages?.loading ?? defaults.messages.loading,
     empty:
       rawConfig?.messages?.empty ??
-      "現在、この商品の店舗在庫はありません。",
+      defaults.messages.empty,
     error:
       rawConfig?.messages?.error ??
-      "在庫情報の取得に失敗しました。時間をおいて再度お試しください。",
+      defaults.messages.error,
   };
 
   // 共通注意書き（空なら非表示）
@@ -158,6 +168,10 @@ export async function loader({ request }) {
 export async function action({ request }) {
   const { admin, session } = await authenticate.admin(request);
   const shop = session?.shop ?? "(unknown)";
+  const shopPlan = await getShopPlan(admin, session?.shop);
+  const locale = resolveAdminLocale(shopPlan);
+  const defaults = getStorefrontConfigDefaults(locale);
+  const t = createT(locale);
   const formData = await request.formData();
 
   // 閾値
@@ -241,8 +255,7 @@ export async function action({ request }) {
       console.error("[location-stock]", { route: "app.settings", shop }, "shopId is null in LocationStockConfig (action)");
       return {
         ok: false,
-        error:
-          "shop ID が取得できませんでした。（metafieldsSet の ownerId）",
+        error: t("errors.shopIdMissing"),
       };
     }
 
@@ -275,7 +288,7 @@ export async function action({ request }) {
       // quantity の文言・行の表示内容（showQuantity など他のキーは保つ）
       quantity: {
         ...(rawConfig.quantity || {}),
-        quantityLabel: quantityLabel || "在庫",
+        quantityLabel: quantityLabel || defaults.quantityLabel,
         wrapperBefore: quantityWrapperBefore || "(",
         wrapperAfter: quantityWrapperAfter || ")",
         rowContentMode: ["symbol_only", "symbol_and_quantity", "symbol_quantity_label", "quantity_only", "quantity_label"].includes(displayRowContentMode)
@@ -291,16 +304,16 @@ export async function action({ request }) {
       // ステータスラベル
       labels: {
         ...(rawConfig.labels || {}),
-        inStock: labelInStock || "在庫あり",
-        lowStock: labelLowStock || "残りわずか",
-        outOfStock: labelOutOfStock || "在庫なし",
+        inStock: labelInStock || defaults.labels.inStock,
+        lowStock: labelLowStock || defaults.labels.lowStock,
+        outOfStock: labelOutOfStock || defaults.labels.outOfStock,
       },
       // メッセージ文言（空文字列も意図的な設定として保存する）
       messages: {
         ...(rawConfig.messages || {}),
-        loading: messageLoading !== "" ? messageLoading : (rawConfig?.messages?.loading ?? "在庫を読み込み中..."),
-        empty: messageEmpty !== "" ? messageEmpty : (rawConfig?.messages?.empty ?? "現在、この商品の店舗在庫はありません。"),
-        error: messageError !== "" ? messageError : (rawConfig?.messages?.error ?? "在庫情報の取得に失敗しました。時間をおいて再度お試しください。"),
+        loading: messageLoading !== "" ? messageLoading : (rawConfig?.messages?.loading ?? defaults.messages.loading),
+        empty: messageEmpty !== "" ? messageEmpty : (rawConfig?.messages?.empty ?? defaults.messages.empty),
+        error: messageError !== "" ? messageError : (rawConfig?.messages?.error ?? defaults.messages.error),
       },
       // 共通注意書き
       notice: {
@@ -338,7 +351,7 @@ export async function action({ request }) {
       return {
         ok: false,
         error: userErrors
-          .map((e) => e.message || "保存に失敗しました。")
+          .map((e) => e.message || t("errors.saveFailed"))
           .join("\n"),
       };
     }
@@ -402,7 +415,7 @@ export async function action({ request }) {
       error:
         error instanceof Error
           ? error.message
-          : "予期せぬエラーが発生しました。",
+          : t("errors.unexpected"),
     };
   }
 }
@@ -430,6 +443,10 @@ const selectBaseStyle = { ...inputBaseStyle, background: "#fff" };
 export default function AppSettings() {
   const loaderData = useLoaderData();
   const fetcher = useFetcher();
+  const outletContext = useOutletContext();
+  const t =
+    outletContext?.t ||
+    createT(resolveAdminLocale(outletContext?.shopPlan));
 
   const [initial, setInitial] = useState(() => ({
     thresholds: loaderData.thresholds ?? { outOfStockMax: 0, inStockMin: 5 },
@@ -506,15 +523,15 @@ export default function AppSettings() {
 
   // 「保存しました」は showSavedFeedback のときだけ表示。ここでは送信中・未保存・エラーのみ
   const footerStatusText = saveErr
-    ? `保存エラー: ${saveErr}`
+    ? t("common.saveError", { error: saveErr })
     : saving
-      ? "保存中..."
+      ? t("common.saving")
       : isDirty
-        ? "未保存の変更があります"
+        ? t("common.unsavedChanges")
         : "";
 
   return (
-    <s-page heading="在庫表示設定">
+    <s-page heading={t("settings.heading")}>
       <div style={{ padding: "16px", maxWidth: "1200px", paddingBottom: "88px" }}>
         {/* セクション：閾値 — 一番上 */}
         <div
@@ -528,10 +545,10 @@ export default function AppSettings() {
         >
           <div style={{ flex: "1 1 260px", minWidth: 0 }}>
             <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>
-              閾値
+              {t("settings.thresholdsTitle")}
             </div>
             <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
-              在庫数を「在庫なし」「残りわずか」「在庫あり」のどれとみなすかの境界を設定します。この値以下を在庫なし、この値以上を在庫ありとし、その間は残りわずかになります。
+              {t("settings.thresholdsDesc")}
             </div>
           </div>
           <div style={{ flex: "1 1 320px", minWidth: 280 }}>
@@ -545,7 +562,7 @@ export default function AppSettings() {
             >
               <div style={{ marginBottom: "12px" }}>
                 <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>
-                  この値以下を「在庫なし」とする（outOfStockMax）
+                  {t("settings.outOfStockMax")}
                 </label>
                 <input
                   type="number"
@@ -563,7 +580,7 @@ export default function AppSettings() {
               </div>
               <div>
                 <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>
-                  この値以上を「在庫あり」とする（inStockMin）
+                  {t("settings.inStockMin")}
                 </label>
                 <input
                   type="number"
@@ -595,10 +612,10 @@ export default function AppSettings() {
         >
           <div style={{ flex: "1 1 260px", minWidth: 0 }}>
             <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>
-              在庫マーク
+              {t("settings.symbolsTitle")}
             </div>
             <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
-              商品ページの在庫表示と凡例に使うマークをまとめて変更します。顔文字や絵文字（例: 😊 / ⚠️ / ❌）も利用できます。
+              {t("settings.symbolsDesc")}
             </div>
           </div>
           <div style={{ flex: "1 1 320px", minWidth: 280 }}>
@@ -611,7 +628,7 @@ export default function AppSettings() {
               }}
             >
               <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫ありマーク</label>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>{t("settings.symbolInStock")}</label>
                 <input
                   type="text"
                   value={state.symbols.inStock}
@@ -620,7 +637,7 @@ export default function AppSettings() {
                 />
               </div>
               <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>低在庫マーク</label>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>{t("settings.symbolLowStock")}</label>
                 <input
                   type="text"
                   value={state.symbols.lowStock}
@@ -629,7 +646,7 @@ export default function AppSettings() {
                 />
               </div>
               <div>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫なしマーク</label>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>{t("settings.symbolOutOfStock")}</label>
                 <input
                   type="text"
                   value={state.symbols.outOfStock}
@@ -652,25 +669,25 @@ export default function AppSettings() {
           }}
         >
           <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>在庫数のテキスト・単位</div>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>{t("settings.quantityTitle")}</div>
             <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
-              在庫数の前後につけるラベルやカッコ、単位を設定します。表示／非表示や構成（マークのみ、数量のみなど）はテーマ側の App Block で制御します。
+              {t("settings.quantityDesc")}
             </div>
           </div>
           <div style={{ flex: "1 1 320px", minWidth: 280 }}>
             <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
               <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫数ラベル</label>
-                <input type="text" value={state.quantityTexts.label} onChange={(e) => setState((s) => ({ ...s, quantityTexts: { ...s.quantityTexts, label: e.target.value } }))} placeholder="例: 在庫" style={inputBaseStyle} />
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>{t("settings.quantityLabel")}</label>
+                <input type="text" value={state.quantityTexts.label} onChange={(e) => setState((s) => ({ ...s, quantityTexts: { ...s.quantityTexts, label: e.target.value } }))} placeholder={t("settings.quantityLabelPh")} style={inputBaseStyle} />
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <div style={{ flex: "1 1 0" }}>
-                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>前に付ける文字</label>
-                  <input type="text" value={state.quantityTexts.wrapperBefore} onChange={(e) => setState((s) => ({ ...s, quantityTexts: { ...s.quantityTexts, wrapperBefore: e.target.value } }))} placeholder="例: (" style={inputBaseStyle} />
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>{t("settings.wrapperBefore")}</label>
+                  <input type="text" value={state.quantityTexts.wrapperBefore} onChange={(e) => setState((s) => ({ ...s, quantityTexts: { ...s.quantityTexts, wrapperBefore: e.target.value } }))} placeholder={t("settings.wrapperBeforePh")} style={inputBaseStyle} />
                 </div>
                 <div style={{ flex: "1 1 0" }}>
-                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>後ろに付ける文字</label>
-                  <input type="text" value={state.quantityTexts.wrapperAfter} onChange={(e) => setState((s) => ({ ...s, quantityTexts: { ...s.quantityTexts, wrapperAfter: e.target.value } }))} placeholder="例: )" style={inputBaseStyle} />
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>{t("settings.wrapperAfter")}</label>
+                  <input type="text" value={state.quantityTexts.wrapperAfter} onChange={(e) => setState((s) => ({ ...s, quantityTexts: { ...s.quantityTexts, wrapperAfter: e.target.value } }))} placeholder={t("settings.wrapperAfterPh")} style={inputBaseStyle} />
                 </div>
               </div>
             </div>
@@ -688,24 +705,24 @@ export default function AppSettings() {
           }}
         >
           <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>在庫ステータスのラベル</div>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>{t("settings.labelsTitle")}</div>
             <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
-              在庫マークと一緒に表示するステータスラベルを設定します。凡例と在庫リストの両方でこのラベルが使われます。
+              {t("settings.labelsDesc")}
             </div>
           </div>
           <div style={{ flex: "1 1 320px", minWidth: 280 }}>
             <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
               <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫ありラベル</label>
-                <input type="text" value={state.labels.inStock} onChange={(e) => setState((s) => ({ ...s, labels: { ...s.labels, inStock: e.target.value } }))} placeholder="例: 在庫あり" style={inputBaseStyle} />
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>{t("settings.labelInStock")}</label>
+                <input type="text" value={state.labels.inStock} onChange={(e) => setState((s) => ({ ...s, labels: { ...s.labels, inStock: e.target.value } }))} placeholder={t("settings.labelInStockPh")} style={inputBaseStyle} />
               </div>
               <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>残りわずかラベル</label>
-                <input type="text" value={state.labels.lowStock} onChange={(e) => setState((s) => ({ ...s, labels: { ...s.labels, lowStock: e.target.value } }))} placeholder="例: 残りわずか" style={inputBaseStyle} />
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>{t("settings.labelLowStock")}</label>
+                <input type="text" value={state.labels.lowStock} onChange={(e) => setState((s) => ({ ...s, labels: { ...s.labels, lowStock: e.target.value } }))} placeholder={t("settings.labelLowStockPh")} style={inputBaseStyle} />
               </div>
               <div>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫なしラベル</label>
-                <input type="text" value={state.labels.outOfStock} onChange={(e) => setState((s) => ({ ...s, labels: { ...s.labels, outOfStock: e.target.value } }))} placeholder="例: 在庫なし" style={inputBaseStyle} />
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>{t("settings.labelOutOfStock")}</label>
+                <input type="text" value={state.labels.outOfStock} onChange={(e) => setState((s) => ({ ...s, labels: { ...s.labels, outOfStock: e.target.value } }))} placeholder={t("settings.labelOutOfStockPh")} style={inputBaseStyle} />
               </div>
             </div>
           </div>
@@ -722,23 +739,23 @@ export default function AppSettings() {
           }}
         >
           <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>メッセージ文言</div>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>{t("settings.messagesTitle")}</div>
             <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
-              読み込み中・在庫なし・エラー時に表示するメッセージを設定します。空欄の場合はアプリのデフォルト文言が使われます。
+              {t("settings.messagesDesc")}
             </div>
           </div>
           <div style={{ flex: "1 1 320px", minWidth: 280 }}>
             <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
               <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>読み込み中メッセージ</label>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>{t("settings.messageLoading")}</label>
                 <textarea value={state.messages.loading} onChange={(e) => setState((s) => ({ ...s, messages: { ...s.messages, loading: e.target.value } }))} style={textareaBaseStyle} />
               </div>
               <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫なしメッセージ</label>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>{t("settings.messageEmpty")}</label>
                 <textarea value={state.messages.empty} onChange={(e) => setState((s) => ({ ...s, messages: { ...s.messages, empty: e.target.value } }))} style={textareaBaseStyle} />
               </div>
               <div>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>エラーメッセージ</label>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>{t("settings.messageError")}</label>
                 <textarea value={state.messages.error} onChange={(e) => setState((s) => ({ ...s, messages: { ...s.messages, error: e.target.value } }))} style={textareaBaseStyle} />
               </div>
             </div>
@@ -756,15 +773,15 @@ export default function AppSettings() {
           }}
         >
           <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>注意書き</div>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>{t("settings.noticeTitle")}</div>
             <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
-              すべての商品ページで共通して表示したい注意書きがあれば設定します。
+              {t("settings.noticeDesc")}
             </div>
           </div>
           <div style={{ flex: "1 1 320px", minWidth: 280 }}>
             <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
-              <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>注意書きテキスト</label>
-              <textarea value={state.notice.text} onChange={(e) => setState((s) => ({ ...s, notice: { ...s.notice, text: e.target.value } }))} style={textareaBaseStyle} placeholder="例: 在庫は店舗間で移動する場合があります。ご来店前に店舗へ在庫をご確認ください。" />
+              <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>{t("settings.noticeText")}</label>
+              <textarea value={state.notice.text} onChange={(e) => setState((s) => ({ ...s, notice: { ...s.notice, text: e.target.value } }))} style={textareaBaseStyle} placeholder={t("settings.noticePh")} />
             </div>
           </div>
         </div>
@@ -780,9 +797,9 @@ export default function AppSettings() {
           }}
         >
           <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>表示ルール</div>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>{t("settings.displayTitle")}</div>
             <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
-              凡例・注意書きの表示の有無、行内の表示内容、リストの区切り文字を共通で設定します。テーマのカスタマイザーでは見た目（位置・色など）のみ調整できます。
+              {t("settings.displayDesc")}
             </div>
           </div>
           <div style={{ flex: "1 1 320px", minWidth: 280 }}>
@@ -790,27 +807,27 @@ export default function AppSettings() {
               <div style={{ marginBottom: "16px" }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, color: "#202223" }}>
                   <input type="checkbox" checked={state.display.showLegend} onChange={(e) => setState((s) => ({ ...s, display: { ...s.display, showLegend: e.target.checked } }))} />
-                  凡例を表示する
+                  {t("settings.showLegend")}
                 </label>
               </div>
               <div style={{ marginBottom: "16px" }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, color: "#202223" }}>
                   <input type="checkbox" checked={state.display.showNotice} onChange={(e) => setState((s) => ({ ...s, display: { ...s.display, showNotice: e.target.checked } }))} />
-                  注意書きを表示する（文言は上記で設定）
+                  {t("settings.showNotice")}
                 </label>
               </div>
               <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>行内の表示内容</label>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>{t("settings.rowContent")}</label>
                 <select value={state.display.rowContentMode} onChange={(e) => setState((s) => ({ ...s, display: { ...s.display, rowContentMode: e.target.value } }))} style={selectBaseStyle}>
-                  <option value="symbol_only">マークのみ（◯△✕）</option>
-                  <option value="symbol_and_quantity">マーク＋在庫数</option>
-                  <option value="symbol_quantity_label">マーク＋在庫数＋ラベル</option>
-                  <option value="quantity_only">在庫数のみ</option>
-                  <option value="quantity_label">在庫数＋ラベル</option>
+                  <option value="symbol_only">{t("settings.rowSymbolOnly")}</option>
+                  <option value="symbol_and_quantity">{t("settings.rowSymbolQuantity")}</option>
+                  <option value="symbol_quantity_label">{t("settings.rowSymbolQuantityLabel")}</option>
+                  <option value="quantity_only">{t("settings.rowQuantityOnly")}</option>
+                  <option value="quantity_label">{t("settings.rowQuantityLabel")}</option>
                 </select>
               </div>
               <div>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>リストの区切り文字（ロケーション名と在庫の間）</label>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>{t("settings.listSeparator")}</label>
                 <input type="text" value={state.display.listSeparator} onChange={(e) => setState((s) => ({ ...s, display: { ...s.display, listSeparator: e.target.value } }))} placeholder="： " style={inputBaseStyle} />
               </div>
             </div>
@@ -837,7 +854,7 @@ export default function AppSettings() {
           }}
         >
           <span style={{ fontSize: 14, color: "#6d7175" }}>
-            {showSavedFeedback && !isDirty ? "保存しました" : footerStatusText}
+            {showSavedFeedback && !isDirty ? t("common.saved") : footerStatusText}
           </span>
           <div style={{ display: "flex", gap: 8 }}>
             <button
@@ -855,7 +872,7 @@ export default function AppSettings() {
                 color: "#202223",
               }}
             >
-              破棄
+              {t("common.discard")}
             </button>
             <button
               type="button"
@@ -872,7 +889,7 @@ export default function AppSettings() {
                 cursor: saving || (showSavedFeedback && !isDirty) ? "not-allowed" : "pointer",
               }}
             >
-              {saving ? "保存中..." : "保存"}
+              {saving ? t("common.saving") : t("common.save")}
             </button>
           </div>
         </div>

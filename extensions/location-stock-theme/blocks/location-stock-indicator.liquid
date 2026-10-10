@@ -5,51 +5,51 @@
     root_id: block.id
   %}
 {% else %}
-  <p>このブロックは商品ページでのみ表示されます。</p>
+  <p>{{ 'block.product_page_only' | t }}</p>
 {% endif %}
 
 {% schema %}
 {
-  "name": "Location stock indicator",
+  "name": "t:block.name",
   "target": "section",
   "settings": [
     {
       "type": "header",
-      "content": "タイトルとレイアウト"
+      "content": "t:settings.header_title_layout.content"
     },
     {
       "type": "text",
       "id": "heading_text",
-      "label": "タイトル",
-      "default": "各店舗の在庫状況",
-      "info": "空欄のままにするとタイトルを表示しません。"
+      "label": "t:settings.heading_text.label",
+      "default": "t:settings.heading_text.default",
+      "info": "t:settings.heading_text.info"
     },
     {
       "type": "select",
       "id": "heading_level",
-      "label": "タイトルの見出しレベル",
+      "label": "t:settings.heading_level.label",
       "default": "h3",
       "options": [
-        { "value": "h3", "label": "H3（既定）" },
-        { "value": "h2", "label": "H2" }
+        { "value": "h3", "label": "t:settings.heading_level.options.h3" },
+        { "value": "h2", "label": "t:settings.heading_level.options.h2" }
       ],
-      "info": "見た目のサイズは「タイトルの文字サイズ」で調整します。"
+      "info": "t:settings.heading_level.info"
     },
     {
       "type": "select",
       "id": "heading_align",
-      "label": "タイトルの揃え",
+      "label": "t:settings.heading_align.label",
       "default": "left",
       "options": [
-        { "value": "left", "label": "左寄せ" },
-        { "value": "center", "label": "中央" },
-        { "value": "right", "label": "右寄せ" }
+        { "value": "left", "label": "t:settings.heading_align.options.left" },
+        { "value": "center", "label": "t:settings.heading_align.options.center" },
+        { "value": "right", "label": "t:settings.heading_align.options.right" }
       ]
     },
     {
       "type": "range",
       "id": "heading_font_size",
-      "label": "タイトルの文字サイズ（px）",
+      "label": "t:settings.heading_font_size.label",
       "min": 8,
       "max": 24,
       "step": 1,
@@ -58,40 +58,40 @@
     {
       "type": "select",
       "id": "layout_type",
-      "label": "レイアウト",
+      "label": "t:settings.layout_type.label",
       "default": "list",
       "options": [
-        { "value": "table", "label": "表（テーブル）" },
-        { "value": "list", "label": "リスト（1行）" },
-        { "value": "stacked", "label": "2行（ロケーション名＋在庫）" }
+        { "value": "table", "label": "t:settings.layout_type.options.table" },
+        { "value": "list", "label": "t:settings.layout_type.options.list" },
+        { "value": "stacked", "label": "t:settings.layout_type.options.stacked" }
       ]
     },
     {
       "type": "select",
       "id": "location_align",
-      "label": "ロケーション名の揃え",
+      "label": "t:settings.location_align.label",
       "default": "left",
       "options": [
-        { "value": "left", "label": "左寄せ" },
-        { "value": "center", "label": "中央" },
-        { "value": "right", "label": "右寄せ" }
+        { "value": "left", "label": "t:settings.location_align.options.left" },
+        { "value": "center", "label": "t:settings.location_align.options.center" },
+        { "value": "right", "label": "t:settings.location_align.options.right" }
       ]
     },
     {
       "type": "select",
       "id": "status_align",
-      "label": "在庫表示の揃え",
+      "label": "t:settings.status_align.label",
       "default": "right",
       "options": [
-        { "value": "left", "label": "左寄せ" },
-        { "value": "center", "label": "中央" },
-        { "value": "right", "label": "右寄せ" }
+        { "value": "left", "label": "t:settings.status_align.options.left" },
+        { "value": "center", "label": "t:settings.status_align.options.center" },
+        { "value": "right", "label": "t:settings.status_align.options.right" }
       ]
     },
     {
       "type": "range",
       "id": "font_size",
-      "label": "本文の文字サイズ（px）",
+      "label": "t:settings.font_size.label",
       "min": 8,
       "max": 24,
       "step": 1,
@@ -100,7 +100,7 @@
     {
       "type": "range",
       "id": "margin_bottom",
-      "label": "下マージン（px）",
+      "label": "t:settings.margin_bottom.label",
       "min": 0,
       "max": 80,
       "step": 2,
@@ -109,156 +109,156 @@
     {
       "type": "select",
       "id": "content_align",
-      "label": "ブロック全体の配置",
+      "label": "t:settings.content_align.label",
       "default": "left",
       "options": [
-        { "value": "left", "label": "左寄せ" },
-        { "value": "center", "label": "中央寄せ" },
-        { "value": "right", "label": "右寄せ" }
+        { "value": "left", "label": "t:settings.content_align.options.left" },
+        { "value": "center", "label": "t:settings.content_align.options.center" },
+        { "value": "right", "label": "t:settings.content_align.options.right" }
       ]
     },
     {
       "type": "header",
-      "content": "凡例・注意書き・行・枠線"
+      "content": "t:settings.header_legend_notice.content"
     },
     {
       "type": "select",
       "id": "legend_position",
-      "label": "凡例の表示位置",
+      "label": "t:settings.legend_position.label",
       "default": "bottom_left",
       "options": [
-        { "value": "top_left", "label": "リストの上・左寄せ" },
-        { "value": "top_center", "label": "リストの上・中央" },
-        { "value": "top_right", "label": "リストの上・右寄せ" },
-        { "value": "bottom_left", "label": "リストの下・左寄せ" },
-        { "value": "bottom_center", "label": "リストの下・中央" },
-        { "value": "bottom_right", "label": "リストの下・右寄せ" }
+        { "value": "top_left", "label": "t:settings.legend_position.options.top_left" },
+        { "value": "top_center", "label": "t:settings.legend_position.options.top_center" },
+        { "value": "top_right", "label": "t:settings.legend_position.options.top_right" },
+        { "value": "bottom_left", "label": "t:settings.legend_position.options.bottom_left" },
+        { "value": "bottom_center", "label": "t:settings.legend_position.options.bottom_center" },
+        { "value": "bottom_right", "label": "t:settings.legend_position.options.bottom_right" }
       ]
     },
     {
       "type": "select",
       "id": "notice_position",
-      "label": "注意書きの位置",
+      "label": "t:settings.notice_position.label",
       "default": "bottom_left",
       "options": [
-        { "value": "top_left", "label": "リストの上・左寄せ" },
-        { "value": "top_center", "label": "リストの上・中央" },
-        { "value": "top_right", "label": "リストの上・右寄せ" },
-        { "value": "bottom_left", "label": "リストの下・左寄せ" },
-        { "value": "bottom_center", "label": "リストの下・中央" },
-        { "value": "bottom_right", "label": "リストの下・右寄せ" }
+        { "value": "top_left", "label": "t:settings.notice_position.options.top_left" },
+        { "value": "top_center", "label": "t:settings.notice_position.options.top_center" },
+        { "value": "top_right", "label": "t:settings.notice_position.options.top_right" },
+        { "value": "bottom_left", "label": "t:settings.notice_position.options.bottom_left" },
+        { "value": "bottom_center", "label": "t:settings.notice_position.options.bottom_center" },
+        { "value": "bottom_right", "label": "t:settings.notice_position.options.bottom_right" }
       ]
     },
     {
       "type": "range",
       "id": "row_padding_y",
-      "label": "行の余白（px）",
+      "label": "t:settings.row_padding_y.label",
       "min": 0,
       "max": 32,
       "step": 2,
       "default": 8,
-      "info": "上下・左右の両方に適用します。"
+      "info": "t:settings.row_padding_y.info"
     },
     {
       "type": "select",
       "id": "border_style",
-      "label": "枠線のスタイル",
+      "label": "t:settings.border_style.label",
       "default": "rows",
       "options": [
-        { "value": "none", "label": "枠線なし" },
-        { "value": "rows", "label": "行ごとのみ" },
-        { "value": "full", "label": "外枠＋行ごと" }
+        { "value": "none", "label": "t:settings.border_style.options.none" },
+        { "value": "rows", "label": "t:settings.border_style.options.rows" },
+        { "value": "full", "label": "t:settings.border_style.options.full" }
       ]
     },
     {
       "type": "color",
       "id": "border_color",
-      "label": "枠線の色",
+      "label": "t:settings.border_color.label",
       "default": "#e3e3e3"
     },
     {
       "type": "select",
       "id": "status_color_preset",
-      "label": "在庫マークの色",
+      "label": "t:settings.status_color_preset.label",
       "default": "default",
       "options": [
-        { "value": "default", "label": "標準（緑／黄／赤）" },
-        { "value": "muted", "label": "落ち着いた色" },
-        { "value": "mono", "label": "モノクロ" }
+        { "value": "default", "label": "t:settings.status_color_preset.options.default" },
+        { "value": "muted", "label": "t:settings.status_color_preset.options.muted" },
+        { "value": "mono", "label": "t:settings.status_color_preset.options.mono" }
       ]
     },
     {
       "type": "header",
-      "content": "エリア/近隣・店舗受け取り"
+      "content": "t:settings.header_region_pickup.content"
     },
     {
       "type": "paragraph",
-      "content": "アプリ側でエリア／近隣／店舗受け取りをONにしたときのみ反映されます。"
+      "content": "t:settings.region_pickup_note.content"
     },
     {
       "type": "select",
       "id": "region_style_preset",
-      "label": "エリア／近隣見出しのスタイル",
+      "label": "t:settings.region_style_preset.label",
       "default": "default",
       "options": [
-        { "value": "default", "label": "標準" },
-        { "value": "subtle", "label": "控えめ" },
-        { "value": "emphasis", "label": "強調" }
+        { "value": "default", "label": "t:settings.region_style_preset.options.default" },
+        { "value": "subtle", "label": "t:settings.region_style_preset.options.subtle" },
+        { "value": "emphasis", "label": "t:settings.region_style_preset.options.emphasis" }
       ]
     },
     {
       "type": "select",
       "id": "region_heading_align",
-      "label": "見出しの配置",
+      "label": "t:settings.region_heading_align.label",
       "default": "left",
       "options": [
-        { "value": "left", "label": "左寄せ" },
-        { "value": "center", "label": "中央" },
-        { "value": "right", "label": "右寄せ" }
+        { "value": "left", "label": "t:settings.region_heading_align.options.left" },
+        { "value": "center", "label": "t:settings.region_heading_align.options.center" },
+        { "value": "right", "label": "t:settings.region_heading_align.options.right" }
       ]
     },
     {
       "type": "select",
       "id": "accordion_icon",
-      "label": "折りたたみマーク",
+      "label": "t:settings.accordion_icon.label",
       "default": "chevron",
       "options": [
-        { "value": "chevron", "label": "三角（▼/▶）" },
-        { "value": "angle", "label": "山括弧（＞/∨）" },
-        { "value": "plus_minus", "label": "プラス・マイナス（+/−）" },
-        { "value": "arrow", "label": "矢印（↓/→）" }
+        { "value": "chevron", "label": "t:settings.accordion_icon.options.chevron" },
+        { "value": "angle", "label": "t:settings.accordion_icon.options.angle" },
+        { "value": "plus_minus", "label": "t:settings.accordion_icon.options.plus_minus" },
+        { "value": "arrow", "label": "t:settings.accordion_icon.options.arrow" }
       ]
     },
     {
       "type": "select",
       "id": "order_pick_btn_style",
-      "label": "受け取りボタンの形",
+      "label": "t:settings.order_pick_btn_style.label",
       "default": "solid_round",
       "options": [
-        { "value": "solid_square", "label": "ソリッド×スクエア" },
-        { "value": "solid_round", "label": "ソリッド×ラウンド" },
-        { "value": "solid_pill", "label": "ソリッド×ピル" },
-        { "value": "outline_square", "label": "アウトライン×スクエア" },
-        { "value": "outline_round", "label": "アウトライン×ラウンド" },
-        { "value": "outline_pill", "label": "アウトライン×ピル" },
-        { "value": "ghost", "label": "ゴースト" }
+        { "value": "solid_square", "label": "t:settings.order_pick_btn_style.options.solid_square" },
+        { "value": "solid_round", "label": "t:settings.order_pick_btn_style.options.solid_round" },
+        { "value": "solid_pill", "label": "t:settings.order_pick_btn_style.options.solid_pill" },
+        { "value": "outline_square", "label": "t:settings.order_pick_btn_style.options.outline_square" },
+        { "value": "outline_round", "label": "t:settings.order_pick_btn_style.options.outline_round" },
+        { "value": "outline_pill", "label": "t:settings.order_pick_btn_style.options.outline_pill" },
+        { "value": "ghost", "label": "t:settings.order_pick_btn_style.options.ghost" }
       ]
     },
     {
       "type": "select",
       "id": "order_pick_btn_theme",
-      "label": "受け取りボタンの色",
+      "label": "t:settings.order_pick_btn_theme.label",
       "default": "brand",
       "options": [
-        { "value": "brand", "label": "ブランド（濃い青）" },
-        { "value": "dark", "label": "ダーク" },
-        { "value": "light", "label": "ライト" }
+        { "value": "brand", "label": "t:settings.order_pick_btn_theme.options.brand" },
+        { "value": "dark", "label": "t:settings.order_pick_btn_theme.options.dark" },
+        { "value": "light", "label": "t:settings.order_pick_btn_theme.options.light" }
       ]
     },
     {
       "type": "range",
       "id": "order_pick_col_width",
-      "label": "ボタン列の幅（テーブル時・%）",
+      "label": "t:settings.order_pick_col_width.label",
       "min": 15,
       "max": 45,
       "step": 5,
@@ -267,20 +267,20 @@
     {
       "type": "select",
       "id": "order_pick_btn_align",
-      "label": "ボタンの左右位置",
+      "label": "t:settings.order_pick_btn_align.label",
       "default": "right",
       "options": [
-        { "value": "left", "label": "左寄せ" },
-        { "value": "center", "label": "中央" },
-        { "value": "right", "label": "右寄せ" }
+        { "value": "left", "label": "t:settings.order_pick_btn_align.options.left" },
+        { "value": "center", "label": "t:settings.order_pick_btn_align.options.center" },
+        { "value": "right", "label": "t:settings.order_pick_btn_align.options.right" }
       ]
     },
     {
       "type": "textarea",
       "id": "custom_css",
-      "label": "追加CSS",
+      "label": "t:settings.custom_css.label",
       "default": "/* custom CSS */",
-      "info": "ルートは #lsi-（block ID） をセレクタに使えます。"
+      "info": "t:settings.custom_css.info"
     }
   ]
 }

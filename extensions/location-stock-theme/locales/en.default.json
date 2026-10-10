@@ -1,10 +1,5 @@
 {
-  "ratings": {
-    "stars": {
-      "label": "Ratings"
-    },
-    "home": {
-      "recommendationText": "Recommended Product!"
-    }
+  "block": {
+    "product_page_only": "This block is only shown on product pages."
   }
 }
