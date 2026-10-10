@@ -26,6 +26,17 @@
     },
     {
       "type": "select",
+      "id": "heading_level",
+      "label": "タイトルの見出しレベル",
+      "default": "h3",
+      "options": [
+        { "value": "h3", "label": "H3（既定）" },
+        { "value": "h2", "label": "H2" }
+      ],
+      "info": "見た目のサイズは「タイトルの文字サイズ」で調整します。"
+    },
+    {
+      "type": "select",
       "id": "heading_align",
       "label": "タイトルの揃え",
       "default": "left",
@@ -114,42 +125,28 @@
       "type": "select",
       "id": "legend_position",
       "label": "凡例の表示位置",
-      "default": "bottom",
+      "default": "bottom_left",
       "options": [
-        { "value": "top", "label": "リストの上" },
-        { "value": "bottom", "label": "リストの下" }
-      ]
-    },
-    {
-      "type": "select",
-      "id": "legend_align",
-      "label": "凡例の揃え",
-      "default": "left",
-      "options": [
-        { "value": "left", "label": "左寄せ" },
-        { "value": "center", "label": "中央" },
-        { "value": "right", "label": "右寄せ" }
+        { "value": "top_left", "label": "リストの上・左寄せ" },
+        { "value": "top_center", "label": "リストの上・中央" },
+        { "value": "top_right", "label": "リストの上・右寄せ" },
+        { "value": "bottom_left", "label": "リストの下・左寄せ" },
+        { "value": "bottom_center", "label": "リストの下・中央" },
+        { "value": "bottom_right", "label": "リストの下・右寄せ" }
       ]
     },
     {
       "type": "select",
       "id": "notice_position",
       "label": "注意書きの位置",
-      "default": "bottom",
+      "default": "bottom_left",
       "options": [
-        { "value": "top", "label": "リストの上" },
-        { "value": "bottom", "label": "リストの下" }
-      ]
-    },
-    {
-      "type": "select",
-      "id": "notice_align",
-      "label": "注意書きの揃え",
-      "default": "left",
-      "options": [
-        { "value": "left", "label": "左寄せ" },
-        { "value": "center", "label": "中央" },
-        { "value": "right", "label": "右寄せ" }
+        { "value": "top_left", "label": "リストの上・左寄せ" },
+        { "value": "top_center", "label": "リストの上・中央" },
+        { "value": "top_right", "label": "リストの上・右寄せ" },
+        { "value": "bottom_left", "label": "リストの下・左寄せ" },
+        { "value": "bottom_center", "label": "リストの下・中央" },
+        { "value": "bottom_right", "label": "リストの下・右寄せ" }
       ]
     },
     {

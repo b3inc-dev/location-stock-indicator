@@ -171,6 +171,26 @@
         bodyEl.textContent = text || "";
       }
 
+      // Theme schema may send top_left…bottom_right; boot Liquid normally
+      // already splits to top|bottom + left|center|right. Normalize both forms.
+      function normalizePlacement(positionValue, alignValue) {
+        var pos = positionValue || "bottom";
+        var align = alignValue || "left";
+        if (typeof pos === "string" && pos.indexOf("_") !== -1) {
+          var parts = pos.split("_");
+          if (parts.length >= 2) {
+            pos = parts[0];
+            align = parts[1];
+          }
+        }
+        if (pos !== "top" && pos !== "bottom") pos = "bottom";
+        if (align !== "left" && align !== "center" && align !== "right") align = "left";
+        return { position: pos, align: align };
+      }
+
+      var legendPlacement = normalizePlacement(boot.legendPosition, null);
+      var noticePlacement = normalizePlacement(boot.noticePosition, boot.noticeAlign);
+
       var settings = {
         outOfStockMax: 0,
         inStockMin: 5,
@@ -202,10 +222,10 @@
         listSeparator: "： ",
         showLegend: true,
         showNotice: false,
-        legendPosition: boot.legendPosition,
-        noticePosition: boot.noticePosition,
+        legendPosition: legendPlacement.position,
+        noticePosition: noticePlacement.position,
         noticeText: "",
-        noticeAlign: boot.noticeAlign,
+        noticeAlign: noticePlacement.align,
         noticeMargin: boot.rowPaddingY,
         groupByRegion: false,
         regionAccordionEnabled: false,
