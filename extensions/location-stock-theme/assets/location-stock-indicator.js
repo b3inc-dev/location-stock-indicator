@@ -1154,11 +1154,23 @@
 
       var lastVariantId = null;
       var fetchRetryFor = null;
-      function onFetchFailure(vid, code) {
+      // 再試行しても解消しない API code（3s リトライをスキップ）
+      // session_reauth_* は Phase0 の 1 回リトライ対象のまま
+      var NO_RETRY_CODES = {
+        plan_required: true,
+        plan_lookup_failed: true,
+        missing_variant_id: true,
+        missing_admin_client: true
+      };
+      function onFetchFailure(vid, code, apiMessage) {
         lastVariantId = null;
         if (code) console.error("[location-stock] API error", code);
-        setMessage("error", settings.errorMessage);
-        if (vid && fetchRetryFor !== vid) {
+        var display =
+          typeof apiMessage === "string" && apiMessage.trim() !== ""
+            ? apiMessage.trim()
+            : settings.errorMessage;
+        setMessage("error", display);
+        if (vid && fetchRetryFor !== vid && !NO_RETRY_CODES[code]) {
           fetchRetryFor = vid;
           setTimeout(function () { fetchStocks(vid); }, 3000);
         }
@@ -1174,7 +1186,11 @@
           .then(function (data) {
             try {
             if (!data || data.ok === false) {
-              onFetchFailure(variantId, data && data.error);
+              onFetchFailure(
+                variantId,
+                data && data.error,
+                data && data.message
+              );
               return;
             }
             fetchRetryFor = null;

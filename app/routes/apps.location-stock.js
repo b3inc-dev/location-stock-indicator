@@ -2,7 +2,10 @@
 
 import shopify from "../shopify.server";
 import { recordAnalyticsEvent } from "../analytics.server";
-import { getShopPlan } from "../utils/shopPlan.server.js";
+import {
+  getShopPlan,
+  resolveDistributionFromEnv,
+} from "../utils/shopPlan.server.js";
 import {
   isProFeaturesAllowed,
   isStorefrontInventoryAllowed,
@@ -904,14 +907,42 @@ export async function loader({ request }) {
     let globalConfig = buildGlobalConfig(rawConfig || {});
 
     // 課金ゲート: 公開・未契約は在庫非表示。Pro 専用は Lite/未契約で強制 OFF。
-    // プラン取得失敗時は fail-closed（無料開放・Pro バイパスをしない）。
+    // プラン取得失敗時は公開は fail-closed。inhouse は env フォールバックで誤ロックしない。
     let shopPlan = null;
+    let planLookupFailed = false;
     try {
       shopPlan = await getShopPlan(admin, session?.shop, {
         reportUsage: false,
       });
     } catch (planErr) {
+      planLookupFailed = true;
       console.error("[location-stock] getShopPlan failed (fail-closed):", planErr);
+    }
+
+    if (!shopPlan && resolveDistributionFromEnv(session?.shop) === "inhouse") {
+      shopPlan = {
+        distribution: "inhouse",
+        plan: "pro",
+        isDevelopmentStore: false,
+      };
+      console.warn(
+        "[location-stock] getShopPlan failed; using inhouse env fallback for storefront inventory"
+      );
+    }
+
+    if (!shopPlan) {
+      logAppProxyError(
+        session?.shop,
+        variantId,
+        "plan_lookup_failed",
+        "プラン情報の取得に失敗したためストアフロント在庫を返しません。",
+        null,
+        { planLookupFailed }
+      );
+      return errorJson(
+        "plan_lookup_failed",
+        "在庫情報の取得に失敗しました。時間をおいて再度お試しください。"
+      );
     }
 
     if (!isStorefrontInventoryAllowed(shopPlan)) {
