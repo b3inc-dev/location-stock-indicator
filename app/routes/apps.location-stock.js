@@ -2,7 +2,10 @@
 
 import shopify from "../shopify.server";
 import { recordAnalyticsEvent } from "../analytics.server";
-import { getShopPlan } from "../utils/shopPlan.server.js";
+import {
+  getShopPlan,
+  resolveDistributionFromEnv,
+} from "../utils/shopPlan.server.js";
 import {
   isProFeaturesAllowed,
   isStorefrontInventoryAllowed,
@@ -714,13 +717,14 @@ export async function loader({ request }) {
         session?.shop,
         null,
         "missing_admin_client",
-        "管理画面 API クライアントの初期化に失敗しました。アプリの設定（APIキーなど）を確認してください。",
+        "管理画面 API クライアントの初期化に失敗しました（offline session 未取得の可能性）。",
         null,
         { route: "loader", hasSession: Boolean(session) }
       );
+      // ストアフロント向け: 技術用語（APIキー等）を避け、session_reauth / plan_* と文言を分離
       return errorJson(
         "missing_admin_client",
-        "管理画面 API クライアントの初期化に失敗しました。アプリの設定（APIキーなど）を確認してください。"
+        "在庫情報を表示できません。ストア管理者が Shopify 管理画面からアプリを一度開くと改善することがあります。"
       );
     }
 
@@ -904,14 +908,42 @@ export async function loader({ request }) {
     let globalConfig = buildGlobalConfig(rawConfig || {});
 
     // 課金ゲート: 公開・未契約は在庫非表示。Pro 専用は Lite/未契約で強制 OFF。
-    // プラン取得失敗時は fail-closed（無料開放・Pro バイパスをしない）。
+    // プラン取得失敗時は公開は fail-closed。inhouse は env フォールバックで誤ロックしない。
     let shopPlan = null;
+    let planLookupFailed = false;
     try {
       shopPlan = await getShopPlan(admin, session?.shop, {
         reportUsage: false,
       });
     } catch (planErr) {
+      planLookupFailed = true;
       console.error("[location-stock] getShopPlan failed (fail-closed):", planErr);
+    }
+
+    if (!shopPlan && resolveDistributionFromEnv(session?.shop) === "inhouse") {
+      shopPlan = {
+        distribution: "inhouse",
+        plan: "pro",
+        isDevelopmentStore: false,
+      };
+      console.warn(
+        "[location-stock] getShopPlan failed; using inhouse env fallback for storefront inventory"
+      );
+    }
+
+    if (!shopPlan) {
+      logAppProxyError(
+        session?.shop,
+        variantId,
+        "plan_lookup_failed",
+        "プラン情報の取得に失敗したためストアフロント在庫を返しません。",
+        null,
+        { planLookupFailed }
+      );
+      return errorJson(
+        "plan_lookup_failed",
+        "プラン情報の確認に失敗したため在庫を表示できません。時間をおいて再度お試しください。"
+      );
     }
 
     if (!isStorefrontInventoryAllowed(shopPlan)) {
@@ -960,9 +992,10 @@ export async function loader({ request }) {
       error instanceof Error ? error.message : String(error),
       error
     );
+    // 顧客向けレスポンスは汎用文言。例外詳細は上記ログのみ（code は internal_error のまま）。
     return errorJson(
       "internal_error",
-      error instanceof Error ? error.message : String(error)
+      "在庫情報の取得中にエラーが発生しました。しばらくしてから再度お試しください。"
     );
   }
 }
