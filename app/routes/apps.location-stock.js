@@ -992,9 +992,10 @@ export async function loader({ request }) {
       error instanceof Error ? error.message : String(error),
       error
     );
+    // 顧客向けレスポンスは汎用文言。例外詳細は上記ログのみ（code は internal_error のまま）。
     return errorJson(
       "internal_error",
-      error instanceof Error ? error.message : String(error)
+      "在庫情報の取得中にエラーが発生しました。しばらくしてから再度お試しください。"
     );
   }
 }

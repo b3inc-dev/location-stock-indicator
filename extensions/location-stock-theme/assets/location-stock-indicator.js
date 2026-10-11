@@ -1162,11 +1162,23 @@
         missing_variant_id: true,
         missing_admin_client: true
       };
+      // ストアフロントに API message を出す code（切り分け用）。それ以外は設定の汎用 errorMessage。
+      // internal_error 等の生例外・技術詳細を顧客に出さない。
+      var SAFE_MESSAGE_CODES = {
+        session_reauth_required: true,
+        missing_admin_client: true,
+        plan_required: true,
+        plan_lookup_failed: true,
+        offline_token_unusable: true,
+        graphql_error: true
+      };
       function onFetchFailure(vid, code, apiMessage) {
         lastVariantId = null;
         if (code) console.error("[location-stock] API error", code);
         var display =
-          typeof apiMessage === "string" && apiMessage.trim() !== ""
+          SAFE_MESSAGE_CODES[code] &&
+          typeof apiMessage === "string" &&
+          apiMessage.trim() !== ""
             ? apiMessage.trim()
             : settings.errorMessage;
         setMessage("error", display);
