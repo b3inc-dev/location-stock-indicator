@@ -107,7 +107,7 @@
 | 自社 | `shopify.app.toml` | `location-stock-indicator-ciara.onrender.com` |
 
 - コンテナ: `Dockerfile`（`npm run build` → `docker-start` = prisma migrate + `react-router-serve`）。
-- GitHub → Render: Ciaraはmain / On Commitを初期設定監査で確認済み。main mergeは本番backend release、公開用の実設定は未確認。環境別の証拠・停止条件は `APP_AND_RENDER_CONFIG.md` を正本とする。リポジトリ内に `.github/workflows` **なし**。
+- GitHub → Render: Ciaraはmain / On Commitを初期設定監査で確認済み。main mergeは本番backend release、公開用もPR #2最終監査でmain / On Commit確認済み（DEPLOY_STEPS参照）。環境別の証拠・停止条件は `APP_AND_RENDER_CONFIG.md` を正本とする。リポジトリ内に `.github/workflows` **なし**。
 
 詳細: [`SHOPIFY.md`](./SHOPIFY.md)、`APP_AND_RENDER_CONFIG.md`。
 
@@ -130,3 +130,7 @@
 4. 同一 ID は `lastVariantId` でスキップ。
 
 テーマ固有の他イベントはコードに無い。テーマが上記を発火しない場合は再取得されない。
+
+## 継続開発時の境界
+
+Proxyの `getShopPlan` は販売用本番Pro条件で従量課金報告を行い、分析イベントはmetafieldを書き込む。GETを無副作用テストと仮定しない。Prisma datasourceは `file:dev.sqlite` 固定でDATABASE_URL未参照。backendコードとTheme Extensionは両版で共通。最新の両Render監視経路は [DEPLOY_STEPS.md](DEPLOY_STEPS.md)、contract検証は [DEVELOPMENT.md](DEVELOPMENT.md) を参照。
