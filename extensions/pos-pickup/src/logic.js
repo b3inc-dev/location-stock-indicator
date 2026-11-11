@@ -859,7 +859,7 @@ export async function listReviewOrders(request, locationId) {
   const rows = [];
   const seen = new Set();
   let after = null;
-  for (let page = 0; page < 20; page += 1) {
+  for (;;) {
     const data = await request(REVIEW_ORDERS, {query: "tag:location-stock-review", after});
     const connection = data.orders;
     for (const node of connection?.nodes || []) {
@@ -870,7 +870,6 @@ export async function listReviewOrders(request, locationId) {
     if (!after || seen.has(after)) throw new Error(messageFor("pagination"));
     seen.add(after);
   }
-  return {rows, complete: false};
 }
 
 export const CIARA_BACKEND = "https://location-stock-indicator-ciara.onrender.com";
@@ -899,20 +898,22 @@ function lockTime(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-export async function acquireOrderLock(locks, {shop, orderId, owner, now, staleMs = ORDER_LOCK_STALE_MS}) {
-  const id = lockId(shop, orderId);
+export async function acquireOrderLock(locks, input) {
+  const spec = {...input, staleMs: input.staleMs ?? ORDER_LOCK_STALE_MS};
+  if (typeof locks.acquire === "function") return locks.acquire(spec);
+  const id = lockId(spec.shop, spec.orderId);
   const existing = await locks.get(id);
   if (!existing) {
     try {
-      await locks.create({id, shop, orderId, owner});
+      await locks.create({id, shop: spec.shop, orderId: spec.orderId, owner: spec.owner});
       return true;
     } catch (error) {
       if (error?.code !== "P2002") throw error;
       return false;
     }
   }
-  if (now - lockTime(existing.updatedAt) < staleMs) return false;
-  const taken = await locks.takeover(id, owner, new Date(now - staleMs));
+  if (spec.now - lockTime(existing.updatedAt) < spec.staleMs) return false;
+  const taken = await locks.takeover(id, spec.owner, new Date(spec.now - spec.staleMs));
   return taken === 1;
 }
 

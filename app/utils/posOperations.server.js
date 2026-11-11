@@ -22,14 +22,18 @@ export function prismaClaimRepo(db = prisma) {
 
 export function prismaOrderLockRepo(db = prisma) {
   return {
-    get: (id) => db.posOrderLock.findUnique({where: {id}}),
-    create: (data) => db.posOrderLock.create({data}),
-    takeover: async (id, owner, staleBefore) => {
-      const result = await db.posOrderLock.updateMany({
-        where: {id, updatedAt: {lte: staleBefore}},
-        data: {owner},
-      });
-      return result.count;
+    acquire: async ({shop, orderId, owner, now, staleMs}) => {
+      const id = `${shop}:${orderId}`;
+      const staleBefore = new Date(now - staleMs);
+      const rows = await db.$queryRaw`
+        INSERT INTO "PosOrderLock" ("id", "shop", "orderId", "owner", "createdAt", "updatedAt")
+        VALUES (${id}, ${shop}, ${orderId}, ${owner}, NOW(), NOW())
+        ON CONFLICT ("id") DO UPDATE
+        SET "owner" = EXCLUDED."owner", "updatedAt" = NOW()
+        WHERE "PosOrderLock"."updatedAt" <= ${staleBefore}
+        RETURNING "owner"
+      `;
+      return Array.isArray(rows) && rows.length === 1 && rows[0]?.owner === owner;
     },
     release: (id, owner) => db.posOrderLock.deleteMany({where: {id, owner}}),
   };

@@ -315,24 +315,30 @@ test("a partial warehouse shipment moves only the delivery quantity still outsta
   assert.equal(step.moves[0].fulfillmentOrderLineItems[0].quantity, 1);
 });
 
-test("review orders keep scanning until the current store is found", async () => {
-  const queries = [];
-  const result = await listReviewOrders(async (query, variables) => {
-    queries.push(variables);
-    if (!variables.after) {
-      return {orders: {
-        nodes: [{id: "gid://shopify/Order/9", name: "#9", retailLocation: {id: "gid://shopify/Location/99"}}],
-        pageInfo: {hasNextPage: true, endCursor: "next"},
-      }};
-    }
-    return {orders: {
-      nodes: [{id: "gid://shopify/Order/12", name: "#12", retailLocation: {id: store}, metafield: {value: "再処理"}}],
-      pageInfo: {hasNextPage: false, endCursor: null},
-    }};
-  }, 12);
-  assert.equal(queries[0].query, "tag:location-stock-review");
-  assert.deepEqual(result.rows.map((row) => row.id), ["gid://shopify/Order/12"]);
-  assert.equal(result.complete, true);
+test("each store's review list is collected from every page", async () => {
+  const other = Array.from({length: 30}, (_, index) => ({
+    id: `gid://shopify/Order/${1000 + index}`,
+    name: `#${1000 + index}`,
+    retailLocation: {id: "gid://shopify/Location/99"},
+  }));
+  const pages = [
+    {nodes: other, pageInfo: {hasNextPage: true, endCursor: "p2"}},
+    {nodes: [{id: "gid://shopify/Order/13", name: "#13", retailLocation: {id: "gid://shopify/Location/13"}}], pageInfo: {hasNextPage: true, endCursor: "p3"}},
+    {nodes: [{id: "gid://shopify/Order/12", name: "#12", retailLocation: {id: store}, metafield: {value: "再処理"}}], pageInfo: {hasNextPage: false, endCursor: null}},
+  ];
+  const seen = [];
+  const request = async (_query, variables) => {
+    seen.push(variables.after);
+    const page = variables.after === "p2" ? pages[1] : variables.after === "p3" ? pages[2] : pages[0];
+    return {orders: page};
+  };
+  const store12 = await listReviewOrders(request, 12);
+  const store13 = await listReviewOrders(request, 13);
+  assert.deepEqual(seen, [null, "p2", "p3", null, "p2", "p3"]);
+  assert.deepEqual(store12.rows.map((row) => row.name), ["#12"]);
+  assert.deepEqual(store13.rows.map((row) => row.name), ["#13"]);
+  assert.equal(store12.complete, true);
+  assert.equal(store13.complete, true);
 });
 
 function memoryLocks() {
@@ -393,6 +399,52 @@ test("the same order cannot be processed twice while its lock is fresh", async (
   const outcome = await first;
   assert.equal(runs, 1);
   assert.equal(outcome.state, "done");
+});
+
+function memoryClaims() {
+  const rows = new Map();
+  return {
+    get: async (id) => rows.get(id) || null,
+    start: async (data) => {
+      if (rows.has(data.id)) {
+        const error = new Error("exists");
+        error.code = "P2002";
+        throw error;
+      }
+      rows.set(data.id, {...data});
+    },
+    finish: async (id, data) => {
+      rows.set(id, {...rows.get(id), ...data});
+    },
+  };
+}
+
+test("duplicate paid events acquire one order and run the sale once", async () => {
+  const locks = memoryLocks();
+  const repo = memoryClaims();
+  const now = Date.parse("2026-11-11T00:00:00.000Z");
+  let runs = 0;
+  const run = () => coordinatePaidOrder({
+    repo,
+    locks,
+    shop: "ciara.myshopify.com",
+    webhookId: "wh_same",
+    orderId: "gid://shopify/Order/1",
+    owner: "wh_same",
+    now,
+    staleMs: ORDER_LOCK_STALE_MS,
+    distribution: "inhouse",
+    work: async () => {
+      runs += 1;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return {phase: "done", reason: null};
+    },
+  });
+  const [first, second] = await Promise.all([run(), run()]);
+  const busy = [first, second].filter((item) => item.busy).length;
+  assert.equal(runs, 1);
+  assert.equal(busy, 1);
+  assert.equal([first, second].some((item) => item.state === "done"), true);
 });
 
 test("only one caller takes over a stale order lock", async () => {
