@@ -28,6 +28,17 @@ function getCustomAppStoreIds() {
     .filter(Boolean);
 }
 
+/** Ciara の Render は APP_DISTRIBUTION=inhouse。公開アプリの注文は処理しない。 */
+export function distributionForShop(currentShop) {
+  const shopNormalized = currentShop?.trim().toLowerCase();
+  const forceInhouse = Boolean(
+    shopNormalized &&
+      getCustomAppStoreIds().some((id) => id.trim().toLowerCase() === shopNormalized)
+  );
+  const distEnv = (process.env.APP_DISTRIBUTION ?? "").trim().toLowerCase();
+  return distEnv === "inhouse" || forceInhouse ? "inhouse" : "public";
+}
+
 /**
  * プラン情報を取得する。
  * @param {object} admin - GraphQL を実行する admin オブジェクト
@@ -52,13 +63,7 @@ function getCustomAppStoreIds() {
  */
 export async function getShopPlan(admin, currentShop, options = {}) {
   const reportUsage = options.reportUsage !== false;
-  const customStoreIds = getCustomAppStoreIds();
-  const shopNormalized = currentShop?.trim().toLowerCase();
-  const forceInhouse = Boolean(
-    shopNormalized && customStoreIds.some((id) => id.trim().toLowerCase() === shopNormalized)
-  );
-  const distEnv = (process.env.APP_DISTRIBUTION ?? "").trim().toLowerCase();
-  const distribution = distEnv === "inhouse" || forceInhouse ? "inhouse" : "public";
+  const distribution = distributionForShop(currentShop);
 
   let locationsCount = 0;
   let isDevelopmentStore = false;
@@ -168,7 +173,7 @@ export async function getShopPlan(admin, currentShop, options = {}) {
   // Lite のときロケーション数が 10 を超えていたらプラン不一致
   let locationPlanMismatch = false;
   let maxLocationsForPlan;
-  if (distribution === "public" && !forceInhouse && plan === "lite" && locationsCount > 10) {
+  if (distribution === "public" && plan === "lite" && locationsCount > 10) {
     locationPlanMismatch = true;
     maxLocationsForPlan = 10;
   }

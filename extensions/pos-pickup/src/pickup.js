@@ -1,3 +1,5 @@
+import {pickupAction, pickupMail} from "./logic.js";
+
 const ordersQuery = `query PickupQueue($filter: String!, $after: String) {
   fulfillmentOrders(first: 50, query: $filter, after: $after) {
     pageInfo { hasNextPage endCursor }
@@ -60,4 +62,98 @@ export async function pickupDetails(orderId, locationId, request) {
     if (!after || cursors.has(after)) throw new Error("明細を再取得してください。");
     cursors.add(after);
   }
+}
+
+const actionQuery = `query PickupAction($id: ID!, $after: String) {
+  fulfillmentOrder(id: $id) {
+    status requestStatus
+    order { displayFulfillmentStatus }
+    deliveryMethod { methodType }
+    assignedLocation { location { id } }
+    supportedActions { action }
+    lineItems(first: 100, after: $after) {
+      pageInfo { hasNextPage endCursor }
+      nodes { id remainingQuantity }
+    }
+  }
+}`;
+
+const prepareMutation = `mutation PreparePickup($input: FulfillmentOrderLineItemsPreparedForPickupInput!) {
+  fulfillmentOrderLineItemsPreparedForPickup(input: $input) { userErrors { field message } }
+}`;
+
+const completeMutation = `mutation CompletePickup($fulfillment: FulfillmentInput!) {
+  fulfillmentCreate(fulfillment: $fulfillment) {
+    fulfillment { id status }
+    userErrors { field message }
+  }
+}`;
+
+async function loadPickupAction(request, orderId, locationId) {
+  const lines = [];
+  const cursors = new Set();
+  let after = null;
+  let order;
+  for (;;) {
+    const data = await request(actionQuery, {id: orderId, after});
+    order = data.fulfillmentOrder;
+    if (!order) return null;
+    lines.push(...order.lineItems.nodes);
+    if (!order.lineItems.pageInfo.hasNextPage) break;
+    after = order.lineItems.pageInfo.endCursor;
+    if (!after || cursors.has(after)) throw new Error("明細を再取得してください。");
+    cursors.add(after);
+  }
+  return {
+    locationOk: order.assignedLocation?.location?.id === "gid://shopify/Location/" + locationId,
+    method: order.deliveryMethod?.methodType,
+    status: order.status,
+    requestStatus: order.requestStatus,
+    displayFulfillmentStatus: order.order?.displayFulfillmentStatus,
+    supportedActions: (order.supportedActions || []).map((item) => item.action),
+    lines: lines.map((line) => ({id: line.id, remaining: line.remainingQuantity})),
+  };
+}
+
+async function mutateOnce(request, orderId, locationId, intent) {
+  const order = await loadPickupAction(request, orderId, locationId);
+  const decision = pickupAction({...order, intent});
+  if (decision.error) throw new Error(decision.error);
+  if (decision.already) return decision;
+  if (intent === "prepare") {
+    const data = await request(prepareMutation, {
+      input: {lineItemsByFulfillmentOrder: [{fulfillmentOrderId: orderId, fulfillmentOrderLineItems: decision.lineItems}]},
+    });
+    const errors = data.fulfillmentOrderLineItemsPreparedForPickup?.userErrors || [];
+    if (errors.length) throw new Error(errors[0].message || "準備完了を更新できませんでした。");
+    return {status: "prepared", mail: pickupMail.prepare};
+  }
+  const data = await request(completeMutation, {
+    fulfillment: {
+      notifyCustomer: pickupMail.complete.notifyCustomer,
+      lineItemsByFulfillmentOrder: [{fulfillmentOrderId: orderId, fulfillmentOrderLineItems: decision.lineItems}],
+    },
+  });
+  const errors = data.fulfillmentCreate?.userErrors || [];
+  if (errors.length) throw new Error(errors[0].message || "引渡完了を更新できませんでした。");
+  return {status: "fulfilled", mail: pickupMail.complete, observed: pickupMail.observed};
+}
+
+async function withReload(request, orderId, locationId, intent) {
+  try {
+    return await mutateOnce(request, orderId, locationId, intent);
+  } catch (error) {
+    const order = await loadPickupAction(request, orderId, locationId).catch(() => null);
+    const decision = order ? pickupAction({...order, intent}) : null;
+    if (decision?.already) return decision;
+    throw error;
+  }
+}
+
+export function preparePickup(orderId, locationId, request) {
+  return withReload(request, orderId, locationId, "prepare");
+}
+
+export function completePickup(orderId, locationId, request) {
+  return withReload(request, orderId, locationId, "complete");
 }

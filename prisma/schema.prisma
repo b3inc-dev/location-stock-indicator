@@ -37,3 +37,15 @@ model Session {
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
+
+model PosWebhookClaim {
+  id        String   @id
+  shop      String
+  orderId   String?
+  state     String
+  reason    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shop, orderId])
+}

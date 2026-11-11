@@ -7,13 +7,18 @@ import { Link, useLocation } from "react-router";
 export function AppNavBar({ shopPlan }) {
   const location = useLocation();
   const search = location.search || "";
-  const showPlanLink = shopPlan?.distribution === "public";
+  const distribution = shopPlan?.distribution;
+  const showPlanLink = distribution === "public";
+  const showPosLink = distribution === "inhouse";
   const showAnalyticsLink = !!shopPlan?.features?.analytics;
 
   const items = [
     { path: "/app/locations", label: "ロケーション設定" },
     { path: "/app/settings", label: "在庫表示設定" },
   ];
+  if (showPosLink) {
+    items.push({ path: "/app/pos-operations", label: "店舗配送" });
+  }
   if (showAnalyticsLink) {
     items.push({ path: "/app/analytics", label: "分析" });
   }
