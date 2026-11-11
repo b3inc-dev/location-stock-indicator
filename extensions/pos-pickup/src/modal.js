@@ -1,4 +1,4 @@
-import {pickupOrders} from "./pickup.js";
+import {pickupOrders, pickupDetails} from "./pickup.js";
 
 async function request(query, variables) {
   const response = await fetch("shopify:admin/api/graphql.json", {
@@ -22,10 +22,10 @@ export default function () {
   scroll.append(list, button);
   page.append(scroll);
   document.body.replaceChildren(page);
-  function line(message) {
+  function line(message, parent = list) {
     const item = document.createElement("s-text");
     item.textContent = message;
-    list.append(item);
+    parent.append(item);
   }
   async function refresh() {
     if (button.disabled) return;
@@ -39,7 +39,32 @@ export default function () {
       list.replaceChildren();
       if (!rows.length) line("この店舗の未完了の受取注文はありません。");
       const label = {OPEN: "未完了", IN_PROGRESS: "処理中", ON_HOLD: "保留", SCHEDULED: "予定"};
-      for (const row of rows) line(row.orderName + "　" + label[row.status]);
+      for (const row of rows) {
+        const show = document.createElement("s-button");
+        const detail = document.createElement("s-stack");
+        show.textContent = row.orderName + "　" + label[row.status] + "　明細";
+        show.addEventListener("click", async () => {
+          show.disabled = true;
+          detail.replaceChildren();
+          line("明細を読み込み中…", detail);
+          try {
+            const items = await pickupDetails(row.id, location, request);
+            if (location !== shopify.session.currentSession.locationId) throw new Error("店舗が変わりました。一覧を更新してください。");
+            detail.replaceChildren();
+            if (!items.length) line("残りの商品はありません。", detail);
+            for (const item of items) {
+              const name = [item.productTitle, item.variantTitle, item.sku].filter(Boolean).join(" / ");
+              line(name + "　" + item.remainingQuantity + "点", detail);
+            }
+          } catch (error) {
+            detail.replaceChildren();
+            line(error.message || "明細を取得できませんでした。", detail);
+          } finally {
+            show.disabled = false;
+          }
+        });
+        list.append(show, detail);
+      }
     } catch (error) {
       list.replaceChildren();
       line(error.message || "受取注文を取得できませんでした。");

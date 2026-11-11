@@ -27,3 +27,37 @@ export async function pickupOrders(locationId, request) {
     cursors.add(after);
   }
 }
+
+const detailsQuery = `query PickupDetails($id: ID!, $after: String) {
+  fulfillmentOrder(id: $id) {
+    status updatedAt assignedLocation { location { id } } deliveryMethod { methodType }
+    lineItems(first: 100, after: $after) {
+      pageInfo { hasNextPage endCursor }
+      nodes { id productTitle variantTitle sku remainingQuantity }
+    }
+  }
+}`;
+
+export async function pickupDetails(orderId, locationId, request) {
+  const result = new Map();
+  const cursors = new Set();
+  let after = null;
+  let revision;
+  for (;;) {
+    const {fulfillmentOrder: order} = await request(detailsQuery, {id: orderId, after});
+    if (!order || order.deliveryMethod?.methodType !== "PICK_UP" ||
+        order.assignedLocation.location?.id !== "gid://shopify/Location/" + locationId ||
+        !["OPEN", "IN_PROGRESS", "ON_HOLD", "SCHEDULED"].includes(order.status) ||
+        (revision && revision !== order.updatedAt)) {
+      throw new Error("受取注文が変更されました。一覧を更新してください。");
+    }
+    revision = order.updatedAt;
+    for (const item of order.lineItems.nodes) {
+      if (item.remainingQuantity > 0) result.set(item.id, item);
+    }
+    if (!order.lineItems.pageInfo.hasNextPage) return [...result.values()];
+    after = order.lineItems.pageInfo.endCursor;
+    if (!after || cursors.has(after)) throw new Error("明細を再取得してください。");
+    cursors.add(after);
+  }
+}
