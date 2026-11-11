@@ -342,6 +342,22 @@ function remainingAt(order, key, locationId) {
   return total;
 }
 
+function fulfilledAt(order, key, locationId) {
+  let total = 0;
+  for (const shipment of order.shipments || []) {
+    if (shipment.status && shipment.status !== "SUCCESS") continue;
+    if (!sameId(shipment.locationId, locationId)) continue;
+    for (const line of shipment.lines || []) {
+      if (line.variantKey === key) total += Number(line.quantity || 0);
+    }
+  }
+  return total;
+}
+
+function accountedAt(order, key, locationId) {
+  return remainingAt(order, key, locationId) + fulfilledAt(order, key, locationId);
+}
+
 function deliveryMap(plan) {
   const map = new Map();
   for (const line of plan?.lines || []) {
@@ -446,7 +462,7 @@ export function planSale(order, settings, plan) {
   const moves = [];
   const outstanding = new Map(delivery);
   for (const [key, quantity] of delivery) {
-    outstanding.set(key, Math.max(0, quantity - remainingAt(order, key, plan.warehouseLocationId)));
+    outstanding.set(key, Math.max(0, quantity - accountedAt(order, key, plan.warehouseLocationId)));
   }
   for (const fulfillment of active) {
     if (!sameId(fulfillment.locationId, order.salesLocationId)) continue;
@@ -672,6 +688,14 @@ const ORDER_QUERY = `query PosSaleOrder($id: ID!, $lineItemsAfter: String, $fulf
       pageInfo { hasNextPage endCursor }
       nodes { id sku title quantity currentQuantity originalUnitPriceSet { shopMoney { amount } } variant { id } }
     }
+    fulfillments {
+      status
+      location { id }
+      fulfillmentLineItems(first: 100) {
+        pageInfo { hasNextPage endCursor }
+        nodes { quantity lineItem { variant { id } } }
+      }
+    }
     fulfillmentOrders(first: 30, after: $fulfillmentOrdersAfter) {
       pageInfo { hasNextPage endCursor }
       nodes {
@@ -800,13 +824,134 @@ export async function loadSaleOrder(request, id) {
     shippingAddress: order.shippingAddress,
     lines: lineNodes.map(snapshotLine),
     fulfillmentOrders,
+    shipments: snapshotShipments(order),
   };
 }
+
+function snapshotShipments(order) {
+  const shipments = Array.isArray(order.fulfillments) ? order.fulfillments : [];
+  return shipments.filter((shipment) => shipment.status === "SUCCESS").map((shipment) => {
+    if (shipment.fulfillmentLineItems?.pageInfo?.hasNextPage) throw new Error(messageFor("pagination"));
+    return {
+      locationId: shipment.location?.id || "",
+      status: shipment.status,
+      lines: (shipment.fulfillmentLineItems?.nodes || []).map((line) => ({
+        variantKey: numericId(line.lineItem?.variant?.id),
+        quantity: Number(line.quantity || 0),
+      })),
+    };
+  });
+}
+
+const REVIEW_ORDERS = `query PosReviewOrders($query: String!, $after: String) {
+  orders(first: 50, after: $after, query: $query, sortKey: CREATED_AT, reverse: true) {
+    pageInfo { hasNextPage endCursor }
+    nodes {
+      id
+      name
+      retailLocation { id }
+      metafield(namespace: "${CONFIG_NAMESPACE}", key: "${REVIEW_KEY}") { value }
+    }
+  }
+}`;
+
+export async function listReviewOrders(request, locationId) {
+  const rows = [];
+  const seen = new Set();
+  let after = null;
+  for (let page = 0; page < 20; page += 1) {
+    const data = await request(REVIEW_ORDERS, {query: "tag:location-stock-review", after});
+    const connection = data.orders;
+    for (const node of connection?.nodes || []) {
+      if (sameId(node.retailLocation?.id, locationId)) rows.push(node);
+    }
+    if (!connection?.pageInfo?.hasNextPage) return {rows, complete: true};
+    after = connection.pageInfo.endCursor;
+    if (!after || seen.has(after)) throw new Error(messageFor("pagination"));
+    seen.add(after);
+  }
+  return {rows, complete: false};
+}
+
+export const CIARA_BACKEND = "https://location-stock-indicator-ciara.onrender.com";
+
+export function backendUrl(config) {
+  const value = String(config?.backendUrl || "").trim().replace(/\/$/, "");
+  if (/^https:\/\/[A-Za-z0-9.-]+(?::\d+)?$/.test(value)) return value;
+  return CIARA_BACKEND;
+}
+
+export const ORDER_LOCK_STALE_MS = 120000;
 
 export function claimDecision(existing) {
   if (!existing) return "start";
   if (["done", "skipped", "review"].includes(existing.state)) return "stop";
-  return "resume";
+  return "continue";
+}
+
+function lockId(shop, orderId) {
+  return `${shop}:${orderId}`;
+}
+
+function lockTime(value) {
+  if (value instanceof Date) return value.getTime();
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export async function acquireOrderLock(locks, {shop, orderId, owner, now, staleMs = ORDER_LOCK_STALE_MS}) {
+  const id = lockId(shop, orderId);
+  const existing = await locks.get(id);
+  if (!existing) {
+    try {
+      await locks.create({id, shop, orderId, owner});
+      return true;
+    } catch (error) {
+      if (error?.code !== "P2002") throw error;
+      return false;
+    }
+  }
+  if (now - lockTime(existing.updatedAt) < staleMs) return false;
+  const taken = await locks.takeover(id, owner, new Date(now - staleMs));
+  return taken === 1;
+}
+
+export async function coordinatePaidOrder({repo, locks, shop, webhookId, orderId, owner, now, staleMs, distribution, work}) {
+  const existing = await repo.get(webhookId);
+  if (claimDecision(existing) === "stop") return {state: existing.state};
+  const locked = await acquireOrderLock(locks, {shop, orderId, owner, now, staleMs});
+  if (!locked) return {busy: true};
+  try {
+    const current = await repo.get(webhookId);
+    if (claimDecision(current) === "stop") return {state: current.state};
+    if (!current) {
+      try {
+        await repo.start({id: webhookId, shop, orderId, state: "processing"});
+      } catch (error) {
+        if (error?.code !== "P2002") throw error;
+      }
+    }
+    if (distribution !== "inhouse") {
+      await repo.finish(webhookId, {state: "skipped", reason: "public", orderId});
+      return {state: "skipped"};
+    }
+    const result = await work();
+    const state = claimState(result.phase);
+    await repo.finish(webhookId, {state, reason: result.reason || null, orderId});
+    return {state, result};
+  } finally {
+    await locks.release(lockId(shop, orderId), owner);
+  }
+}
+
+export async function coordinateRetry({locks, shop, orderId, owner, now, staleMs, work}) {
+  const locked = await acquireOrderLock(locks, {shop, orderId, owner, now, staleMs});
+  if (!locked) return {busy: true};
+  try {
+    return {result: await work()};
+  } finally {
+    await locks.release(lockId(shop, orderId), owner);
+  }
 }
 
 export function claimState(phase) {

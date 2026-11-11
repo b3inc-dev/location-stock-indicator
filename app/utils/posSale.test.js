@@ -1,11 +1,16 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {
+  ORDER_LOCK_STALE_MS,
+  acquireOrderLock,
   claimDecision,
   claimState,
+  coordinatePaidOrder,
+  coordinateRetry,
   createPlan,
   executeSale,
   feeSync,
+  listReviewOrders,
   loadSaleOrder,
   normalizeAddress,
   normalizeOperations,
@@ -274,8 +279,133 @@ test("sale order loading follows every line-item page", async () => {
 
 test("webhook claims do not run a finished or review event again", () => {
   assert.equal(claimDecision(null), "start");
-  assert.equal(claimDecision({state: "processing"}), "resume");
+  assert.equal(claimDecision({state: "processing"}), "continue");
   assert.equal(claimDecision({state: "done"}), "stop");
+  assert.equal(claimDecision({state: "review"}), "stop");
   assert.equal(claimState("review"), "review");
   assert.equal(claimState("done"), "done");
+});
+
+test("fulfilled warehouse quantity is not allocated again from takeaway stock", () => {
+  const {order, plan} = withDelivery(1);
+  order.fulfillmentOrders = [{
+    id: "gid://shopify/FulfillmentOrder/1",
+    status: "OPEN",
+    requestStatus: "UNSUBMITTED",
+    method: "RETAIL",
+    locationId: store,
+    lines: [{id: "line-1", variantKey: "5", sku: "SKU", title: "Shirt", remaining: 1}],
+  }];
+  order.shipments = [{
+    status: "SUCCESS",
+    locationId: warehouse,
+    lines: [{variantKey: "5", quantity: 1}],
+  }];
+  const step = planSale(order, settings, plan);
+  assert.equal(step.moves.length, 0);
+  assert.equal(step.phase, "fulfill");
+  assert.deepEqual(step.fulfills[0].fulfillmentOrderLineItems, [{id: "line-1", quantity: 1}]);
+});
+
+test("a partial warehouse shipment moves only the delivery quantity still outstanding", () => {
+  const {order, plan} = withDelivery(2);
+  order.shipments = [{status: "SUCCESS", locationId: warehouse, lines: [{variantKey: "5", quantity: 1}]}];
+  const step = planSale(order, settings, plan);
+  assert.equal(step.phase, "move");
+  assert.equal(step.moves[0].fulfillmentOrderLineItems[0].quantity, 1);
+});
+
+test("review orders keep scanning until the current store is found", async () => {
+  const queries = [];
+  const result = await listReviewOrders(async (query, variables) => {
+    queries.push(variables);
+    if (!variables.after) {
+      return {orders: {
+        nodes: [{id: "gid://shopify/Order/9", name: "#9", retailLocation: {id: "gid://shopify/Location/99"}}],
+        pageInfo: {hasNextPage: true, endCursor: "next"},
+      }};
+    }
+    return {orders: {
+      nodes: [{id: "gid://shopify/Order/12", name: "#12", retailLocation: {id: store}, metafield: {value: "再処理"}}],
+      pageInfo: {hasNextPage: false, endCursor: null},
+    }};
+  }, 12);
+  assert.equal(queries[0].query, "tag:location-stock-review");
+  assert.deepEqual(result.rows.map((row) => row.id), ["gid://shopify/Order/12"]);
+  assert.equal(result.complete, true);
+});
+
+function memoryLocks() {
+  const rows = new Map();
+  return {
+    get: async (id) => rows.get(id) || null,
+    create: async (data) => {
+      if (rows.has(data.id)) {
+        const error = new Error("exists");
+        error.code = "P2002";
+        throw error;
+      }
+      rows.set(data.id, {...data, updatedAt: data.updatedAt || new Date()});
+    },
+    takeover: async (id, owner, staleBefore) => {
+      const row = rows.get(id);
+      if (!row || row.updatedAt > staleBefore) return 0;
+      row.owner = owner;
+      row.updatedAt = new Date();
+      return 1;
+    },
+    release: async (id, owner) => {
+      const row = rows.get(id);
+      if (row?.owner === owner) rows.delete(id);
+    },
+  };
+}
+
+test("the same order cannot be processed twice while its lock is fresh", async () => {
+  const locks = memoryLocks();
+  const now = Date.parse("2026-11-11T00:00:00.000Z");
+  let runs = 0;
+  const first = coordinatePaidOrder({
+    repo: {get: async () => null, start: async () => {}, finish: async () => {}},
+    locks,
+    shop: "ciara.myshopify.com",
+    webhookId: "wh_1",
+    orderId: "gid://shopify/Order/1",
+    owner: "wh_1",
+    now,
+    staleMs: ORDER_LOCK_STALE_MS,
+    distribution: "inhouse",
+    work: async () => {
+      runs += 1;
+      const second = await coordinateRetry({
+        locks,
+        shop: "ciara.myshopify.com",
+        orderId: "gid://shopify/Order/1",
+        owner: "pos",
+        now,
+        staleMs: ORDER_LOCK_STALE_MS,
+        work: async () => { runs += 10; },
+      });
+      assert.equal(second.busy, true);
+      return {phase: "done", reason: null};
+    },
+  });
+  const outcome = await first;
+  assert.equal(runs, 1);
+  assert.equal(outcome.state, "done");
+});
+
+test("only one caller takes over a stale order lock", async () => {
+  const locks = memoryLocks();
+  const now = Date.parse("2026-11-11T00:10:00.000Z");
+  await locks.create({
+    id: "ciara.myshopify.com:gid://shopify/Order/1",
+    shop: "ciara.myshopify.com",
+    orderId: "gid://shopify/Order/1",
+    owner: "dead",
+    updatedAt: new Date(now - ORDER_LOCK_STALE_MS - 1000),
+  });
+  const input = {shop: "ciara.myshopify.com", orderId: "gid://shopify/Order/1", now, staleMs: ORDER_LOCK_STALE_MS};
+  assert.equal(await acquireOrderLock(locks, {...input, owner: "a"}), true);
+  assert.equal(await acquireOrderLock(locks, {...input, owner: "b"}), false);
 });

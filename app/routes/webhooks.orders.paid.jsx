@@ -1,5 +1,5 @@
 import {authenticate} from "../shopify.server";
-import {adminForShop, prismaClaimRepo, processPaidOrder} from "../utils/posOperations.server.js";
+import {adminForShop, prismaClaimRepo, prismaOrderLockRepo, processPaidOrder} from "../utils/posOperations.server.js";
 
 export const action = async ({request}) => {
   const {shop, topic, payload} = await authenticate.webhook(request);
@@ -9,14 +9,16 @@ export const action = async ({request}) => {
   const orderId = payload?.admin_graphql_api_id;
   if (!webhookId || !orderId) return new Response("missing webhook", {status: 400});
   try {
-    await processPaidOrder({
+    const outcome = await processPaidOrder({
       shop,
       webhookId,
       orderId,
       staffMemberId: payload?.user_id ? String(payload.user_id) : null,
       repo: prismaClaimRepo(),
+      locks: prismaOrderLockRepo(),
       request: await adminForShop(shop),
     });
+    if (outcome.busy) return new Response("busy", {status: 500});
     return new Response();
   } catch (error) {
     console.error(
