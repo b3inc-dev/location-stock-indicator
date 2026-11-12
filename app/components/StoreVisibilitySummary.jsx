@@ -71,7 +71,11 @@ function StoreColumn({ title, items, locationsMode, emptyLabel }) {
                     公開名: {item.publicName}
                   </span>
                 )}
-                {reason && <span className="lsi-vis-sub">{reason}</span>}
+                {reason && (
+                  <span className="lsi-vis-reason" title={reason}>
+                    {reason}
+                  </span>
+                )}
               </li>
             );
           })}
@@ -110,6 +114,14 @@ export function StoreVisibilitySummary({ summary }) {
         }
         .lsi-vis-name { font-size: 14px; color: #202223; }
         .lsi-vis-sub { font-size: 14px; color: #6d7175; margin-top: 2px; }
+        .lsi-vis-reason {
+          display: block;
+          margin-top: 2px;
+          font-size: 14px;
+          color: #6d7175;
+          white-space: normal;
+          overflow-wrap: anywhere;
+        }
         @media (max-width: 767px) {
           .lsi-vis-name, .lsi-vis-sub {
             white-space: normal;

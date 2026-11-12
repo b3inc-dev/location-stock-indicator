@@ -50,6 +50,7 @@ export function LocationCompareList({
   isPro,
   distributionNote,
   locationsMode,
+  savedLocationsMode,
   pinnedLocationId,
   hasNextPage,
   onPinnedLocationId,
@@ -63,8 +64,8 @@ export function LocationCompareList({
   const [filter, setFilter] = useState("all");
   const groups = Array.isArray(regionGroups) ? regionGroups : [];
   const { counts, visible } = useMemo(
-    () => filterLocationRows(rows, { query, filter, locationsMode, draft: true }),
-    [rows, query, filter, locationsMode]
+    () => filterLocationRows(rows, { query, filter, locationsMode, savedLocationsMode, draft: true }),
+    [rows, query, filter, locationsMode, savedLocationsMode]
   );
   const reorderLocked = filter !== "all" || query.trim() !== "";
 

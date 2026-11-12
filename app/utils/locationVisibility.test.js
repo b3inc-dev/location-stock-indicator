@@ -141,6 +141,23 @@ describe("filterLocationRows", () => {
     assert.equal(shinjuku.savedState, "excluded_by_mode");
   });
 
+  it("compares a dirty mode with the published mode", () => {
+    const { visible } = filterLocationRows(
+      [
+        {
+          shopifyName: "倉庫",
+          enabled: false,
+          savedEnabled: true,
+          fromConfig: true,
+          fulfillsOnlineOrders: false,
+        },
+      ],
+      { locationsMode: "online_only", savedLocationsMode: "all", draft: true }
+    );
+    assert.equal(visible[0].state, "hidden");
+    assert.equal(visible[0].savedState, "shown");
+  });
+
   it("splits shown, hidden, and mode-excluded stores", () => {
     const { counts, visible } = filterLocationRows(rows, {
       filter: "excluded_by_mode",

@@ -121,9 +121,16 @@ export function buildStoreVisibility(locations, config) {
   return { locationsMode, usePublicName, items };
 }
 
-export function filterLocationRows(rows, { query = "", filter = "all", locationsMode = "all", draft = false } = {}) {
+export function filterLocationRows(rows, {
+  query = "",
+  filter = "all",
+  locationsMode = "all",
+  savedLocationsMode,
+  draft = false,
+} = {}) {
   const q = String(query || "").trim().toLowerCase();
   const mode = normalizeLocationsMode(locationsMode);
+  const publishedMode = normalizeLocationsMode(savedLocationsMode ?? locationsMode);
   const matched = (Array.isArray(rows) ? rows : []).filter((row) => {
     if (!q) return true;
     const name = String(row?.shopifyName || "").toLowerCase();
@@ -144,7 +151,7 @@ export function filterLocationRows(rows, { query = "", filter = "all", locations
       enabled: typeof row?.savedEnabled === "boolean" ? row.savedEnabled : enabled,
       fromConfig: !!row?.fromConfig,
       fulfillsOnlineOrders: !!row?.fulfillsOnlineOrders,
-      locationsMode: mode,
+      locationsMode: publishedMode,
     });
     counts[state] += 1;
     return { row, state, savedState };

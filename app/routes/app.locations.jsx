@@ -1106,6 +1106,7 @@ export default function LocationsConfigPage() {
             isPro={isPro}
             distributionNote={describeDistributionEditing(shopPlan)}
             locationsMode={locationsMode}
+            savedLocationsMode={initialLocationsMode}
             pinnedLocationId={pinnedLocationId}
             hasNextPage={!!locationsHasNextPage}
             onPinnedLocationId={setPinnedLocationId}
