@@ -1,7 +1,8 @@
 import {useState} from "react";
 import {useFetcher, useLoaderData} from "react-router";
 import {authenticate} from "../shopify.server";
-import {distributionForShop} from "../utils/shopPlan.server.js";
+import {getShopPlan} from "../utils/shopPlan.server.js";
+import {isProFeaturesAllowed} from "../utils/planGate.js";
 import {normalizeOperations} from "../../extensions/pos-pickup/src/logic.js";
 
 const QUERY = `#graphql
@@ -39,7 +40,8 @@ function toLocalInput(iso) {
 
 export async function loader({request}) {
   const {admin, session} = await authenticate.admin(request);
-  if (distributionForShop(session?.shop) !== "inhouse") return {locked: true, rows: []};
+  const shopPlan = await getShopPlan(admin, session?.shop, {reportUsage: false});
+  if (!isProFeaturesAllowed(shopPlan)) return {locked: true, rows: []};
   const response = await admin.graphql(QUERY);
   const payload = await response.json();
   if (payload.errors?.length) throw new Response("設定を取得できませんでした", {status: 500});
@@ -68,8 +70,9 @@ export async function loader({request}) {
 
 export async function action({request}) {
   const {admin, session} = await authenticate.admin(request);
-  if (distributionForShop(session?.shop) !== "inhouse") {
-    return {errors: ["この設定は自社版でのみ使えます。"]};
+  const shopPlan = await getShopPlan(admin, session?.shop, {reportUsage: false});
+  if (!isProFeaturesAllowed(shopPlan)) {
+    return {errors: ["店舗受取と配送は Pro プランで利用できます。"]};
   }
   const form = await request.formData();
   let submitted = [];
@@ -120,7 +123,7 @@ export default function PosOperations() {
   const data = useLoaderData();
   const fetcher = useFetcher();
   const [rows, setRows] = useState(data.rows || []);
-  if (data.locked) return <p>この設定は自社版でのみ使えます。</p>;
+  if (data.locked) return <p>店舗受取と配送は Pro プランで利用できます。</p>;
   const errors = fetcher.data?.errors || [];
   const update = (locationId, patch) => {
     setRows((current) => current.map((row) => (row.locationId === locationId ? {...row, ...patch} : row)));

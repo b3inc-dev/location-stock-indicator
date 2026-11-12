@@ -9,6 +9,7 @@ import {
   sameId,
   savePlan,
 } from "./logic.js";
+import {loadPosAccess, requirePosAccess} from "./access.js";
 import {adminRequest} from "./admin.js";
 
 async function applyFee(action) {
@@ -26,6 +27,11 @@ async function syncOnce() {
     lock = 0;
   }
   if (lock > Date.now()) return;
+  try {
+    await requirePosAccess();
+  } catch {
+    return;
+  }
   const cart = shopify.cart.current.value;
   const id = cart.properties?.[RECEPTION_ATTRIBUTE];
   if (!id) return;
@@ -62,6 +68,11 @@ export default async function () {
   });
   document.body.replaceChildren(tile);
   try {
+    const access = await loadPosAccess();
+    if (!access.allowed) {
+      tile.setAttribute("subheading", "Proプランで利用できます");
+      return;
+    }
     const loaded = await loadConfig(adminRequest);
     const row = (loaded.config.locations || []).find((item) => sameId(item.locationId, shopify.session.currentSession.locationId));
     if (!deliveryAvailable(row, new Date().toISOString())) tile.setAttribute("subheading", "この店舗では使いません");

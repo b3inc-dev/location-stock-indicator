@@ -8,9 +8,10 @@ export function AppNavBar({ shopPlan }) {
   const location = useLocation();
   const search = location.search || "";
   const distribution = shopPlan?.distribution;
+  const features = shopPlan?.features;
   const showPlanLink = distribution === "public";
-  const showPosLink = distribution === "inhouse";
-  const showAnalyticsLink = !!shopPlan?.features?.analytics;
+  const showPosLink = !!features?.storePickup;
+  const showAnalyticsLink = !!features?.analytics;
 
   const items = [
     { path: "/app/locations", label: "ロケーション設定" },

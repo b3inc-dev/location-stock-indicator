@@ -1,7 +1,11 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
+import {isProFeaturesAllowed, isStorefrontInventoryAllowed} from "./planGate.js";
+import {getPlanFromActiveSubscriptions} from "./billing.js";
 import {
+  CIARA_API_KEY,
   ORDER_LOCK_STALE_MS,
+  accessFromInstallation,
   acquireOrderLock,
   claimDecision,
   claimState,
@@ -11,6 +15,7 @@ import {
   createPlan,
   executeSale,
   feeSync,
+  isPosOperationsAllowed,
   listReviewOrders,
   loadSaleOrder,
   normalizeAddress,
@@ -18,7 +23,9 @@ import {
   planSale,
   recalculatePlan,
   reprocessSale,
+  serverOperationsAllowed,
   settingsFor,
+  subscriptionPlan,
 } from "../../extensions/pos-pickup/src/logic.js";
 
 const store = "gid://shopify/Location/12";
@@ -271,6 +278,90 @@ test("same SKU can be split between takeaway and delivery and recalculates when 
   assert.equal(removed.status, "cancelled");
   assert.equal(removed.feeAmount, 0);
   assert.deepEqual(feeSync([{uuid: "fee", variantId: null, title: "送料", price: 770, quantity: 1}], "送料", 0).remove, ["fee"]);
+});
+
+test("public pro, lite, unsubscribed, and inhouse stay distinct from development-store access", () => {
+  const cases = [
+    [{distribution: "public", plan: "pro", isDevelopmentStore: false}, true, true],
+    [{distribution: "public", plan: "lite", isDevelopmentStore: false}, false, true],
+    [{distribution: "public", plan: null, isDevelopmentStore: false}, false, false],
+    [{distribution: "inhouse", plan: null, isDevelopmentStore: false}, true, true],
+  ];
+  for (const [plan, operations, basic] of cases) {
+    assert.equal(isPosOperationsAllowed(plan), operations);
+    assert.equal(isProFeaturesAllowed(plan), operations);
+    assert.equal(isStorefrontInventoryAllowed(plan), basic);
+  }
+  const subscriptions = [
+    [[{name: "Location Stock Pro", status: "ACTIVE"}], "pro"],
+    [[{name: "Location Stock Lite", status: "ACTIVE"}], "lite"],
+    [[{name: "Location Stock Lite", status: "CANCELLED"}], null],
+    [[], null],
+  ];
+  for (const [input, expected] of subscriptions) {
+    assert.equal(subscriptionPlan(input), expected);
+    assert.equal(getPlanFromActiveSubscriptions(input), expected);
+  }
+  assert.equal(accessFromInstallation({
+    apiKey: "public-key", partnerDevelopment: false, subscriptions: [{name: "Pro", status: "ACTIVE"}],
+  }).allowed, true);
+  assert.equal(accessFromInstallation({
+    apiKey: "public-key", partnerDevelopment: false, subscriptions: [{name: "Lite", status: "ACTIVE"}],
+  }).allowed, false);
+  assert.equal(accessFromInstallation({
+    apiKey: "public-key", partnerDevelopment: false, subscriptions: [],
+  }).allowed, false);
+  assert.equal(accessFromInstallation({
+    apiKey: CIARA_API_KEY, partnerDevelopment: false, subscriptions: [],
+  }).allowed, true);
+  assert.equal(isProFeaturesAllowed({distribution: "public", plan: null, isDevelopmentStore: true}), true);
+});
+
+test("public lite and an unsubscribed shop do not pass the paid-order gate", () => {
+  assert.equal(serverOperationsAllowed({
+    distribution: "public",
+    partnerDevelopment: false,
+    subscriptions: [{name: "Location Stock Lite", status: "ACTIVE"}],
+  }), false);
+  assert.equal(serverOperationsAllowed({
+    distribution: "public",
+    partnerDevelopment: false,
+    subscriptions: [],
+  }), false);
+  assert.equal(serverOperationsAllowed({
+    distribution: "public",
+    partnerDevelopment: false,
+    subscriptions: [{name: "Location Stock Pro", status: "ACTIVE"}],
+  }), true);
+  assert.equal(serverOperationsAllowed({distribution: "inhouse", subscriptions: []}), true);
+  assert.equal(serverOperationsAllowed({
+    distribution: "public",
+    partnerDevelopment: true,
+    subscriptions: [],
+  }), true);
+});
+
+test("a plan that cannot use POS operations does not run the sale", async () => {
+  let runs = 0;
+  const outcome = await coordinatePaidOrder({
+    repo: {get: async () => null, start: async () => {}, finish: async () => {}},
+    locks: {
+      get: async () => null,
+      create: async () => {},
+      takeover: async () => 0,
+      release: async () => {},
+    },
+    shop: "public.myshopify.com",
+    webhookId: "wh_lite",
+    orderId: "gid://shopify/Order/2",
+    owner: "wh_lite",
+    now: Date.parse("2026-11-11T00:00:00.000Z"),
+    staleMs: ORDER_LOCK_STALE_MS,
+    allowed: false,
+    work: async () => { runs += 1; return {phase: "done", reason: null}; },
+  });
+  assert.equal(runs, 0);
+  assert.equal(outcome.state, "skipped");
 });
 
 test("delivery cannot use the selling store as the warehouse", () => {
@@ -536,7 +627,7 @@ test("the same order cannot be processed twice while its lock is fresh", async (
     owner: "wh_1",
     now,
     staleMs: ORDER_LOCK_STALE_MS,
-    distribution: "inhouse",
+    allowed: true,
     work: async () => {
       runs += 1;
       const second = await coordinateRetry({
@@ -589,7 +680,7 @@ test("duplicate paid events acquire one order and run the sale once", async () =
     owner: "wh_same",
     now,
     staleMs: ORDER_LOCK_STALE_MS,
-    distribution: "inhouse",
+    allowed: true,
     work: async () => {
       runs += 1;
       await new Promise((resolve) => setTimeout(resolve, 20));

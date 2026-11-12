@@ -1,3 +1,5 @@
+import {loadPosAccess} from "./access.js";
+
 export default async function () {
   const tile = document.createElement("s-tile");
   tile.setAttribute("heading", "要確認");
@@ -7,4 +9,10 @@ export default async function () {
     shopify.action.presentModal();
   });
   document.body.replaceChildren(tile);
+  try {
+    const access = await loadPosAccess();
+    if (!access.allowed) tile.setAttribute("subheading", "Proプランで利用できます");
+  } catch {
+    tile.setAttribute("subheading", "プランを確認してください");
+  }
 }

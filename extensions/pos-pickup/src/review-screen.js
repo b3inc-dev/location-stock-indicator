@@ -1,4 +1,5 @@
 import {backendUrl, listReviewOrders, loadConfig} from "./logic.js";
+import {requirePosAccess} from "./access.js";
 import {adminRequest, button, screen, text} from "./admin.js";
 
 export function renderReview() {
@@ -33,6 +34,7 @@ async function refresh(results, status) {
   results.replaceChildren();
   try {
     const locationId = shopify.session.currentSession.locationId;
+    await requirePosAccess();
     const {rows, complete} = await listReviewOrders(adminRequest, locationId);
     if (!rows.length && complete) status.textContent = "この店舗の要確認はありません。";
     else if (!rows.length) status.textContent = "要確認が多く、この店舗の一覧を最後まで確認できませんでした。更新してください。";
@@ -43,6 +45,7 @@ async function refresh(results, status) {
       retry.addEventListener("click", async () => {
         retry.disabled = true;
         try {
+          await requirePosAccess();
           const result = await retryOnServer(order.id);
           text(result.message || "再処理しました。", results);
         } catch (error) {

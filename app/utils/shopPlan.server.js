@@ -28,7 +28,7 @@ function getCustomAppStoreIds() {
     .filter(Boolean);
 }
 
-/** Ciara の Render は APP_DISTRIBUTION=inhouse。公開アプリの注文は処理しない。 */
+/** Ciara の Render は APP_DISTRIBUTION=inhouse。公開アプリは Pro 契約のときだけ店舗受取・配送を処理する。 */
 export function distributionForShop(currentShop) {
   const shopNormalized = currentShop?.trim().toLowerCase();
   const forceInhouse = Boolean(

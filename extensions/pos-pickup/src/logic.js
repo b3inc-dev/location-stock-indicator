@@ -28,6 +28,7 @@ const MESSAGES = {
   move_incomplete: "倉庫への割当後も移動が残っています。",
   network: "通信に失敗しました。再処理してください。",
   pagination: "明細を最後まで取得できませんでした。",
+  plan: "この機能は Pro プランで利用できます。",
 };
 
 const PREFECTURES = {
@@ -903,6 +904,51 @@ export async function listReviewOrders(request, locationId) {
   }
 }
 
+export const CIARA_API_KEY = "61b474b801b754166b12f0b9cd07f450";
+
+export const POS_ACCESS_QUERY = `query PosPlanAccess {
+  shop { plan { partnerDevelopment } }
+  currentAppInstallation {
+    app { apiKey }
+    activeSubscriptions { name status }
+  }
+}`;
+
+export function subscriptionPlan(subscriptions) {
+  if (!Array.isArray(subscriptions) || subscriptions.length === 0) return null;
+  const active = subscriptions.filter((item) => String(item?.status || "").toUpperCase() === "ACTIVE");
+  if (active.length === 0) return null;
+  if (active.some((item) => /pro/i.test(String(item?.name || "")))) return "pro";
+  if (active.some((item) => /lite/i.test(String(item?.name || "")))) return "lite";
+  return null;
+}
+
+export function isPosOperationsAllowed(shopPlan) {
+  if (!shopPlan) return false;
+  if (shopPlan.distribution === "inhouse") return true;
+  if (shopPlan.isDevelopmentStore) return true;
+  return shopPlan.plan === "pro";
+}
+
+export function serverOperationsAllowed({distribution, partnerDevelopment, subscriptions}) {
+  if (distribution === "inhouse") {
+    return isPosOperationsAllowed({distribution, plan: "pro", isDevelopmentStore: false});
+  }
+  return isPosOperationsAllowed({
+    distribution: "public",
+    plan: subscriptionPlan(subscriptions),
+    isDevelopmentStore: partnerDevelopment === true,
+  });
+}
+
+export function accessFromInstallation({apiKey, partnerDevelopment, subscriptions}) {
+  const distribution = apiKey === CIARA_API_KEY ? "inhouse" : "public";
+  const isDevelopmentStore = partnerDevelopment === true;
+  const plan = distribution === "inhouse" ? "pro" : subscriptionPlan(subscriptions);
+  const snapshot = {distribution, plan, isDevelopmentStore};
+  return {...snapshot, allowed: isPosOperationsAllowed(snapshot)};
+}
+
 export const CIARA_BACKEND = "https://location-stock-indicator-ciara.onrender.com";
 
 export function backendUrl(config) {
@@ -948,7 +994,7 @@ export async function acquireOrderLock(locks, input) {
   return taken === 1;
 }
 
-export async function coordinatePaidOrder({repo, locks, shop, webhookId, orderId, owner, now, staleMs, distribution, work}) {
+export async function coordinatePaidOrder({repo, locks, shop, webhookId, orderId, owner, now, staleMs, allowed, work}) {
   const existing = await repo.get(webhookId);
   if (claimDecision(existing) === "stop") return {state: existing.state};
   const locked = await acquireOrderLock(locks, {shop, orderId, owner, now, staleMs});
@@ -963,8 +1009,8 @@ export async function coordinatePaidOrder({repo, locks, shop, webhookId, orderId
         if (error?.code !== "P2002") throw error;
       }
     }
-    if (distribution !== "inhouse") {
-      await repo.finish(webhookId, {state: "skipped", reason: "public", orderId});
+    if (!allowed) {
+      await repo.finish(webhookId, {state: "skipped", reason: "plan", orderId});
       return {state: "skipped"};
     }
     const result = await work();

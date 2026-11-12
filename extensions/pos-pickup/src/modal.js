@@ -1,6 +1,7 @@
 import {pickupOrders, pickupDetails, preparePickup, completePickup} from "./pickup.js";
 import {renderDelivery} from "./delivery-screen.js";
 import {renderReview} from "./review-screen.js";
+import {requirePosAccess} from "./access.js";
 
 async function request(query, variables) {
   const response = await fetch("shopify:admin/api/graphql.json", {
@@ -35,6 +36,7 @@ export function renderPickup() {
     list.replaceChildren();
     line("読み込み中…");
     try {
+      await requirePosAccess();
       const location = shopify.session.currentSession.locationId;
       const rows = await pickupOrders(location, request);
       if (location !== shopify.session.currentSession.locationId) throw new Error("店舗が切り替わりました。更新してください。");
@@ -50,6 +52,7 @@ export function renderPickup() {
           detail.replaceChildren();
           line("明細を読み込み中…", detail);
           try {
+            await requirePosAccess();
             const items = await pickupDetails(row.id, location, request);
             if (location !== shopify.session.currentSession.locationId) throw new Error("店舗が変わりました。一覧を更新してください。");
             detail.replaceChildren();
@@ -66,6 +69,7 @@ export function renderPickup() {
               action.addEventListener("click", async () => {
                 action.disabled = true;
                 try {
+                  await requirePosAccess();
                   const result = row.status === "OPEN"
                     ? await preparePickup(row.id, location, request)
                     : await completePickup(row.id, location, request);

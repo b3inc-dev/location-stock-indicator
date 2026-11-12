@@ -9,6 +9,7 @@ import {
   sameId,
   savePlan,
 } from "./logic.js";
+import {requirePosAccess} from "./access.js";
 import {adminRequest, button, field, readField, screen, text} from "./admin.js";
 
 async function applyFee(action) {
@@ -30,6 +31,7 @@ async function open(list, status) {
       status.textContent = "通信できないため、配送を確定できません。";
       return;
     }
+    await requirePosAccess();
     const loaded = await loadConfig(adminRequest);
     const locationId = shopify.session.currentSession.locationId;
     const row = (loaded.config.locations || []).find((item) => sameId(item.locationId, locationId));
@@ -80,6 +82,7 @@ async function open(list, status) {
     confirm.addEventListener("click", async () => {
       confirm.disabled = true;
       try {
+        await requirePosAccess();
         const latest = shopify.cart.current.value;
         const created = createPlan({
           id: newReceptionId(),
@@ -137,6 +140,7 @@ async function open(list, status) {
     cancel.addEventListener("click", async () => {
       cancel.disabled = true;
       try {
+        await requirePosAccess();
         const current = shopify.cart.current.value;
         const id = current.properties?.[RECEPTION_ATTRIBUTE];
         const plan = id ? await loadPlan(adminRequest, id) : null;

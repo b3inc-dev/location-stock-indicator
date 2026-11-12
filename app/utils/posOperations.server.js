@@ -1,7 +1,12 @@
 import prisma from "../db.server";
 import {unauthenticated} from "../shopify.server";
 import {distributionForShop} from "./shopPlan.server.js";
-import {ORDER_LOCK_STALE_MS, coordinatePaidOrder, coordinateRetry, reprocessSale} from "../../extensions/pos-pickup/src/logic.js";
+import {ORDER_LOCK_STALE_MS, coordinatePaidOrder, coordinateRetry, reprocessSale, serverOperationsAllowed} from "../../extensions/pos-pickup/src/logic.js";
+
+const ACCESS_QUERY = `query PosAccess {
+  shop { plan { partnerDevelopment } }
+  currentAppInstallation { activeSubscriptions { name status } }
+}`;
 
 function graphql(admin) {
   return async (query, variables) => {
@@ -39,7 +44,19 @@ export function prismaOrderLockRepo(db = prisma) {
   };
 }
 
+export async function shopCanUsePosOperations(shop, request) {
+  const distribution = distributionForShop(shop);
+  if (distribution === "inhouse") return serverOperationsAllowed({distribution});
+  const data = await request(ACCESS_QUERY, {});
+  return serverOperationsAllowed({
+    distribution,
+    partnerDevelopment: data?.shop?.plan?.partnerDevelopment,
+    subscriptions: data?.currentAppInstallation?.activeSubscriptions,
+  });
+}
+
 export async function processPaidOrder({shop, webhookId, orderId, repo, locks, request, now = Date.now()}) {
+  const allowed = await shopCanUsePosOperations(shop, request);
   return coordinatePaidOrder({
     repo,
     locks,
@@ -49,13 +66,14 @@ export async function processPaidOrder({shop, webhookId, orderId, repo, locks, r
     owner: webhookId,
     now,
     staleMs: ORDER_LOCK_STALE_MS,
-    distribution: distributionForShop(shop),
+    allowed,
     work: () => reprocessSale(request, orderId),
   });
 }
 
 export async function retryPaidOrder({shop, orderId, owner, locks, request, now = Date.now()}) {
-  if (distributionForShop(shop) !== "inhouse") return {state: "skipped"};
+  const allowed = await shopCanUsePosOperations(shop, request);
+  if (!allowed) return {state: "skipped"};
   return coordinateRetry({
     locks,
     shop,
