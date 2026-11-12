@@ -4,8 +4,12 @@ import {isProFeaturesAllowed, isStorefrontInventoryAllowed} from "./planGate.js"
 import {getPlanFromActiveSubscriptions} from "./billing.js";
 import {
   CIARA_API_KEY,
+  CIARA_BACKEND,
+  PUBLIC_API_KEY,
+  PUBLIC_BACKEND,
   ORDER_LOCK_STALE_MS,
   accessFromInstallation,
+  backendForApp,
   acquireOrderLock,
   claimDecision,
   claimState,
@@ -18,10 +22,12 @@ import {
   isPosOperationsAllowed,
   listReviewOrders,
   loadSaleOrder,
+  markReview,
   normalizeAddress,
   normalizeOperations,
   planSale,
   recalculatePlan,
+  REVIEW_TAG,
   reprocessSale,
   serverOperationsAllowed,
   settingsFor,
@@ -315,6 +321,109 @@ test("public pro, lite, unsubscribed, and inhouse stay distinct from development
     apiKey: CIARA_API_KEY, partnerDevelopment: false, subscriptions: [],
   }).allowed, true);
   assert.equal(isProFeaturesAllowed({distribution: "public", plan: null, isDevelopmentStore: true}), true);
+});
+
+test("retry uses the installed app backend for both distributions", () => {
+  const publicAccess = accessFromInstallation({
+    apiKey: PUBLIC_API_KEY,
+    partnerDevelopment: false,
+    subscriptions: [{name: "Location Stock Pro", status: "ACTIVE"}],
+  });
+  const ciaraAccess = accessFromInstallation({
+    apiKey: CIARA_API_KEY,
+    partnerDevelopment: false,
+    subscriptions: [],
+  });
+  assert.equal(publicAccess.allowed, true);
+  assert.equal(ciaraAccess.allowed, true);
+  assert.equal(backendForApp(publicAccess.apiKey), PUBLIC_BACKEND);
+  assert.equal(backendForApp(ciaraAccess.apiKey), CIARA_BACKEND);
+  assert.equal(PUBLIC_BACKEND.includes("ciara"), false);
+  assert.equal(backendForApp(CIARA_BACKEND), "");
+  assert.equal(backendForApp(""), "");
+});
+
+test("a failed review tag leaves the claim retryable and the resend stores it", async () => {
+  const plan = {
+    id: "abc12345",
+    status: "open",
+    locationId: store,
+    warehouseLocationId: store,
+    shippingTitle: "送料",
+    feeAmount: 770,
+    confirmedFee: 770,
+    address,
+    lines: [{uuid: "u1", variantId: "5", sku: "SKU", quantity: 2, deliveryQuantity: 1}],
+  };
+  const order = {
+    id: "gid://shopify/Order/1", name: "#1", sourceName: "pos", createdAt: "2026-11-11T00:00:00.000Z",
+    cancelledAt: null, displayFinancialStatus: "PAID", returnStatus: "NO_RETURN", tags: [],
+    retailLocation: {id: store}, customAttributes: [{key: "_lsi_reception", value: "abc12345"}],
+    refunds: [], shippingAddress: null, fulfillments: [],
+    lineItems: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: [
+      {id: "li", sku: "SKU", title: "Shirt", quantity: 2, currentQuantity: 2, originalUnitPriceSet: {shopMoney: {amount: "1000"}}, variant: {id: "gid://shopify/ProductVariant/5"}},
+      {id: "fee", sku: "", title: "送料", quantity: 1, currentQuantity: 1, originalUnitPriceSet: {shopMoney: {amount: "770"}}, variant: null},
+    ]},
+    fulfillmentOrders: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: [{
+      id: "gid://shopify/FulfillmentOrder/1", status: "OPEN", requestStatus: "UNSUBMITTED",
+      deliveryMethod: {methodType: "RETAIL"}, assignedLocation: {location: {id: store}},
+      lineItems: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: [
+        {id: "line-1", remainingQuantity: 2, sku: "SKU", lineItem: {title: "Shirt", variant: {id: "gid://shopify/ProductVariant/5"}}},
+        {id: "fee-1", remainingQuantity: 1, sku: "", lineItem: {title: "送料", variant: null}},
+      ]},
+    }]},
+  };
+  let tagAttempts = 0;
+  const mutations = [];
+  const request = async (query, variables) => {
+    if (query.includes("PosOperationsConfig")) {
+      return {shop: {id: "gid://shopify/Shop/1", metafield: {value: JSON.stringify({
+        backendUrl: CIARA_BACKEND,
+        locations: [settings],
+      })}}};
+    }
+    if (query.includes("PosDeliveryPlan")) return {shop: {metafield: {value: JSON.stringify(plan)}}};
+    if (query.includes("PosSaleOrder")) return {order};
+    if (query.includes("tagsAdd")) {
+      tagAttempts += 1;
+      mutations.push("tagsAdd");
+      if (tagAttempts === 1) throw new Error("tag failed");
+      assert.deepEqual(variables.tags, [REVIEW_TAG]);
+      return {tagsAdd: {userErrors: []}};
+    }
+    if (query.includes("metafieldsSet")) {
+      mutations.push("metafieldsSet");
+      return {metafieldsSet: {metafields: [{id: "m"}], userErrors: []}};
+    }
+    if (/orderUpdate|fulfillmentCreate|fulfillmentOrderMove|tagsRemove/.test(query)) {
+      mutations.push("sale");
+      throw new Error("sale mutation");
+    }
+    throw new Error(query.slice(0, 80));
+  };
+  await assert.rejects(markReview(async () => ({tagsAdd: {userErrors: [{message: "failed"}]}}), order.id, "再処理"), /failed/);
+  const repo = memoryClaims();
+  const locks = memoryLocks();
+  const input = {
+    repo,
+    locks,
+    shop: "public.myshopify.com",
+    webhookId: "wh_tag",
+    orderId: order.id,
+    owner: "wh_tag",
+    now: Date.parse("2026-11-11T00:00:00.000Z"),
+    staleMs: ORDER_LOCK_STALE_MS,
+    allowed: true,
+    work: () => reprocessSale(request, order.id),
+  };
+  await assert.rejects(coordinatePaidOrder(input), /tag failed/);
+  const claim = await repo.get("wh_tag");
+  assert.equal(claim.state, "processing");
+  assert.equal(claimDecision(claim), "continue");
+  const resent = await coordinatePaidOrder(input);
+  assert.equal(resent.state, "review");
+  assert.equal(tagAttempts, 2);
+  assert.deepEqual(mutations, ["tagsAdd", "tagsAdd", "metafieldsSet"]);
 });
 
 test("public lite and an unsubscribed shop do not pass the paid-order gate", () => {

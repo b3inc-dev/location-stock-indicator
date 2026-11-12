@@ -672,8 +672,9 @@ export async function savePlan(request, shopId, plan) {
 }
 
 export async function markReview(request, orderId, message) {
-  await request(TAG, {id: orderId, tags: [REVIEW_TAG]});
-  await request(METAFIELDS_SET, {
+  const tagged = await userErrors(request, TAG, {id: orderId, tags: [REVIEW_TAG]}, "tagsAdd");
+  if (tagged) throw new Error(tagged);
+  const noted = await userErrors(request, METAFIELDS_SET, {
     metafields: [{
       ownerId: orderId,
       namespace: CONFIG_NAMESPACE,
@@ -681,7 +682,8 @@ export async function markReview(request, orderId, message) {
       type: "single_line_text_field",
       value: String(message || messageFor("network")).slice(0, 200),
     }],
-  });
+  }, "metafieldsSet");
+  if (noted) throw new Error(noted);
 }
 
 export async function reprocessSale(request, orderId) {
@@ -691,12 +693,15 @@ export async function reprocessSale(request, orderId) {
   const reception = (order.customAttributes || []).find((item) => item.key === RECEPTION_ATTRIBUTE)?.value;
   const plan = reception ? await loadPlan(request, reception) : null;
   const result = await executeSale(request, order, settings, plan);
-  try {
-    if (result.phase === "done" || result.phase === "skip") await clearReview(request, order.id);
-    else await markReview(request, order.id, result.message);
-  } catch {
-    // タグの更新に失敗しても、履行結果は呼び出し元へ返す。
+  if (result.phase === "done" || result.phase === "skip") {
+    try {
+      await clearReview(request, order.id);
+    } catch {
+      // 履行後のタグ削除に失敗しても、成功した結果は返す。
+    }
+    return result;
   }
+  await markReview(request, order.id, result.message);
   return result;
 }
 
@@ -905,6 +910,7 @@ export async function listReviewOrders(request, locationId) {
 }
 
 export const CIARA_API_KEY = "61b474b801b754166b12f0b9cd07f450";
+export const PUBLIC_API_KEY = "1758d63a004d7f7d99afe5bf334d1f48";
 
 export const POS_ACCESS_QUERY = `query PosPlanAccess {
   shop { plan { partnerDevelopment } }
@@ -946,15 +952,16 @@ export function accessFromInstallation({apiKey, partnerDevelopment, subscription
   const isDevelopmentStore = partnerDevelopment === true;
   const plan = distribution === "inhouse" ? "pro" : subscriptionPlan(subscriptions);
   const snapshot = {distribution, plan, isDevelopmentStore};
-  return {...snapshot, allowed: isPosOperationsAllowed(snapshot)};
+  return {...snapshot, apiKey: apiKey || "", allowed: isPosOperationsAllowed(snapshot)};
 }
 
 export const CIARA_BACKEND = "https://location-stock-indicator-ciara.onrender.com";
+export const PUBLIC_BACKEND = "https://location-stock-indicator.onrender.com";
 
-export function backendUrl(config) {
-  const value = String(config?.backendUrl || "").trim().replace(/\/$/, "");
-  if (/^https:\/\/[A-Za-z0-9.-]+(?::\d+)?$/.test(value)) return value;
-  return CIARA_BACKEND;
+export function backendForApp(apiKey) {
+  if (apiKey === CIARA_API_KEY) return CIARA_BACKEND;
+  if (apiKey === PUBLIC_API_KEY) return PUBLIC_BACKEND;
+  return "";
 }
 
 export const ORDER_LOCK_STALE_MS = 120000;

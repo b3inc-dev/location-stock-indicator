@@ -1,4 +1,4 @@
-import {backendUrl, listReviewOrders, loadConfig} from "./logic.js";
+import {backendForApp, listReviewOrders} from "./logic.js";
 import {requirePosAccess} from "./access.js";
 import {adminRequest, button, screen, text} from "./admin.js";
 
@@ -13,10 +13,11 @@ export function renderReview() {
   load();
 }
 
-async function retryOnServer(orderId) {
-  const loaded = await loadConfig(adminRequest);
+async function retryOnServer(orderId, apiKey) {
+  const backend = backendForApp(apiKey);
+  if (!backend) throw new Error("再処理先を確認してください。");
   const token = await shopify.session.getSessionToken();
-  const response = await fetch(`${backendUrl(loaded.config)}/pos/operations`, {
+  const response = await fetch(`${backend}/pos/operations`, {
     method: "POST",
     headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`},
     body: JSON.stringify({orderId}),
@@ -45,8 +46,8 @@ async function refresh(results, status) {
       retry.addEventListener("click", async () => {
         retry.disabled = true;
         try {
-          await requirePosAccess();
-          const result = await retryOnServer(order.id);
+          const access = await requirePosAccess();
+          const result = await retryOnServer(order.id, access.apiKey);
           text(result.message || "再処理しました。", results);
         } catch (error) {
           text(error.message || "再処理に失敗しました。", results);
