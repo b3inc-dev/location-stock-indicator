@@ -39,7 +39,7 @@ export function prismaOrderLockRepo(db = prisma) {
   };
 }
 
-export async function processPaidOrder({shop, webhookId, orderId, staffMemberId, repo, locks, request, now = Date.now()}) {
+export async function processPaidOrder({shop, webhookId, orderId, repo, locks, request, now = Date.now()}) {
   return coordinatePaidOrder({
     repo,
     locks,
@@ -50,7 +50,7 @@ export async function processPaidOrder({shop, webhookId, orderId, staffMemberId,
     now,
     staleMs: ORDER_LOCK_STALE_MS,
     distribution: distributionForShop(shop),
-    work: () => reprocessSale(request, orderId, staffMemberId),
+    work: () => reprocessSale(request, orderId),
   });
 }
 

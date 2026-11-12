@@ -13,7 +13,6 @@ export const action = async ({request}) => {
       shop,
       webhookId,
       orderId,
-      staffMemberId: payload?.user_id ? String(payload.user_id) : null,
       repo: prismaClaimRepo(),
       locks: prismaOrderLockRepo(),
       request: await adminForShop(shop),

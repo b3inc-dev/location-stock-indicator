@@ -16,6 +16,7 @@ import {
   normalizeOperations,
   planSale,
   recalculatePlan,
+  reprocessSale,
   settingsFor,
 } from "../../extensions/pos-pickup/src/logic.js";
 
@@ -45,7 +46,6 @@ function sale(extra = {}) {
     displayFinancialStatus: "PAID",
     returnStatus: "NO_RETURN",
     salesLocationId: store,
-    staffMemberId: "88",
     tags: [],
     customAttributes: [],
     refundCount: 0,
@@ -107,7 +107,7 @@ test("full delivery moves every unit and leaves no store fulfillment", async () 
   assert.equal(first.handoff.shippingFee, 770);
   assert.equal(first.handoff.destination.phone, "0311112222");
   assert.equal(first.handoff.salesLocationId, store);
-  assert.equal(first.handoff.staffMemberId, "88");
+  assert.equal("staffMemberId" in first.handoff, false);
   assert.deepEqual(Object.keys(first.addressInput).sort(), ["id", "shippingAddress"]);
   const calls = [];
   const after = sale({
@@ -162,7 +162,90 @@ test("mixed delivery fulfills only the takeaway quantity after the warehouse mov
   assert.equal(fulfillment.notifyCustomer, false);
   assert.deepEqual(fulfillment.lineItemsByFulfillmentOrder[0].fulfillmentOrderLineItems, [{id: "line-1", quantity: 1}]);
   assert.equal(result.storeQuantity, 1);
-  assert.equal(result.handoff.staffMemberId, "88");
+  assert.equal("staffMemberId" in result.handoff, false);
+});
+
+function decisionShape(step) {
+  return JSON.stringify({
+    phase: step.phase,
+    reason: step.reason,
+    storeQuantity: step.storeQuantity,
+    moves: step.moves,
+    fulfills: step.fulfills,
+  });
+}
+
+test("staff ids do not change delivery, mixed sale, warehouse allocation, or retry", async () => {
+  const plain = withDelivery(1);
+  const marked = withDelivery(1);
+  marked.order.staffMemberId = "88";
+  marked.plan = {...marked.plan, staffMemberId: "88"};
+  assert.equal(decisionShape(planSale(plain.order, settings, plain.plan)), decisionShape(planSale(marked.order, settings, marked.plan)));
+
+  const shipped = withDelivery(1);
+  shipped.order.fulfillmentOrders = [{
+    id: "gid://shopify/FulfillmentOrder/1", status: "OPEN", requestStatus: "UNSUBMITTED", method: "RETAIL", locationId: store,
+    lines: [{id: "line-1", variantKey: "5", sku: "SKU", title: "Shirt", remaining: 1}],
+  }];
+  shipped.order.shipments = [{status: "SUCCESS", locationId: warehouse, lines: [{variantKey: "5", quantity: 1}]}];
+  const shippedMarked = structuredClone(shipped);
+  shippedMarked.order.staffMemberId = "88";
+  shippedMarked.plan.staffMemberId = "77";
+  assert.equal(decisionShape(planSale(shipped.order, settings, shipped.plan)), decisionShape(planSale(shippedMarked.order, settings, shippedMarked.plan)));
+  assert.equal(planSale(shippedMarked.order, settings, shippedMarked.plan).moves.length, 0);
+
+  const full = planSale({...withDelivery(2).order, staffMemberId: "88"}, settings, {...withDelivery(2).plan, staffMemberId: "88"});
+  assert.equal(full.phase, "move");
+  assert.equal(JSON.stringify(full.handoff).includes("staff"), false);
+  assert.equal(JSON.stringify(full.metafield.value).includes("staff"), false);
+
+  const graphqlOrder = {
+    id: "gid://shopify/Order/1", name: "#1", sourceName: "pos", createdAt: "2026-11-11T00:00:00.000Z",
+    cancelledAt: null, displayFinancialStatus: "PAID", returnStatus: "NO_RETURN", tags: [],
+    retailLocation: {id: store}, customAttributes: [{key: "_lsi_reception", value: "abc12345"}],
+    refunds: [], shippingAddress: null, fulfillments: [],
+    lineItems: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: [
+      {id: "li", sku: "SKU", title: "Shirt", quantity: 2, currentQuantity: 2, originalUnitPriceSet: {shopMoney: {amount: "1000"}}, variant: {id: "gid://shopify/ProductVariant/5"}},
+      {id: "fee", sku: "", title: "送料", quantity: 1, currentQuantity: 1, originalUnitPriceSet: {shopMoney: {amount: "770"}}, variant: null},
+    ]},
+    fulfillmentOrders: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: [{
+      id: "gid://shopify/FulfillmentOrder/1", status: "OPEN", requestStatus: "UNSUBMITTED",
+      deliveryMethod: {methodType: "RETAIL"}, assignedLocation: {location: {id: store}},
+      lineItems: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: [
+        {id: "line-1", remainingQuantity: 2, sku: "SKU", lineItem: {title: "Shirt", variant: {id: "gid://shopify/ProductVariant/5"}}},
+        {id: "fee-1", remainingQuantity: 1, sku: "", lineItem: {title: "送料", variant: null}},
+      ]},
+    }]},
+  };
+  const basePlan = withDelivery(1).plan;
+  async function retry(plan) {
+    const handoffs = [];
+    const result = await reprocessSale(async (query, variables) => {
+      if (query.includes("staffMember") || query.includes("PosHandoff")) throw new Error("staff read");
+      if (query.includes("PosOperationsConfig")) {
+        return {shop: {id: "gid://shopify/Shop/1", metafield: {value: JSON.stringify({locations: [settings]})}}};
+      }
+      if (query.includes("PosDeliveryPlan")) return {shop: {metafield: {value: JSON.stringify(plan)}}};
+      if (query.includes("metafieldsSet")) {
+        handoffs.push(variables.metafields[0].value);
+        return {metafieldsSet: {metafields: [{id: "m"}], userErrors: []}};
+      }
+      if (query.includes("orderUpdate")) return {orderUpdate: {userErrors: []}};
+      if (query.includes("PosMove")) return {fulfillmentOrderMove: {userErrors: []}};
+      if (query.includes("PosFulfill")) return {fulfillmentCreate: {userErrors: [], fulfillment: {id: "f", status: "SUCCESS"}}};
+      if (query.includes("tagsAdd")) return {tagsAdd: {userErrors: []}};
+      if (query.includes("tagsRemove")) return {tagsRemove: {userErrors: []}};
+      if (query.includes("PosSaleOrder")) return {order: graphqlOrder};
+      throw new Error(query.slice(0, 60));
+    }, graphqlOrder.id);
+    return {result, handoffs};
+  }
+  const withoutStaff = await retry(basePlan);
+  const withStoredStaff = await retry({...basePlan, staffMemberId: "88"});
+  assert.equal(withoutStaff.result.phase, withStoredStaff.result.phase);
+  assert.equal(withoutStaff.result.storeQuantity, withStoredStaff.result.storeQuantity);
+  assert.deepEqual(withoutStaff.handoffs, withStoredStaff.handoffs);
+  assert.equal(withStoredStaff.handoffs.some((value) => value.includes("staff")), false);
 });
 
 test("same SKU can be split between takeaway and delivery and recalculates when quantity changes", () => {

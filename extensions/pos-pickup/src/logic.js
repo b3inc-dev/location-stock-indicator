@@ -418,7 +418,6 @@ function handoffFor(order, plan) {
     warehouseLocationId: plan.warehouseLocationId,
     lines: [...grouped.values()],
     salesLocationId: order.salesLocationId,
-    staffMemberId: order.staffMemberId ?? null,
   };
 }
 
@@ -575,7 +574,6 @@ async function applySideEffects(request, step) {
 
 export async function executeSale(request, order, settings, plan, reload) {
   const load = reload || (() => loadSaleOrder(request, order.id));
-  const staffMemberId = order.staffMemberId ?? null;
   try {
     let step = planSale(order, settings, plan);
     if (step.phase === "skip" || step.phase === "review") return step;
@@ -587,7 +585,6 @@ export async function executeSale(request, order, settings, plan, reload) {
         if (error) return {...emptyStep("review", "warehouse_short"), message: error};
       }
       const next = await load();
-      next.staffMemberId = next.staffMemberId ?? staffMemberId;
       step = planSale(next, settings, plan);
       if (step.phase === "move") return emptyStep("review", "move_incomplete");
       if (step.phase !== "fulfill") return step;
@@ -640,19 +637,8 @@ export async function markReview(request, orderId, message) {
   });
 }
 
-export async function reprocessSale(request, orderId, staffMemberId) {
+export async function reprocessSale(request, orderId) {
   const order = await loadSaleOrder(request, orderId);
-  order.staffMemberId = staffMemberId || null;
-  if (!order.staffMemberId) {
-    try {
-      const existing = await request(`query PosHandoff($id: ID!) {
-        order(id: $id) { metafield(namespace: "${CONFIG_NAMESPACE}", key: "${HANDOFF_KEY}") { value } }
-      }`, {id: order.id});
-      order.staffMemberId = JSON.parse(existing.order?.metafield?.value || "{}").staffMemberId || null;
-    } catch {
-      order.staffMemberId = null;
-    }
-  }
   const {config} = await loadConfig(request);
   const settings = settingsFor(config, order.salesLocationId, order.createdAt);
   const reception = (order.customAttributes || []).find((item) => item.key === RECEPTION_ATTRIBUTE)?.value;
@@ -817,7 +803,6 @@ export async function loadSaleOrder(request, id) {
     displayFinancialStatus: order.displayFinancialStatus,
     returnStatus: order.returnStatus,
     salesLocationId: order.retailLocation?.id || null,
-    staffMemberId: order.staffMemberId ?? null,
     tags: order.tags || [],
     customAttributes: order.customAttributes || [],
     refundCount: order.refunds?.length || 0,
