@@ -3,6 +3,9 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useLoaderData, useFetcher } from "react-router";
 import { authenticate } from "../shopify.server";
+import { AdminSaveBar } from "../components/adminChrome.jsx";
+import { StoreVisibilitySummary } from "../components/StoreVisibilitySummary.jsx";
+import { buildStoreVisibility } from "../utils/locationVisibility.js";
 
 // shop の location_stock.config を読むクエリ
 const SHOP_CONFIG_QUERY = `#graphql
@@ -19,6 +22,21 @@ const SHOP_CONFIG_QUERY = `#graphql
 `;
 
 // location_stock.config を保存するミューテーション
+const LOCATIONS_SUMMARY_QUERY = `#graphql
+  query LocationsForDisplaySummary {
+    locations(first: 250) {
+      pageInfo {
+        hasNextPage
+      }
+      nodes {
+        id
+        name
+        fulfillsOnlineOrders
+      }
+    }
+  }
+`;
+
 const SET_LOCATION_STOCK_CONFIG_MUTATION = `#graphql
   mutation SetLocationStockConfig($metafields: [MetafieldsSetInput!]!) {
     metafieldsSet(metafields: $metafields) {
@@ -133,6 +151,32 @@ export async function loader({ request }) {
     listSeparator: typeof rawConfig?.display?.listSeparator === "string" ? rawConfig.display.listSeparator : "： ",
   };
 
+  let locationSummary = {
+    items: [],
+    locationsMode: "all",
+    usePublicName: true,
+    hasNextPage: false,
+    error: null,
+  };
+  try {
+    const locResponse = await admin.graphql(LOCATIONS_SUMMARY_QUERY);
+    const locResult = await locResponse.json();
+    if (locResult?.errors?.length) {
+      console.error("[location-stock]", { route: "app.settings", shop: session?.shop ?? "(unknown)" }, "LocationsForDisplaySummary errors");
+      locationSummary = { ...locationSummary, error: "店舗一覧を取得できませんでした。表示設定の保存は続けられます。" };
+    } else {
+      const nodes = locResult?.data?.locations?.nodes || [];
+      locationSummary = {
+        ...buildStoreVisibility(nodes, rawConfig),
+        hasNextPage: !!locResult?.data?.locations?.pageInfo?.hasNextPage,
+        error: null,
+      };
+    }
+  } catch (e) {
+    console.error("[location-stock]", { route: "app.settings", shop: session?.shop ?? "(unknown)" }, "LocationsForDisplaySummary failed:", e instanceof Error ? e.message : e);
+    locationSummary = { ...locationSummary, error: "店舗一覧を取得できませんでした。表示設定の保存は続けられます。" };
+  }
+
   return {
     shop: session.shop,
     thresholds,
@@ -143,6 +187,7 @@ export async function loader({ request }) {
     notice,
     display,
     rawConfig,
+    locationSummary,
   };
 }
 
@@ -516,7 +561,8 @@ export default function AppSettings() {
   return (
     <s-page heading="在庫表示設定">
       <div style={{ padding: "16px", maxWidth: "1200px", paddingBottom: "88px" }}>
-        {/* セクション：閾値 — 一番上 */}
+        <StoreVisibilitySummary summary={loaderData.locationSummary} />
+        {/* セクション：閾値 */}
         <div
           style={{
             display: "flex",
@@ -818,65 +864,15 @@ export default function AppSettings() {
         </div>
       </div>
 
-      {/* 固定フッター：変更時または保存直後（「保存しました」を約3秒表示） */}
-      {(isDirty || showSavedFeedback) && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 0,
-            left: 0,
-            right: 0,
-            background: "#fff",
-            borderTop: "1px solid #e1e3e5",
-            padding: "12px 24px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            boxShadow: "0 -2px 6px rgba(0,0,0,0.06)",
-            zIndex: 100,
-          }}
-        >
-          <span style={{ fontSize: 14, color: "#6d7175" }}>
-            {showSavedFeedback && !isDirty ? "保存しました" : footerStatusText}
-          </span>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              type="button"
-              onClick={handleDiscard}
-              disabled={saving || (showSavedFeedback && !isDirty)}
-              style={{
-                padding: "8px 16px",
-                borderRadius: 6,
-                border: "1px solid #c9cccf",
-                background: "#fff",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: saving || (showSavedFeedback && !isDirty) ? "not-allowed" : "pointer",
-                color: "#202223",
-              }}
-            >
-              破棄
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving || (showSavedFeedback && !isDirty)}
-              style={{
-                padding: "8px 16px",
-                borderRadius: 6,
-                border: "none",
-                background: "#2c6ecb",
-                color: "#fff",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: saving || (showSavedFeedback && !isDirty) ? "not-allowed" : "pointer",
-              }}
-            >
-              {saving ? "保存中..." : "保存"}
-            </button>
-          </div>
-        </div>
-      )}
+      <AdminSaveBar
+        visible={isDirty || showSavedFeedback}
+        statusText={showSavedFeedback && !isDirty ? "保存しました" : footerStatusText}
+        onDiscard={handleDiscard}
+        onSave={handleSave}
+        discardDisabled={saving || (showSavedFeedback && !isDirty)}
+        saveDisabled={saving || (showSavedFeedback && !isDirty)}
+        saveLabel={saving ? "保存中..." : "保存"}
+      />
     </s-page>
   );
 }

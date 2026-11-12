@@ -3,6 +3,10 @@
 import { useRef, useState, useMemo, useEffect } from "react";
 import { useLoaderData, useFetcher, useRevalidator, useOutletContext } from "react-router";
 import shopify from "../shopify.server";
+import { AdminSaveBar } from "../components/adminChrome.jsx";
+import { LocationCompareList } from "../components/LocationCompareList.jsx";
+import { isProFeaturesAllowed } from "../utils/planGate.js";
+import { describeDistributionEditing } from "../utils/locationVisibility.js";
 
 /**
  * ロケーション一覧 + shop メタフィールド(location_stock.config) を取得
@@ -19,6 +23,9 @@ const LOCATIONS_AND_CONFIG_QUERY = `#graphql
       }
     }
     locations(first: 250) {
+      pageInfo {
+        hasNextPage
+      }
       nodes {
         id
         name
@@ -69,6 +76,7 @@ export async function loader({ request }) {
 
   const shopData = result.data.shop;
   const locations = result.data.locations.nodes || [];
+  const locationsHasNextPage = !!result.data.locations?.pageInfo?.hasNextPage;
   const metafieldValue = shopData.metafield?.value;
 
   let deliveryFlagsByLocationId = new Map();
@@ -207,6 +215,7 @@ export async function loader({ request }) {
     future,
     locationsMode,
     usePublicName,
+    locationsHasNextPage,
   };
 }
 
@@ -442,7 +451,7 @@ export default function LocationsConfigPage() {
   const loaderData = useLoaderData();
   const outletContext = useOutletContext();
   const shopPlan = outletContext?.shopPlan ?? null;
-  const isPro = shopPlan?.distribution === "inhouse" || shopPlan?.plan === "pro";
+  const isPro = isProFeaturesAllowed(shopPlan);
   const {
     rows: initialRows,
     shopId,
@@ -452,6 +461,7 @@ export default function LocationsConfigPage() {
     future: initialFuture,
     locationsMode: initialLocationsMode,
     usePublicName: initialUsePublicName,
+    locationsHasNextPage,
   } = loaderData;
   const fetcher = useFetcher();
   const revalidator = useRevalidator();
@@ -467,20 +477,6 @@ export default function LocationsConfigPage() {
   const justSavedRef = useRef(false);
   const [showSavedFeedback, setShowSavedFeedback] = useState(false);
   const lastHandledSaveRef = useRef(null);
-  const tableScrollRef = useRef(null);
-
-  /** 横スクロール領域でホイールの横方向を吸収し、ブラウザの戻る／進むに取られないようにする */
-  const handleTableScrollWheel = (e) => {
-    const el = tableScrollRef.current;
-    if (!el || e.deltaX === 0) return;
-    const { scrollLeft, scrollWidth, clientWidth } = el;
-    const canScrollLeft = scrollLeft > 0;
-    const canScrollRight = scrollLeft < scrollWidth - clientWidth - 1;
-    if ((e.deltaX < 0 && canScrollRight) || (e.deltaX > 0 && canScrollLeft)) {
-      e.preventDefault();
-      el.scrollLeft += e.deltaX;
-    }
-  };
 
   const isDirty = useMemo(
     () =>
@@ -678,6 +674,16 @@ export default function LocationsConfigPage() {
       [next[index - 1], next[index]] = [next[index], next[index - 1]];
       return next.map((r, i) => ({ ...r, sortOrder: i + 1 }));
     });
+  };
+
+  const handleSortOrder = (locationId, value) => {
+    const v = parseInt(value, 10);
+    if (!Number.isFinite(v) || v < 1) return;
+    setRows((prev) =>
+      prev
+        .map((r) => (r.locationId === locationId ? { ...r, sortOrder: v } : r))
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+    );
   };
 
   const moveRowDown = (locationId) => {
@@ -1074,32 +1080,17 @@ export default function LocationsConfigPage() {
           </div>
         </div>
 
-        {/* タイトル＋説明（カードなし・上段） */}
         <div style={{ marginBottom: 24 }}>
-          <div
-            style={{
-              fontWeight: 600,
-              fontSize: 14,
-              marginBottom: 4,
-              color: "#202223",
-            }}
-          >
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>
             ロケーション一覧
           </div>
-          <div
-            style={{
-              fontSize: 14,
-              color: "#6d7175",
-              lineHeight: 1.5,
-            }}
-          >
-            チェックが入っているロケーションだけが商品ページに表示されます。
-            公開名を入力・保存した場合はその名前で表示され、未入力の場合は Shopify のロケーション名が使われます。
+          <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
+            店舗名の横に表示状態を置いています。チェックを外した店舗は「非表示」です。
+            公開名を保存するとその名前で表示し、未入力のときは Shopify のロケーション名を使います。
             並び順は数値と上下ボタンで変更でき、「一覧の並び順を使う」のときはこの順番が商品ページに反映されます。上部固定にしたロケーションは常に先頭に表示され、エリアの選択はできません。
           </div>
         </div>
 
-        {/* 100% 幅の設定カード（スマホでは横スクロール） */}
         <div
           style={{
             background: "#ffffff",
@@ -1108,460 +1099,33 @@ export default function LocationsConfigPage() {
             padding: 16,
           }}
         >
-          <div
-            ref={tableScrollRef}
-            onWheel={handleTableScrollWheel}
-            style={{
-              overflowX: "auto",
-              WebkitOverflowScrolling: "touch",
-              width: "100%",
-            }}
-          >
-            <table
-              style={{
-                width: "100%",
-                minWidth: 1000,
-                borderCollapse: "collapse",
-              }}
-            >
-                <thead>
-                  <tr>
-                    <th
-                      style={{
-                        textAlign: "left",
-                        borderBottom: "1px solid #c9cccf",
-                        padding: "8px 12px",
-                        minWidth: 160,
-                        fontSize: 14,
-                        fontWeight: 600,
-                        color: "#6d7175",
-                      }}
-                    >
-                      ロケーション名
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "left",
-                        borderBottom: "1px solid #c9cccf",
-                        padding: "8px 12px",
-                        minWidth: 240,
-                        fontSize: 14,
-                        fontWeight: 600,
-                        color: "#6d7175",
-                      }}
-                    >
-                      公開名（表示名）
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "left",
-                        borderBottom: "1px solid #c9cccf",
-                        padding: "8px 12px",
-                        minWidth: 120,
-                        fontSize: 14,
-                        fontWeight: 600,
-                        color: "#6d7175",
-                      }}
-                    >
-                      エリア
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "center",
-                        borderBottom: "1px solid #c9cccf",
-                        padding: "8px 12px",
-                        width: 120,
-                        fontSize: 14,
-                        fontWeight: 600,
-                        color: "#6d7175",
-                      }}
-                    >
-                      並び順
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "center",
-                        borderBottom: "1px solid #c9cccf",
-                        padding: "8px 12px",
-                        width: 100,
-                        fontSize: 14,
-                        fontWeight: 600,
-                        color: "#6d7175",
-                      }}
-                    >
-                      <div>上部固定</div>
-                      {pinnedLocationId && (
-                        <button
-                          type="button"
-                          onClick={() => setPinnedLocationId(null)}
-                          style={{
-                            marginTop: 4,
-                            padding: "2px 8px",
-                            fontSize: 12,
-                            border: "1px solid #c9cccf",
-                            borderRadius: 4,
-                            background: "#fff",
-                            cursor: "pointer",
-                            color: "#6d7175",
-                          }}
-                        >
-                          解除
-                        </button>
-                      )}
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "center",
-                        borderBottom: "1px solid #c9cccf",
-                        padding: "8px 12px",
-                        width: 80,
-                        fontSize: 14,
-                        fontWeight: 600,
-                        color: "#6d7175",
-                      }}
-                    >
-                      表示
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "center",
-                        borderBottom: "1px solid #c9cccf",
-                        padding: "8px 12px",
-                        width: 90,
-                        fontSize: 14,
-                        fontWeight: 600,
-                        color: "#6d7175",
-                      }}
-                      title="オンストア・本社・倉庫など、近隣検索に含めたくないロケーションでONにします"
-                    >
-                      近隣除外
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "left",
-                        borderBottom: "1px solid #c9cccf",
-                        padding: "8px 12px",
-                        minWidth: 200,
-                        fontSize: 14,
-                        fontWeight: 600,
-                        color: "#6d7175",
-                      }}
-                      title="「リンクを表示する」がONのとき、入力したURLがロケーション名のリンク先になります。空欄はリンクなし"
-                    >
-                      リンクURL
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row, index) => (
-                    <tr key={row.locationId}>
-                      <td
-                        style={{
-                          borderBottom: "1px solid #e1e3e5",
-                          padding: "8px 12px",
-                          minWidth: 160,
-                          fontSize: 14,
-                          color: "#202223",
-                        }}
-                      >
-                        <div>{row.shopifyName}</div>
-                        {(row.hasShipping || row.hasLocalDelivery || row.storePickupEnabled) && (
-                          <div
-                            style={{
-                              fontSize: 13,
-                              color: "#6d7175",
-                              marginTop: 4,
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: 2,
-                            }}
-                          >
-                            {row.hasShipping && <div>配送対応</div>}
-                            {row.hasLocalDelivery && <div>ローカルデリバリー対応</div>}
-                            {row.storePickupEnabled && <div>店舗受け取り対応</div>}
-                          </div>
-                        )}
-                      </td>
-                      <td
-                        style={{
-                          borderBottom: "1px solid #e1e3e5",
-                          padding: "8px 12px",
-                          minWidth: 240,
-                        }}
-                      >
-                        <input
-                          value={row.publicName}
-                          onChange={(e) =>
-                            updateRow(row.locationId, {
-                              publicName: e.target.value,
-                            })
-                          }
-                          style={{
-                            width: "100%",
-                            padding: "6px 8px",
-                            borderRadius: 4,
-                            border: "1px solid #c9cccf",
-                            fontSize: 14,
-                            boxSizing: "border-box",
-                          }}
-                        />
-                      </td>
-                      <td
-                        style={{
-                          borderBottom: "1px solid #e1e3e5",
-                          padding: "8px 12px",
-                          minWidth: 120,
-                          verticalAlign: "middle",
-                          ...(!isPro ? { background: "rgba(240,240,240,0.5)", color: "#6d7175" } : {}),
-                        }}
-                      >
-                        {!isPro ? (
-                          <span style={{ fontSize: 13, color: "#6d7175" }} title="Proプランで編集可能">
-                            {row.regionGroupId
-                              ? (regionGroups.find((g) => g.id === row.regionGroupId)?.name ?? "—")
-                              : "—"}
-                          </span>
-                        ) : row.locationId === pinnedLocationId ? (
-                          <span style={{ fontSize: 13, color: "#6d7175" }}>上部固定のためエリアは変更できません</span>
-                        ) : (
-                          <select
-                            value={row.regionGroupId || ""}
-                            onChange={(e) => updateRowRegionGroup(row.locationId, e.target.value)}
-                            style={{ ...selectBaseStyle, minWidth: 100 }}
-                          >
-                            <option value="">未設定</option>
-                            {regionGroups.map((g) => (
-                              <option key={g.id} value={g.id}>{g.name}</option>
-                            ))}
-                          </select>
-                        )}
-                      </td>
-                      <td
-                        style={{
-                          borderBottom: "1px solid #e1e3e5",
-                          padding: "8px 12px",
-                          width: 120,
-                          verticalAlign: "middle",
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                          <input
-                            type="number"
-                            min={1}
-                            value={row.sortOrder}
-                            onChange={(e) => {
-                              const v = parseInt(e.target.value, 10);
-                              if (!Number.isFinite(v) || v < 1) return;
-                              setRows((prev) =>
-                                prev
-                                  .map((r) =>
-                                    r.locationId === row.locationId ? { ...r, sortOrder: v } : r
-                                  )
-                                  .sort((a, b) => a.sortOrder - b.sortOrder)
-                              );
-                            }}
-                            style={{
-                              width: 44,
-                              padding: "4px 6px",
-                              borderRadius: 4,
-                              border: "1px solid #c9cccf",
-                              fontSize: 14,
-                              textAlign: "center",
-                              boxSizing: "border-box",
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => moveRowUp(row.locationId)}
-                            disabled={index === 0}
-                            style={{
-                              padding: "4px 8px",
-                              borderRadius: 4,
-                              border: "1px solid #c9cccf",
-                              background: "#fff",
-                              fontSize: 14,
-                              cursor: index === 0 ? "not-allowed" : "pointer",
-                              opacity: index === 0 ? 0.5 : 1,
-                            }}
-                          >
-                            ↑
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => moveRowDown(row.locationId)}
-                            disabled={index === rows.length - 1}
-                            style={{
-                              padding: "4px 8px",
-                              borderRadius: 4,
-                              border: "1px solid #c9cccf",
-                              background: "#fff",
-                              fontSize: 14,
-                              cursor: index === rows.length - 1 ? "not-allowed" : "pointer",
-                              opacity: index === rows.length - 1 ? 0.5 : 1,
-                            }}
-                          >
-                            ↓
-                          </button>
-                        </div>
-                      </td>
-                      <td
-                        style={{
-                          borderBottom: "1px solid #e1e3e5",
-                          padding: "8px 12px",
-                          width: 100,
-                          textAlign: "center",
-                          verticalAlign: "middle",
-                        }}
-                      >
-                        <input
-                          type="radio"
-                          name="pinnedLocationId"
-                          value={row.locationId}
-                          checked={pinnedLocationId === row.locationId}
-                          onChange={() => setPinnedLocationId(row.locationId)}
-                          style={{ width: 16, height: 16 }}
-                        />
-                      </td>
-                      <td
-                        style={{
-                          borderBottom: "1px solid #e1e3e5",
-                          padding: "8px 12px",
-                          textAlign: "center",
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={row.enabled}
-                          onChange={(e) =>
-                            updateRow(row.locationId, {
-                              enabled: e.target.checked,
-                            })
-                          }
-                          style={{ width: 16, height: 16 }}
-                        />
-                      </td>
-                      <td
-                        style={{
-                          borderBottom: "1px solid #e1e3e5",
-                          padding: "8px 12px",
-                          textAlign: "center",
-                          verticalAlign: "middle",
-                          ...(!isPro ? { background: "rgba(240,240,240,0.5)" } : {}),
-                        }}
-                      >
-                        {!isPro ? (
-                          <span style={{ fontSize: 13, color: "#6d7175" }} title="Proプランで編集可能">
-                            {row.excludeFromNearby ? "ON" : "—"}
-                          </span>
-                        ) : (
-                          <input
-                            type="checkbox"
-                            checked={!!row.excludeFromNearby}
-                            onChange={(e) =>
-                              updateRow(row.locationId, {
-                                excludeFromNearby: e.target.checked,
-                              })
-                            }
-                            style={{ width: 16, height: 16 }}
-                            title="ONにすると近隣店舗の検索対象から外れます（本社・倉庫など）"
-                          />
-                        )}
-                      </td>
-                      <td
-                        style={{
-                          borderBottom: "1px solid #e1e3e5",
-                          padding: "8px 12px",
-                          minWidth: 200,
-                        }}
-                      >
-                        <input
-                          type="text"
-                          value={row.linkUrl ?? ""}
-                          onChange={(e) =>
-                            updateRow(row.locationId, {
-                              linkUrl: e.target.value,
-                            })
-                          }
-                          placeholder="例: /pages/store-a または https://..."
-                          style={{
-                            width: "100%",
-                            minWidth: 160,
-                            padding: "6px 8px",
-                            borderRadius: 4,
-                            border: "1px solid #c9cccf",
-                            fontSize: 14,
-                            boxSizing: "border-box",
-                          }}
-                          title="「リンクを表示する」がONのときのみ反映。空欄はリンクなし"
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-          </div>
+          <LocationCompareList
+            rows={rows}
+            regionGroups={regionGroups}
+            isPro={isPro}
+            distributionNote={describeDistributionEditing(shopPlan)}
+            locationsMode={locationsMode}
+            pinnedLocationId={pinnedLocationId}
+            hasNextPage={!!locationsHasNextPage}
+            onPinnedLocationId={setPinnedLocationId}
+            onUpdateRow={updateRow}
+            onUpdateRegionGroup={updateRowRegionGroup}
+            onMoveRowUp={moveRowUp}
+            onMoveRowDown={moveRowDown}
+            onSortOrder={handleSortOrder}
+          />
         </div>
       </div>
 
-      {/* 固定フッター：変更時または保存直後（「保存しました」を約3秒表示） */}
-      {(isDirty || showSavedFeedback) && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 0,
-            left: 0,
-            right: 0,
-            background: "#fff",
-            borderTop: "1px solid #e1e3e5",
-            padding: "12px 24px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            boxShadow: "0 -2px 6px rgba(0,0,0,0.06)",
-            zIndex: 100,
-          }}
-        >
-          <span style={{ fontSize: 14, color: "#6d7175" }}>
-            {showSavedFeedback && !isDirty ? "保存しました" : footerStatusText}
-          </span>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              type="button"
-              onClick={handleDiscard}
-              disabled={saving || (showSavedFeedback && !isDirty)}
-              style={{
-                padding: "8px 16px",
-                borderRadius: 6,
-                border: "1px solid #c9cccf",
-                background: "#fff",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: saving || (showSavedFeedback && !isDirty) ? "not-allowed" : "pointer",
-                color: "#202223",
-              }}
-            >
-              破棄
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving || (showSavedFeedback && !isDirty)}
-              style={{
-                padding: "8px 16px",
-                borderRadius: 6,
-                border: "none",
-                background: "#2c6ecb",
-                color: "#fff",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: saving || (showSavedFeedback && !isDirty) ? "not-allowed" : "pointer",
-              }}
-            >
-              {saving ? "保存中..." : "保存"}
-            </button>
-          </div>
-        </div>
-      )}
+      <AdminSaveBar
+        visible={isDirty || showSavedFeedback}
+        statusText={showSavedFeedback && !isDirty ? "保存しました" : footerStatusText}
+        onDiscard={handleDiscard}
+        onSave={handleSave}
+        discardDisabled={saving || (showSavedFeedback && !isDirty)}
+        saveDisabled={saving || (showSavedFeedback && !isDirty)}
+        saveLabel={saving ? "保存中..." : "保存"}
+      />
     </s-page>
   );
 }
