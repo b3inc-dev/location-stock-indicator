@@ -13,3 +13,11 @@ module = "./src/tile.js"
 [[extensions.targeting]]
 target = "pos.home.modal.render"
 module = "./src/modal.js"
+
+[[extensions.targeting]]
+target = "pos.home.tile.render"
+module = "./src/delivery-tile.js"
+
+[[extensions.targeting]]
+target = "pos.home.tile.render"
+module = "./src/review-tile.js"
