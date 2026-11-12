@@ -129,7 +129,13 @@ export function settingsFor(config, locationId, createdAt) {
 }
 
 export function deliveryAvailable(row, nowIso) {
-  return Boolean(row?.active && row.deliveryEnabled && row.warehouseLocationId && inPeriod(row, nowIso));
+  return Boolean(
+    row?.active &&
+    row.deliveryEnabled &&
+    row.warehouseLocationId &&
+    !sameId(row.warehouseLocationId, row.locationId) &&
+    inPeriod(row, nowIso)
+  );
 }
 
 function canonicalLocation(value, knownIds) {
@@ -159,6 +165,9 @@ export function normalizeOperations(input, knownIds, previous, nowIso) {
     const shippingTitle = String(raw.shippingTitle || "送料").trim() || "送料";
     const delivery = active && deliveryEnabled;
     if (delivery && !warehouseLocationId) errors.push("出荷元の倉庫を設定してください。");
+    if (delivery && sameId(warehouseLocationId, locationId)) {
+      errors.push("出荷元は販売店舗と別のロケーションにしてください。");
+    }
     if (!Number.isInteger(shippingFee) || shippingFee < 0 || shippingFee > 1000000) {
       errors.push("送料は0以上の整数にしてください。");
     }
@@ -216,6 +225,9 @@ function whole(value) {
 export function createPlan(input, settings) {
   if (!settings?.deliveryEnabled || !settings.warehouseLocationId) {
     return {error: "この店舗の配送は無効です。"};
+  }
+  if (sameId(settings.warehouseLocationId, settings.locationId)) {
+    return {error: "出荷元は販売店舗と別のロケーションにしてください。"};
   }
   const normalized = normalizeAddress(input?.address);
   if (normalized.error) return normalized;
@@ -292,6 +304,26 @@ export function feeSync(cartLines, shippingTitle, fee) {
   return {
     remove: feeLines.filter((line) => line !== match).map((line) => line.uuid),
     add: match ? null : {title, price, quantity: 1, taxable: false},
+  };
+}
+
+export function createCartSync(run) {
+  let running = false;
+  let queued = false;
+  return async function schedule() {
+    if (running) {
+      queued = true;
+      return;
+    }
+    running = true;
+    try {
+      do {
+        queued = false;
+        await run();
+      } while (queued);
+    } finally {
+      running = false;
+    }
   };
 }
 

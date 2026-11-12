@@ -158,7 +158,7 @@ export default function PosOperations() {
                 <td>
                   <select value={row.warehouseLocationId} onChange={(event) => update(row.locationId, {warehouseLocationId: event.target.value})}>
                     <option value="">選択</option>
-                    {rows.map((location) => <option key={location.locationId} value={location.locationId}>{location.name}</option>)}
+                    {rows.filter((location) => location.locationId !== row.locationId).map((location) => <option key={location.locationId} value={location.locationId}>{location.name}</option>)}
                   </select>
                 </td>
                 <td><input type="number" min="0" step="1" value={row.shippingFee} onChange={(event) => update(row.locationId, {shippingFee: event.target.value})} style={{width: 90}} /></td>

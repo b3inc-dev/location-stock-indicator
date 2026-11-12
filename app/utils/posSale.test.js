@@ -7,6 +7,7 @@ import {
   claimState,
   coordinatePaidOrder,
   coordinateRetry,
+  createCartSync,
   createPlan,
   executeSale,
   feeSync,
@@ -270,6 +271,50 @@ test("same SKU can be split between takeaway and delivery and recalculates when 
   assert.equal(removed.status, "cancelled");
   assert.equal(removed.feeAmount, 0);
   assert.deepEqual(feeSync([{uuid: "fee", variantId: null, title: "送料", price: 770, quantity: 1}], "送料", 0).remove, ["fee"]);
+});
+
+test("delivery cannot use the selling store as the warehouse", () => {
+  const known = [store, warehouse];
+  const saved = normalizeOperations([{
+    ...settings,
+    active: true,
+    deliveryEnabled: true,
+    warehouseLocationId: store,
+    startsAt: "2026-11-01T00:00:00.000Z",
+    endsAt: "",
+    shippingFee: 770,
+  }], known, {locations: []}, "2026-11-11T00:00:00.000Z");
+  assert.match(saved.errors.join(" "), /別のロケーション/);
+  const row = {...settings, warehouseLocationId: store};
+  assert.equal(createPlan({
+    address,
+    lines: [{uuid: "a", variantId: 5, sku: "SKU", quantity: 2, deliveryQuantity: 2}],
+  }, row).error, "出荷元は販売店舗と別のロケーションにしてください。");
+});
+
+test("a cart change during sync is recalculated from the latest cart", async () => {
+  const plan = {
+    id: "abc12345", status: "open", confirmedFee: 770, feeAmount: 770,
+    lines: [{uuid: "a", variantId: "5", sku: "SKU", quantity: 1, deliveryQuantity: 1}],
+  };
+  const carts = [
+    [{uuid: "a", variantId: 5, sku: "SKU", quantity: 1}],
+    [],
+  ];
+  let index = 0;
+  const saved = [];
+  const schedule = createCartSync(async () => {
+    const cart = carts[Math.min(index, carts.length - 1)];
+    if (saved.length === 0) {
+      index = 1;
+      schedule();
+      await Promise.resolve();
+    }
+    saved.push(recalculatePlan(plan, cart).feeAmount);
+  });
+  await schedule();
+  assert.deepEqual(saved, [770, 0]);
+  assert.equal(saved.at(-1), 0);
 });
 
 test("delivery quantity cannot exceed the cart line", () => {
