@@ -295,9 +295,10 @@ test("delivery cannot use the selling store as the warehouse", () => {
 test("a cart change during sync is recalculated from the latest cart", async () => {
   const plan = {
     id: "abc12345", status: "open", confirmedFee: 770, feeAmount: 770,
-    lines: [{uuid: "a", variantId: "5", sku: "SKU", quantity: 1, deliveryQuantity: 1}],
+    lines: [{uuid: "a", variantId: "5", sku: "SKU", quantity: 2, deliveryQuantity: 2}],
   };
   const carts = [
+    [{uuid: "a", variantId: 5, sku: "SKU", quantity: 2}],
     [{uuid: "a", variantId: 5, sku: "SKU", quantity: 1}],
     [],
   ];
@@ -305,16 +306,36 @@ test("a cart change during sync is recalculated from the latest cart", async () 
   const saved = [];
   const schedule = createCartSync(async () => {
     const cart = carts[Math.min(index, carts.length - 1)];
-    if (saved.length === 0) {
-      index = 1;
+    if (index < carts.length - 1) {
+      index += 1;
       schedule();
       await Promise.resolve();
     }
     saved.push(recalculatePlan(plan, cart).feeAmount);
   });
   await schedule();
-  assert.deepEqual(saved, [770, 0]);
   assert.equal(saved.at(-1), 0);
+  assert.equal(saved[0], 770);
+});
+
+test("an existing same-location warehouse still fulfills only takeaway on retry", () => {
+  const full = withDelivery(2);
+  full.plan.warehouseLocationId = "12";
+  full.order.fulfillmentOrders[0].lines = [
+    {id: "line-1", variantKey: "5", sku: "SKU", title: "Shirt", remaining: 2},
+    {id: "fee-1", variantKey: "", sku: "", title: "送料", remaining: 1},
+  ];
+  const fullStep = planSale(full.order, settings, full.plan);
+  assert.equal(fullStep.phase, "fulfill");
+  assert.equal(fullStep.moves.length, 0);
+  assert.equal(fullStep.storeQuantity, 0);
+
+  const mixed = withDelivery(1);
+  mixed.plan.warehouseLocationId = "12";
+  const mixedStep = planSale(mixed.order, settings, mixed.plan);
+  assert.equal(mixedStep.phase, "fulfill");
+  assert.equal(mixedStep.moves.length, 0);
+  assert.deepEqual(mixedStep.fulfills[0].fulfillmentOrderLineItems, [{id: "line-1", quantity: 1}]);
 });
 
 test("delivery quantity cannot exceed the cart line", () => {

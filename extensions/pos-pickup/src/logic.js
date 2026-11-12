@@ -492,8 +492,10 @@ export function planSale(order, settings, plan) {
 
   const moves = [];
   const outstanding = new Map(delivery);
+  const samePlace = Boolean(plan && sameId(plan.warehouseLocationId, order.salesLocationId));
   for (const [key, quantity] of delivery) {
-    outstanding.set(key, Math.max(0, quantity - accountedAt(order, key, plan.warehouseLocationId)));
+    const alreadyThere = samePlace ? quantity : accountedAt(order, key, plan.warehouseLocationId);
+    outstanding.set(key, Math.max(0, quantity - alreadyThere));
   }
   for (const fulfillment of active) {
     if (!sameId(fulfillment.locationId, order.salesLocationId)) continue;
@@ -531,9 +533,13 @@ export function planSale(order, settings, plan) {
   };
   if (moves.length) return {...emptyStep("move", null), ...side, moves};
 
+  const takeawayLeft = new Map();
   for (const [key, quantity] of delivery) {
-    const takeaway = purchased(order, key) - quantity;
-    if (remainingAt(order, key, order.salesLocationId) > takeaway) return emptyStep("review", "warehouse_short");
+    const takeaway = Math.max(0, purchased(order, key) - quantity);
+    if (!samePlace && remainingAt(order, key, order.salesLocationId) > takeaway) {
+      return emptyStep("review", "warehouse_short");
+    }
+    takeawayLeft.set(key, takeaway);
   }
   const fulfills = [];
   let storeQuantity = 0;
@@ -542,8 +548,14 @@ export function planSale(order, settings, plan) {
     const lines = [];
     for (const line of fulfillment.lines || []) {
       if (line.remaining <= 0 || isFee(line, names)) continue;
-      lines.push({id: line.id, quantity: line.remaining});
-      storeQuantity += line.remaining;
+      let quantity = line.remaining;
+      if (takeawayLeft.has(line.variantKey)) {
+        quantity = Math.min(quantity, takeawayLeft.get(line.variantKey));
+        takeawayLeft.set(line.variantKey, takeawayLeft.get(line.variantKey) - quantity);
+      }
+      if (quantity <= 0) continue;
+      lines.push({id: line.id, quantity});
+      storeQuantity += quantity;
     }
     if (lines.length) {
       fulfills.push({
