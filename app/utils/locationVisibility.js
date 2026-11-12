@@ -44,9 +44,21 @@ export function locationsModeNote(locationsMode) {
     return "「表示」かつオンライン注文を履行する店舗だけが商品ページに出ます。履行しない店舗は「対象外」です。";
   }
   if (mode === "custom_from_app") {
-    return "保存済みの設定に含まれ、「表示」になっている店舗だけが商品ページに出ます。未保存の店舗は「対象外」です。";
+    return "保存済みの設定に含まれ、「表示」になっている店舗だけが商品ページに出ます。設定に無い店舗は「対象外」です。";
   }
   return "「表示」の店舗が商品ページの対象です。";
+}
+
+/** ロケーション一覧は保存時に読み込んだ全行を config に書く。バッジはその保存後の状態。 */
+export function locationsModeDraftNote(locationsMode) {
+  const mode = normalizeLocationsMode(locationsMode);
+  if (mode === "online_only") {
+    return "表示状態は、この一覧を保存したあとの商品ページです。チェックがオンで、オンライン注文を履行する店舗だけが出ます。";
+  }
+  if (mode === "custom_from_app") {
+    return "表示状態は、この一覧を保存したあとの商品ページです。保存すると一覧の全店舗が設定に入るので、チェックがオンの店舗が対象です。";
+  }
+  return "表示状態は、この一覧を保存したあとの商品ページです。チェックがオンの店舗が対象です。";
 }
 
 export function locationsModeLabel(locationsMode) {
@@ -109,7 +121,7 @@ export function buildStoreVisibility(locations, config) {
   return { locationsMode, usePublicName, items };
 }
 
-export function filterLocationRows(rows, { query = "", filter = "all", locationsMode = "all" } = {}) {
+export function filterLocationRows(rows, { query = "", filter = "all", locationsMode = "all", draft = false } = {}) {
   const q = String(query || "").trim().toLowerCase();
   const mode = normalizeLocationsMode(locationsMode);
   const matched = (Array.isArray(rows) ? rows : []).filter((row) => {
@@ -120,14 +132,22 @@ export function filterLocationRows(rows, { query = "", filter = "all", locations
   });
   const counts = { all: matched.length, shown: 0, hidden: 0, excluded_by_mode: 0 };
   const decorated = matched.map((row) => {
+    const enabled = row?.enabled !== false;
     const state = classifyLocationVisibility({
-      enabled: row?.enabled !== false,
+      enabled,
+      // 一覧の保存は読み込んだ全行を config に書く。下書きの表示は保存後に合わせる。
+      fromConfig: draft ? true : !!row?.fromConfig,
+      fulfillsOnlineOrders: !!row?.fulfillsOnlineOrders,
+      locationsMode: mode,
+    });
+    const savedState = classifyLocationVisibility({
+      enabled: typeof row?.savedEnabled === "boolean" ? row.savedEnabled : enabled,
       fromConfig: !!row?.fromConfig,
       fulfillsOnlineOrders: !!row?.fulfillsOnlineOrders,
       locationsMode: mode,
     });
     counts[state] += 1;
-    return { row, state };
+    return { row, state, savedState };
   });
   const visible =
     filter === "shown" || filter === "hidden" || filter === "excluded_by_mode"

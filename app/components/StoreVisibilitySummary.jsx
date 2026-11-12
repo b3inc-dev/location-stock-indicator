@@ -71,6 +71,7 @@ function StoreColumn({ title, items, locationsMode, emptyLabel }) {
                     公開名: {item.publicName}
                   </span>
                 )}
+                {reason && <span className="lsi-vis-sub">{reason}</span>}
               </li>
             );
           })}

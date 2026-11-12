@@ -128,6 +128,19 @@ describe("filterLocationRows", () => {
     assert.equal(found.visible[0].row.locationId, "1");
   });
 
+  it("treats every edited row as saved when drafting the location list", () => {
+    const { counts, visible } = filterLocationRows(rows, {
+      filter: "all",
+      locationsMode: "custom_from_app",
+      draft: true,
+    });
+    assert.equal(counts.shown, 2);
+    assert.equal(counts.excluded_by_mode, 0);
+    const shinjuku = visible.find((item) => item.row.shopifyName === "新宿店");
+    assert.equal(shinjuku.state, "shown");
+    assert.equal(shinjuku.savedState, "excluded_by_mode");
+  });
+
   it("splits shown, hidden, and mode-excluded stores", () => {
     const { counts, visible } = filterLocationRows(rows, {
       filter: "excluded_by_mode",

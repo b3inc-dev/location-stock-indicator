@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import {
   exclusionReason,
   filterLocationRows,
-  locationsModeNote,
+  locationsModeDraftNote,
 } from "../utils/locationVisibility.js";
 
 const inputStyle = {
@@ -63,7 +63,7 @@ export function LocationCompareList({
   const [filter, setFilter] = useState("all");
   const groups = Array.isArray(regionGroups) ? regionGroups : [];
   const { counts, visible } = useMemo(
-    () => filterLocationRows(rows, { query, filter, locationsMode }),
+    () => filterLocationRows(rows, { query, filter, locationsMode, draft: true }),
     [rows, query, filter, locationsMode]
   );
   const reorderLocked = filter !== "all" || query.trim() !== "";
@@ -200,7 +200,7 @@ export function LocationCompareList({
       `}</style>
 
       {distributionNote && <p className="lsi-loc-note">{distributionNote}</p>}
-      <p className="lsi-loc-note">{locationsModeNote(locationsMode)}</p>
+      <p className="lsi-loc-note">{locationsModeDraftNote(locationsMode)}</p>
       {hasNextPage && (
         <div
           style={{
@@ -274,7 +274,7 @@ export function LocationCompareList({
           <p className="lsi-loc-note">該当する店舗はありません。</p>
         ) : (
           <ul className="lsi-loc-list">
-            {visible.map(({ row, state }) => {
+            {visible.map(({ row, state, savedState }) => {
               const fullIndex = rows.findIndex((r) => r.locationId === row.locationId);
               const reason = exclusionReason(state, locationsMode);
               const areaName = row.regionGroupId
@@ -292,7 +292,7 @@ export function LocationCompareList({
                       onChange={(e) => onUpdateRow(row.locationId, { enabled: e.target.checked })}
                       style={{ width: 16, height: 16, flexShrink: 0 }}
                     />
-                    <span className="lsi-visually-hidden">{row.shopifyName}の表示</span>
+                    <span className="lsi-visually-hidden">{row.shopifyName}、{stateLabel(state)}</span>
                     <span className={`lsi-loc-pill is-${state}`} title={reason || undefined} aria-hidden="true">
                       {stateLabel(state)}
                     </span>
@@ -312,6 +312,11 @@ export function LocationCompareList({
                     {reason && (
                       <div className="lsi-loc-badges">
                         <div>{reason}</div>
+                      </div>
+                    )}
+                    {savedState && savedState !== state && (
+                      <div className="lsi-loc-badges">
+                        <div>未保存。保存前の商品ページでは{stateLabel(savedState)}</div>
                       </div>
                     )}
                   </div>

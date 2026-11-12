@@ -148,6 +148,7 @@ export async function loader({ request }) {
         hasLocalDelivery: flags.hasLocalDelivery,
         storePickupEnabled: !!loc.localPickupSettingsV2,
         enabled: cfg ? cfg.enabled !== false : true,
+        savedEnabled: cfg ? cfg.enabled !== false : true,
         publicName: cfg?.publicName || loc.name,
         sortOrder:
           typeof cfg?.sortOrder === "number" ? cfg.sortOrder : 999999,
@@ -442,7 +443,7 @@ function ProSectionWrapper({ isPro, children }) {
           Pro プランでご利用いただけます
         </span>
       </div>
-      <div style={{ pointerEvents: "none", userSelect: "none" }}>{children}</div>
+      <div inert="" style={{ pointerEvents: "none", userSelect: "none" }}>{children}</div>
     </div>
   );
 }
@@ -733,7 +734,7 @@ export default function LocationsConfigPage() {
               表示するロケーション
             </div>
             <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
-              商品ページに出すロケーションの範囲と、公開名の使い方を選びます。「アプリで設定したもののみ」は下の一覧で表示ONにしたロケーションだけが出ます。
+              商品ページに出すロケーションの範囲と、公開名の使い方を選びます。「アプリで設定したもののみ」は、保存済みの設定に含まれ、表示がオンのロケーションだけが出ます。この一覧を保存すると、読み込んだ全店舗が設定に入ります。
             </div>
           </div>
           <div style={{ flex: "1 1 320px", minWidth: 280 }}>
