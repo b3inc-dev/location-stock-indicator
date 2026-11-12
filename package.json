@@ -20,7 +20,7 @@
     "graphql-codegen": "graphql-codegen",
     "vite": "vite",
     "typecheck": "react-router typegen && tsc --noEmit",
-    "test": "node --test app/utils/*.test.js"
+    "test": "node --test app/utils/*.test.js extensions/location-stock-theme/assets/*.test.js"
   },
   "type": "module",
   "engines": {
