@@ -24,6 +24,7 @@ const MESSAGES = {
   fee_mismatch: "送料が注文金額と一致しません。",
   inconsistent: "配送数量と注文数量が一致しません。",
   warehouse_short: "倉庫へ移せる数量が足りません。",
+  warehouse_same_store: "出荷元が販売店舗と同じです。出荷元を変更して再処理してください。",
   move_incomplete: "倉庫への割当後も移動が残っています。",
   network: "通信に失敗しました。再処理してください。",
   pagination: "明細を最後まで取得できませんでした。",
@@ -489,13 +490,14 @@ export function planSale(order, settings, plan) {
     if (quantity > purchased(order, key)) return emptyStep("review", "inconsistent");
   }
   if (plan && Math.round(chargedFee(order, names)) !== Number(plan.feeAmount)) return emptyStep("review", "fee_mismatch");
+  if (plan && sameId(plan.warehouseLocationId, order.salesLocationId)) {
+    return emptyStep("review", "warehouse_same_store");
+  }
 
   const moves = [];
   const outstanding = new Map(delivery);
-  const samePlace = Boolean(plan && sameId(plan.warehouseLocationId, order.salesLocationId));
   for (const [key, quantity] of delivery) {
-    const alreadyThere = samePlace ? quantity : accountedAt(order, key, plan.warehouseLocationId);
-    outstanding.set(key, Math.max(0, quantity - alreadyThere));
+    outstanding.set(key, Math.max(0, quantity - accountedAt(order, key, plan.warehouseLocationId)));
   }
   for (const fulfillment of active) {
     if (!sameId(fulfillment.locationId, order.salesLocationId)) continue;
@@ -536,7 +538,7 @@ export function planSale(order, settings, plan) {
   const takeawayLeft = new Map();
   for (const [key, quantity] of delivery) {
     const takeaway = Math.max(0, purchased(order, key) - quantity);
-    if (!samePlace && remainingAt(order, key, order.salesLocationId) > takeaway) {
+    if (remainingAt(order, key, order.salesLocationId) > takeaway) {
       return emptyStep("review", "warehouse_short");
     }
     takeawayLeft.set(key, takeaway);

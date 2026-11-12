@@ -318,24 +318,31 @@ test("a cart change during sync is recalculated from the latest cart", async () 
   assert.equal(saved[0], 770);
 });
 
-test("an existing same-location warehouse still fulfills only takeaway on retry", () => {
-  const full = withDelivery(2);
-  full.plan.warehouseLocationId = "12";
-  full.order.fulfillmentOrders[0].lines = [
-    {id: "line-1", variantKey: "5", sku: "SKU", title: "Shirt", remaining: 2},
-    {id: "fee-1", variantKey: "", sku: "", title: "送料", remaining: 1},
-  ];
-  const fullStep = planSale(full.order, settings, full.plan);
-  assert.equal(fullStep.phase, "fulfill");
-  assert.equal(fullStep.moves.length, 0);
-  assert.equal(fullStep.storeQuantity, 0);
-
+test("an old same-location warehouse plan stops before fulfillment or handoff", async () => {
   const mixed = withDelivery(1);
   mixed.plan.warehouseLocationId = "12";
-  const mixedStep = planSale(mixed.order, settings, mixed.plan);
-  assert.equal(mixedStep.phase, "fulfill");
-  assert.equal(mixedStep.moves.length, 0);
-  assert.deepEqual(mixedStep.fulfills[0].fulfillmentOrderLineItems, [{id: "line-1", quantity: 1}]);
+  mixed.order.fulfillmentOrders[0].lines = [
+    {id: "line-1", variantKey: "5", sku: "SKU", title: "Shirt", remaining: 1},
+  ];
+  mixed.order.shipments = [{status: "SUCCESS", locationId: store, lines: [{variantKey: "5", quantity: 1}]}];
+  const step = planSale(mixed.order, settings, mixed.plan);
+  assert.equal(step.phase, "review");
+  assert.equal(step.reason, "warehouse_same_store");
+  assert.equal(step.metafield, null);
+  assert.equal(step.fulfills.length, 0);
+  const calls = [];
+  const result = await executeSale(async (query) => {
+    calls.push(query);
+    throw new Error("mutated");
+  }, mixed.order, settings, mixed.plan);
+  assert.equal(result.phase, "review");
+  assert.equal(calls.length, 0);
+
+  const full = withDelivery(2);
+  full.plan.warehouseLocationId = store;
+  const fullStep = planSale(full.order, settings, full.plan);
+  assert.equal(fullStep.reason, "warehouse_same_store");
+  assert.equal(fullStep.storeQuantity, 0);
 });
 
 test("delivery quantity cannot exceed the cart line", () => {
