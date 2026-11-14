@@ -134,3 +134,33 @@ test("handover fulfills only the remaining quantity and records that the mailbox
   assert.equal(pickupMail.observed, null);
   assert.equal(pickupMail.complete.notifyCustomer, true);
 });
+
+test("missing confirmation is checked by a fresh read, without repeating the mutation", async () => {
+  for (const [act, reply, completed] of [
+    [preparePickup, {fulfillmentOrderLineItemsPreparedForPickup: null}, "prepared"],
+    [completePickup, {fulfillmentCreate: null}, "fulfilled"],
+    [completePickup, {fulfillmentCreate: {userErrors: [], fulfillment: null}}, "fulfilled"],
+    [completePickup, {fulfillmentCreate: {userErrors: [], fulfillment: {id: "f", status: "FAILURE"}}}, "fulfilled"],
+  ]) {
+    for (const applied of [false, true]) {
+      let reads = 0;
+      let mutations = 0;
+      const request = async (query) => {
+        if (query.includes("mutation")) {
+          mutations++;
+          return reply;
+        }
+        reads++;
+        if (applied && reads === 2) {
+          return actionOrder("IN_PROGRESS", {lines: completed === "fulfilled" ? [] : undefined});
+        }
+        return actionOrder("OPEN");
+      };
+      const operation = act("fo", 12, request);
+      if (applied) assert.deepEqual(await operation, {already: completed});
+      else await assert.rejects(operation, /結果を確認/);
+      assert.equal(mutations, 1);
+      assert.equal(reads, 2);
+    }
+  }
+});

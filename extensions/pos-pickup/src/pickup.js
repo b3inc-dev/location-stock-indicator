@@ -124,7 +124,8 @@ async function mutateOnce(request, orderId, locationId, intent) {
     const data = await request(prepareMutation, {
       input: {lineItemsByFulfillmentOrder: [{fulfillmentOrderId: orderId, fulfillmentOrderLineItems: decision.lineItems}]},
     });
-    const errors = data.fulfillmentOrderLineItemsPreparedForPickup?.userErrors || [];
+    const errors = data.fulfillmentOrderLineItemsPreparedForPickup?.userErrors;
+    if (!Array.isArray(errors)) throw new Error("準備完了の結果を確認できませんでした。");
     if (errors.length) throw new Error(errors[0].message || "準備完了を更新できませんでした。");
     return {status: "prepared", mail: pickupMail.prepare};
   }
@@ -134,8 +135,13 @@ async function mutateOnce(request, orderId, locationId, intent) {
       lineItemsByFulfillmentOrder: [{fulfillmentOrderId: orderId, fulfillmentOrderLineItems: decision.lineItems}],
     },
   });
-  const errors = data.fulfillmentCreate?.userErrors || [];
+  const result = data.fulfillmentCreate;
+  const errors = result?.userErrors;
+  if (!Array.isArray(errors)) throw new Error("引渡完了の結果を確認できませんでした。");
   if (errors.length) throw new Error(errors[0].message || "引渡完了を更新できませんでした。");
+  if (!result.fulfillment?.id || result.fulfillment.status !== "SUCCESS") {
+    throw new Error("引渡完了の結果を確認できませんでした。");
+  }
   return {status: "fulfilled", mail: pickupMail.complete, observed: pickupMail.observed};
 }
 
