@@ -1,5 +1,6 @@
 // app/routes/apps.location-stock.js
 
+import { createInventoryRead } from "../utils/readStorefrontInventory.js";
 import shopify from "../shopify.server";
 import { recordAnalyticsEvent } from "../analytics.server";
 import { getShopPlan } from "../utils/shopPlan.server.js";
@@ -197,8 +198,9 @@ async function runAdminGraphql(admin, query, variables) {
  * 非認証エラーの throw はそのまま再送出せず呼び出し側へ伝播させる。
  * @returns {Promise<{ result: object, retried: boolean, refreshStatus?: string } | { authFailed: true, refreshStatus?: string, result?: object }>}
  */
-async function graphqlWithAuthRetry(admin, session, query, variables, context) {
-  const first = await runAdminGraphql(admin, query, variables);
+async function graphqlWithAuthRetry(admin, session, query, variables, context, read = runAdminGraphql) {
+  const first = await read(admin, query, variables);
+  if (first.unavailable) return first;
   if (first.ok) {
     return { result: first.result, retried: false };
   }
@@ -255,7 +257,8 @@ async function graphqlWithAuthRetry(admin, session, query, variables, context) {
     };
   }
 
-  const second = await runAdminGraphql(admin, query, variables);
+  const second = await read(admin, query, variables);
+  if (second.unavailable) return second;
   if (second.ok) {
     return {
       result: second.result,
@@ -794,8 +797,14 @@ export async function loader({ request }) {
       session,
       VARIANT_INVENTORY_WITH_CONFIG_QUERY,
       { id: variantGid },
-      { route: "loader", variantId }
+      { route: "loader", variantId },
+      createInventoryRead(runAdminGraphql, request.signal)
     );
+
+    if (inventoryAttempt.unavailable) {
+      console.error("[location-stock] upstream_inventory_unavailable");
+      return errorJson("upstream_inventory_unavailable", "在庫情報を取得できません。しばらくしてから再度お試しください。");
+    }
 
     if (inventoryAttempt.authFailed) {
       return errorJson(
