@@ -1153,18 +1153,45 @@
       }
 
       var lastVariantId = null;
-      var fetchRetryFor = null;
-      function onFetchFailure(vid, code) {
+      var selectionVersion = 0;
+      // 再試行しても解消しない API code（3s リトライをスキップ）
+      // session_reauth_* は Phase0 の 1 回リトライ対象のまま
+      var NO_RETRY_CODES = {
+        plan_required: true,
+        plan_lookup_failed: true,
+        missing_variant_id: true,
+        missing_admin_client: true
+      };
+      // ストアフロントに API message を出す code（切り分け用）。それ以外は設定の汎用 errorMessage。
+      // internal_error 等の生例外・技術詳細を顧客に出さない。
+      var SAFE_MESSAGE_CODES = {
+        session_reauth_required: true,
+        missing_admin_client: true,
+        plan_required: true,
+        plan_lookup_failed: true,
+        offline_token_unusable: true,
+        graphql_error: true
+      };
+      function onFetchFailure(vid, version, canRetry, code, apiMessage) {
         lastVariantId = null;
         if (code) console.error("[location-stock] API error", code);
-        setMessage("error", settings.errorMessage);
-        if (vid && fetchRetryFor !== vid) {
-          fetchRetryFor = vid;
-          setTimeout(function () { fetchStocks(vid); }, 3000);
+        var display =
+          SAFE_MESSAGE_CODES[code] &&
+          typeof apiMessage === "string" &&
+          apiMessage.trim() !== ""
+            ? apiMessage.trim()
+            : settings.errorMessage;
+        setMessage("error", display);
+        if (canRetry && !NO_RETRY_CODES[code]) {
+          setTimeout(function () {
+            if (version !== selectionVersion) return;
+            lastVariantId = vid;
+            fetchStocks(vid, version, false);
+          }, 3000);
         }
       }
 
-      function fetchStocks(variantId) {
+      function fetchStocks(variantId, version, canRetry) {
         setMessage("loading", settings.loadingMessage);
         fetch("/apps/location-stock?variant_id=" + encodeURIComponent(variantId))
           .then(function (res) {
@@ -1172,13 +1199,18 @@
             return res.json();
           })
           .then(function (data) {
+            if (version !== selectionVersion) return;
             try {
             if (!data || data.ok === false) {
-              onFetchFailure(variantId, data && data.error);
+              onFetchFailure(
+                variantId,
+                version,
+                canRetry,
+                data && data.error,
+                data && data.message
+              );
               return;
             }
-            fetchRetryFor = null;
-
             var appConfig = data.config || {};
 
             if (appConfig.thresholds) {
@@ -1385,12 +1417,13 @@
               sendAnalyticsEvent("area_display", {});
             } catch (e) {
               console.error("[location-stock] render error", e);
-              onFetchFailure(variantId, "render");
+              onFetchFailure(variantId, version, canRetry, "render");
             }
           })
           .catch(function (err) {
+            if (version !== selectionVersion) return;
             console.error("[location-stock] fetch error", err);
-            onFetchFailure(variantId, "network");
+            onFetchFailure(variantId, version, canRetry, "network");
           });
       }
 
@@ -1400,10 +1433,12 @@
 
       function updateStocksByVariantId(variantId) {
         if (!variantId) return;
+        variantId = String(variantId);
         if (variantId === lastVariantId) return;
         lastVariantId = variantId;
         root.dataset.variantId = variantId;
-        fetchStocks(variantId);
+        selectionVersion += 1;
+        fetchStocks(variantId, selectionVersion, true);
       }
 
       var initialVariantId = root.dataset.variantId;
