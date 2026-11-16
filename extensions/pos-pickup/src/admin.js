@@ -40,7 +40,10 @@ export function screen(heading) {
   root.setAttribute("heading", heading);
   const scroll = document.createElement("s-scroll-box");
   const list = document.createElement("s-stack");
-  scroll.append(list);
+  const body = document.createElement("s-box");
+  body.setAttribute("padding", "base");
+  body.append(list);
+  scroll.append(body);
   root.append(scroll);
   document.body.replaceChildren(root);
   return list;
