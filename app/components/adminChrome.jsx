@@ -1,4 +1,7 @@
 /* eslint-disable react/prop-types -- 管理画面の既存コンポーネントと同じく PropTypes は付けない */
+import { useEffect, useRef } from "react";
+import "./admin-layout.css";
+
 /**
  * POS Stock の固定フッター（破棄＝副操作、保存＝主操作）を管理画面で共有する。
  * 文言色・角丸・14px は基準実装に合わせ、狭い幅ではボタンがステータス文に押し出されないよう折り返す。
@@ -12,9 +15,24 @@ export function AdminSaveBar({
   saveDisabled,
   saveLabel,
 }) {
+  const barRef = useRef(null);
+  useEffect(() => {
+    const bar = barRef.current;
+    const page = bar?.closest("s-page");
+    if (!bar || !page) return;
+    const sync = () => page.style.setProperty("--save-bar-height", `${bar.offsetHeight}px`);
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(bar);
+    return () => {
+      observer.disconnect();
+      page.style.removeProperty("--save-bar-height");
+    };
+  }, [visible]);
   if (!visible) return null;
   return (
     <div
+      ref={barRef}
       role="region"
       aria-label="保存"
       style={{
@@ -24,7 +42,7 @@ export function AdminSaveBar({
         right: 0,
         background: "#fff",
         borderTop: "1px solid #e1e3e5",
-        padding: "12px 16px",
+        padding: "12px 16px calc(12px + env(safe-area-inset-bottom, 0px))",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
