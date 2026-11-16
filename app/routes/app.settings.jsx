@@ -850,7 +850,7 @@ export default function AppSettings() {
                 <div style={{ marginBottom: "16px" }}>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, color: "#202223" }}>
                     <input type="checkbox" checked={state.display.showNotice} onChange={(e) => setState((s) => ({ ...s, display: { ...s.display, showNotice: e.target.checked } }))} />
-                    注意書きを表示する（文言は上記で設定）
+                    注意書きを表示する（文言は「表示文言」で設定）
                   </label>
                 </div>
                 <div style={{ marginBottom: "12px" }}>
