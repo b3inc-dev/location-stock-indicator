@@ -1,0 +1,5 @@
+.location-settings-body {
+  padding: 16px;
+  padding-bottom: calc(16px + var(--save-bar-height, 0px));
+  max-width: 1200px;
+}

@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useLoaderData, useFetcher } from "react-router";
 import { authenticate } from "../shopify.server";
+import { SettingsSections } from "../components/SettingsSections.jsx";
 import { AdminSaveBar } from "../components/adminChrome.jsx";
 import { StoreVisibilitySummary } from "../components/StoreVisibilitySummary.jsx";
 import { buildStoreVisibility } from "../utils/locationVisibility.js";
@@ -475,6 +476,7 @@ const selectBaseStyle = { ...inputBaseStyle, background: "#fff" };
 export default function AppSettings() {
   const loaderData = useLoaderData();
   const fetcher = useFetcher();
+  const [section, setSection] = useState("在庫判定");
 
   const [initial, setInitial] = useState(() => ({
     thresholds: loaderData.thresholds ?? { outOfStockMax: 0, inStockMin: 5 },
@@ -560,304 +562,311 @@ export default function AppSettings() {
 
   return (
     <s-page heading="在庫表示設定">
-      <div style={{ padding: "16px", maxWidth: "1200px", paddingBottom: "88px" }}>
-        <StoreVisibilitySummary summary={loaderData.locationSummary} />
-        {/* セクション：閾値 */}
-        <div
-          style={{
-            display: "flex",
-            gap: "24px",
-            alignItems: "flex-start",
-            flexWrap: "wrap",
-            marginBottom: "24px",
-          }}
-        >
-          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>
-              閾値
-            </div>
-            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
-              在庫数を「在庫なし」「残りわずか」「在庫あり」のどれとみなすかの境界を設定します。この値以下を在庫なし、この値以上を在庫ありとし、その間は残りわずかになります。
-            </div>
-          </div>
-          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
-            <div
-              style={{
-                background: "#ffffff",
-                borderRadius: 12,
-                boxShadow: "0 0 0 1px #e1e3e5",
-                padding: 16,
-              }}
-            >
-              <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>
-                  この値以下を「在庫なし」とする（outOfStockMax）
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  value={state.thresholds.outOfStockMax}
-                  onChange={(e) => {
-                    const v = e.target.value === "" ? 0 : Math.max(0, Number.parseInt(e.target.value, 10) || 0);
-                    setState((s) => ({
-                      ...s,
-                      thresholds: { ...s.thresholds, outOfStockMax: Number.isFinite(v) ? v : 0 },
-                    }));
-                  }}
-                  style={inputBaseStyle}
-                />
+      <div className="location-settings-body">
+        <SettingsSections labels={["在庫判定", "表示文言", "表示ルール"]} selected={section} onSelect={setSection} />
+        <div hidden={section !== "在庫判定"}>
+          <StoreVisibilitySummary summary={loaderData.locationSummary} />
+          {/* セクション：閾値 */}
+          <div
+            style={{
+              display: "flex",
+              gap: "24px",
+              alignItems: "flex-start",
+              flexWrap: "wrap",
+              marginBottom: "24px",
+            }}
+          >
+            <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>
+                閾値
               </div>
-              <div>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>
-                  この値以上を「在庫あり」とする（inStockMin）
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  value={state.thresholds.inStockMin}
-                  onChange={(e) => {
-                    const v = e.target.value === "" ? 5 : Math.max(0, Number.parseInt(e.target.value, 10) || 5);
-                    setState((s) => ({
-                      ...s,
-                      thresholds: { ...s.thresholds, inStockMin: Number.isFinite(v) ? v : 5 },
-                    }));
-                  }}
-                  style={inputBaseStyle}
-                />
+              <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
+                在庫数を「在庫なし」「残りわずか」「在庫あり」のどれとみなすかの境界を設定します。この値以下を在庫なし、この値以上を在庫ありとし、その間は残りわずかになります。
               </div>
             </div>
-          </div>
-        </div>
-
-        {/* セクション：在庫マーク — 左（タイトル＋説明のみ）/ 右（カード） */}
-        <div
-          style={{
-            display: "flex",
-            gap: "24px",
-            alignItems: "flex-start",
-            flexWrap: "wrap",
-            marginBottom: "24px",
-          }}
-        >
-          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>
-              在庫マーク
-            </div>
-            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
-              商品ページの在庫表示と凡例に使うマークをまとめて変更します。顔文字や絵文字（例: 😊 / ⚠️ / ❌）も利用できます。
-            </div>
-          </div>
-          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
-            <div
-              style={{
-                background: "#ffffff",
-                borderRadius: 12,
-                boxShadow: "0 0 0 1px #e1e3e5",
-                padding: 16,
-              }}
-            >
-              <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫ありマーク</label>
-                <input
-                  type="text"
-                  value={state.symbols.inStock}
-                  onChange={(e) => setState((s) => ({ ...s, symbols: { ...s.symbols, inStock: e.target.value } }))}
-                  style={inputBaseStyle}
-                />
-              </div>
-              <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>低在庫マーク</label>
-                <input
-                  type="text"
-                  value={state.symbols.lowStock}
-                  onChange={(e) => setState((s) => ({ ...s, symbols: { ...s.symbols, lowStock: e.target.value } }))}
-                  style={inputBaseStyle}
-                />
-              </div>
-              <div>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫なしマーク</label>
-                <input
-                  type="text"
-                  value={state.symbols.outOfStock}
-                  onChange={(e) => setState((s) => ({ ...s, symbols: { ...s.symbols, outOfStock: e.target.value } }))}
-                  style={inputBaseStyle}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* セクション：在庫数のテキスト・単位 */}
-        <div
-          style={{
-            display: "flex",
-            gap: "24px",
-            alignItems: "flex-start",
-            flexWrap: "wrap",
-            marginBottom: "24px",
-          }}
-        >
-          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>在庫数のテキスト・単位</div>
-            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
-              在庫数の前後につけるラベルやカッコ、単位を設定します。表示／非表示や構成（マークのみ、数量のみなど）はテーマ側の App Block で制御します。
-            </div>
-          </div>
-          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
-            <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
-              <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫数ラベル</label>
-                <input type="text" value={state.quantityTexts.label} onChange={(e) => setState((s) => ({ ...s, quantityTexts: { ...s.quantityTexts, label: e.target.value } }))} placeholder="例: 在庫" style={inputBaseStyle} />
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <div style={{ flex: "1 1 0" }}>
-                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>前に付ける文字</label>
-                  <input type="text" value={state.quantityTexts.wrapperBefore} onChange={(e) => setState((s) => ({ ...s, quantityTexts: { ...s.quantityTexts, wrapperBefore: e.target.value } }))} placeholder="例: (" style={inputBaseStyle} />
+            <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+              <div
+                style={{
+                  background: "#ffffff",
+                  borderRadius: 12,
+                  boxShadow: "0 0 0 1px #e1e3e5",
+                  padding: 16,
+                }}
+              >
+                <div style={{ marginBottom: "12px" }}>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>
+                    この値以下を「在庫なし」とする（outOfStockMax）
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={state.thresholds.outOfStockMax}
+                    onChange={(e) => {
+                      const v = e.target.value === "" ? 0 : Math.max(0, Number.parseInt(e.target.value, 10) || 0);
+                      setState((s) => ({
+                        ...s,
+                        thresholds: { ...s.thresholds, outOfStockMax: Number.isFinite(v) ? v : 0 },
+                      }));
+                    }}
+                    style={inputBaseStyle}
+                  />
                 </div>
-                <div style={{ flex: "1 1 0" }}>
-                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>後ろに付ける文字</label>
-                  <input type="text" value={state.quantityTexts.wrapperAfter} onChange={(e) => setState((s) => ({ ...s, quantityTexts: { ...s.quantityTexts, wrapperAfter: e.target.value } }))} placeholder="例: )" style={inputBaseStyle} />
+                <div>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>
+                    この値以上を「在庫あり」とする（inStockMin）
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={state.thresholds.inStockMin}
+                    onChange={(e) => {
+                      const v = e.target.value === "" ? 5 : Math.max(0, Number.parseInt(e.target.value, 10) || 5);
+                      setState((s) => ({
+                        ...s,
+                        thresholds: { ...s.thresholds, inStockMin: Number.isFinite(v) ? v : 5 },
+                      }));
+                    }}
+                    style={inputBaseStyle}
+                  />
                 </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* セクション：在庫ステータスのラベル */}
-        <div
-          style={{
-            display: "flex",
-            gap: "24px",
-            alignItems: "flex-start",
-            flexWrap: "wrap",
-            marginBottom: "24px",
-          }}
-        >
-          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>在庫ステータスのラベル</div>
-            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
-              在庫マークと一緒に表示するステータスラベルを設定します。凡例と在庫リストの両方でこのラベルが使われます。
-            </div>
-          </div>
-          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
-            <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
-              <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫ありラベル</label>
-                <input type="text" value={state.labels.inStock} onChange={(e) => setState((s) => ({ ...s, labels: { ...s.labels, inStock: e.target.value } }))} placeholder="例: 在庫あり" style={inputBaseStyle} />
+          {/* セクション：在庫マーク — 左（タイトル＋説明のみ）/ 右（カード） */}
+          <div
+            style={{
+              display: "flex",
+              gap: "24px",
+              alignItems: "flex-start",
+              flexWrap: "wrap",
+              marginBottom: "24px",
+            }}
+          >
+            <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>
+                在庫マーク
               </div>
-              <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>残りわずかラベル</label>
-                <input type="text" value={state.labels.lowStock} onChange={(e) => setState((s) => ({ ...s, labels: { ...s.labels, lowStock: e.target.value } }))} placeholder="例: 残りわずか" style={inputBaseStyle} />
-              </div>
-              <div>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫なしラベル</label>
-                <input type="text" value={state.labels.outOfStock} onChange={(e) => setState((s) => ({ ...s, labels: { ...s.labels, outOfStock: e.target.value } }))} placeholder="例: 在庫なし" style={inputBaseStyle} />
+              <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
+                商品ページの在庫表示と凡例に使うマークをまとめて変更します。顔文字や絵文字（例: 😊 / ⚠️ / ❌）も利用できます。
               </div>
             </div>
+            <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+              <div
+                style={{
+                  background: "#ffffff",
+                  borderRadius: 12,
+                  boxShadow: "0 0 0 1px #e1e3e5",
+                  padding: 16,
+                }}
+              >
+                <div style={{ marginBottom: "12px" }}>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫ありマーク</label>
+                  <input
+                    type="text"
+                    value={state.symbols.inStock}
+                    onChange={(e) => setState((s) => ({ ...s, symbols: { ...s.symbols, inStock: e.target.value } }))}
+                    style={inputBaseStyle}
+                  />
+                </div>
+                <div style={{ marginBottom: "12px" }}>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>低在庫マーク</label>
+                  <input
+                    type="text"
+                    value={state.symbols.lowStock}
+                    onChange={(e) => setState((s) => ({ ...s, symbols: { ...s.symbols, lowStock: e.target.value } }))}
+                    style={inputBaseStyle}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫なしマーク</label>
+                  <input
+                    type="text"
+                    value={state.symbols.outOfStock}
+                    onChange={(e) => setState((s) => ({ ...s, symbols: { ...s.symbols, outOfStock: e.target.value } }))}
+                    style={inputBaseStyle}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
 
-        {/* セクション：メッセージ文言 */}
-        <div
-          style={{
-            display: "flex",
-            gap: "24px",
-            alignItems: "flex-start",
-            flexWrap: "wrap",
-            marginBottom: "24px",
-          }}
-        >
-          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>メッセージ文言</div>
-            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
-              読み込み中・在庫なし・エラー時に表示するメッセージを設定します。空欄の場合はアプリのデフォルト文言が使われます。
-            </div>
-          </div>
-          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
-            <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
-              <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>読み込み中メッセージ</label>
-                <textarea value={state.messages.loading} onChange={(e) => setState((s) => ({ ...s, messages: { ...s.messages, loading: e.target.value } }))} style={textareaBaseStyle} />
-              </div>
-              <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫なしメッセージ</label>
-                <textarea value={state.messages.empty} onChange={(e) => setState((s) => ({ ...s, messages: { ...s.messages, empty: e.target.value } }))} style={textareaBaseStyle} />
-              </div>
-              <div>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>エラーメッセージ</label>
-                <textarea value={state.messages.error} onChange={(e) => setState((s) => ({ ...s, messages: { ...s.messages, error: e.target.value } }))} style={textareaBaseStyle} />
-              </div>
-            </div>
-          </div>
         </div>
+        <div hidden={section !== "表示文言"}>
+          {/* セクション：在庫数のテキスト・単位 */}
+          <div
+            style={{
+              display: "flex",
+              gap: "24px",
+              alignItems: "flex-start",
+              flexWrap: "wrap",
+              marginBottom: "24px",
+            }}
+          >
+            <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>在庫数のテキスト・単位</div>
+              <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
+                在庫数の前後につけるラベルやカッコ、単位を設定します。表示／非表示や構成（マークのみ、数量のみなど）はテーマ側の App Block で制御します。
+              </div>
+            </div>
+            <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+              <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
+                <div style={{ marginBottom: "12px" }}>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫数ラベル</label>
+                  <input type="text" value={state.quantityTexts.label} onChange={(e) => setState((s) => ({ ...s, quantityTexts: { ...s.quantityTexts, label: e.target.value } }))} placeholder="例: 在庫" style={inputBaseStyle} />
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <div style={{ flex: "1 1 0" }}>
+                    <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>前に付ける文字</label>
+                    <input type="text" value={state.quantityTexts.wrapperBefore} onChange={(e) => setState((s) => ({ ...s, quantityTexts: { ...s.quantityTexts, wrapperBefore: e.target.value } }))} placeholder="例: (" style={inputBaseStyle} />
+                  </div>
+                  <div style={{ flex: "1 1 0" }}>
+                    <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>後ろに付ける文字</label>
+                    <input type="text" value={state.quantityTexts.wrapperAfter} onChange={(e) => setState((s) => ({ ...s, quantityTexts: { ...s.quantityTexts, wrapperAfter: e.target.value } }))} placeholder="例: )" style={inputBaseStyle} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
 
-        {/* セクション：注意書き */}
-        <div
-          style={{
-            display: "flex",
-            gap: "24px",
-            alignItems: "flex-start",
-            flexWrap: "wrap",
-            marginBottom: "24px",
-          }}
-        >
-          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>注意書き</div>
-            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
-              すべての商品ページで共通して表示したい注意書きがあれば設定します。
+          {/* セクション：在庫ステータスのラベル */}
+          <div
+            style={{
+              display: "flex",
+              gap: "24px",
+              alignItems: "flex-start",
+              flexWrap: "wrap",
+              marginBottom: "24px",
+            }}
+          >
+            <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>在庫ステータスのラベル</div>
+              <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
+                在庫マークと一緒に表示するステータスラベルを設定します。凡例と在庫リストの両方でこのラベルが使われます。
+              </div>
+            </div>
+            <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+              <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
+                <div style={{ marginBottom: "12px" }}>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫ありラベル</label>
+                  <input type="text" value={state.labels.inStock} onChange={(e) => setState((s) => ({ ...s, labels: { ...s.labels, inStock: e.target.value } }))} placeholder="例: 在庫あり" style={inputBaseStyle} />
+                </div>
+                <div style={{ marginBottom: "12px" }}>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>残りわずかラベル</label>
+                  <input type="text" value={state.labels.lowStock} onChange={(e) => setState((s) => ({ ...s, labels: { ...s.labels, lowStock: e.target.value } }))} placeholder="例: 残りわずか" style={inputBaseStyle} />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫なしラベル</label>
+                  <input type="text" value={state.labels.outOfStock} onChange={(e) => setState((s) => ({ ...s, labels: { ...s.labels, outOfStock: e.target.value } }))} placeholder="例: 在庫なし" style={inputBaseStyle} />
+                </div>
+              </div>
             </div>
           </div>
-          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
-            <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
-              <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>注意書きテキスト</label>
-              <textarea value={state.notice.text} onChange={(e) => setState((s) => ({ ...s, notice: { ...s.notice, text: e.target.value } }))} style={textareaBaseStyle} placeholder="例: 在庫は店舗間で移動する場合があります。ご来店前に店舗へ在庫をご確認ください。" />
+
+          {/* セクション：メッセージ文言 */}
+          <div
+            style={{
+              display: "flex",
+              gap: "24px",
+              alignItems: "flex-start",
+              flexWrap: "wrap",
+              marginBottom: "24px",
+            }}
+          >
+            <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>メッセージ文言</div>
+              <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
+                読み込み中・在庫なし・エラー時に表示するメッセージを設定します。空欄の場合はアプリのデフォルト文言が使われます。
+              </div>
+            </div>
+            <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+              <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
+                <div style={{ marginBottom: "12px" }}>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>読み込み中メッセージ</label>
+                  <textarea value={state.messages.loading} onChange={(e) => setState((s) => ({ ...s, messages: { ...s.messages, loading: e.target.value } }))} style={textareaBaseStyle} />
+                </div>
+                <div style={{ marginBottom: "12px" }}>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫なしメッセージ</label>
+                  <textarea value={state.messages.empty} onChange={(e) => setState((s) => ({ ...s, messages: { ...s.messages, empty: e.target.value } }))} style={textareaBaseStyle} />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>エラーメッセージ</label>
+                  <textarea value={state.messages.error} onChange={(e) => setState((s) => ({ ...s, messages: { ...s.messages, error: e.target.value } }))} style={textareaBaseStyle} />
+                </div>
+              </div>
             </div>
           </div>
+
+          {/* セクション：注意書き */}
+          <div
+            style={{
+              display: "flex",
+              gap: "24px",
+              alignItems: "flex-start",
+              flexWrap: "wrap",
+              marginBottom: "24px",
+            }}
+          >
+            <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>注意書き</div>
+              <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
+                すべての商品ページで共通して表示したい注意書きがあれば設定します。
+              </div>
+            </div>
+            <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+              <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>注意書きテキスト</label>
+                <textarea value={state.notice.text} onChange={(e) => setState((s) => ({ ...s, notice: { ...s.notice, text: e.target.value } }))} style={textareaBaseStyle} placeholder="例: 在庫は店舗間で移動する場合があります。ご来店前に店舗へ在庫をご確認ください。" />
+              </div>
+            </div>
+          </div>
+
         </div>
-
-        {/* セクション：表示ルール（凡例・注意書きの表示、行の表示内容、区切り文字） */}
-        <div
-          style={{
-            display: "flex",
-            gap: "24px",
-            alignItems: "flex-start",
-            flexWrap: "wrap",
-            marginBottom: "24px",
-          }}
-        >
-          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>表示ルール</div>
-            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
-              凡例・注意書きの表示の有無、行内の表示内容、リストの区切り文字を共通で設定します。テーマのカスタマイザーでは見た目（位置・色など）のみ調整できます。
+        <div hidden={section !== "表示ルール"}>
+          {/* セクション：表示ルール（凡例・注意書きの表示、行の表示内容、区切り文字） */}
+          <div
+            style={{
+              display: "flex",
+              gap: "24px",
+              alignItems: "flex-start",
+              flexWrap: "wrap",
+              marginBottom: "24px",
+            }}
+          >
+            <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>表示ルール</div>
+              <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
+                凡例・注意書きの表示の有無、行内の表示内容、リストの区切り文字を共通で設定します。テーマのカスタマイザーでは見た目（位置・色など）のみ調整できます。
+              </div>
             </div>
-          </div>
-          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
-            <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
-              <div style={{ marginBottom: "16px" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, color: "#202223" }}>
-                  <input type="checkbox" checked={state.display.showLegend} onChange={(e) => setState((s) => ({ ...s, display: { ...s.display, showLegend: e.target.checked } }))} />
-                  凡例を表示する
-                </label>
-              </div>
-              <div style={{ marginBottom: "16px" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, color: "#202223" }}>
-                  <input type="checkbox" checked={state.display.showNotice} onChange={(e) => setState((s) => ({ ...s, display: { ...s.display, showNotice: e.target.checked } }))} />
-                  注意書きを表示する（文言は上記で設定）
-                </label>
-              </div>
-              <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>行内の表示内容</label>
-                <select value={state.display.rowContentMode} onChange={(e) => setState((s) => ({ ...s, display: { ...s.display, rowContentMode: e.target.value } }))} style={selectBaseStyle}>
-                  <option value="symbol_only">マークのみ（◯△✕）</option>
-                  <option value="symbol_and_quantity">マーク＋在庫数</option>
-                  <option value="symbol_quantity_label">マーク＋在庫数＋ラベル</option>
-                  <option value="quantity_only">在庫数のみ</option>
-                  <option value="quantity_label">在庫数＋ラベル</option>
-                </select>
-              </div>
-              <div>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>リストの区切り文字（ロケーション名と在庫の間）</label>
-                <input type="text" value={state.display.listSeparator} onChange={(e) => setState((s) => ({ ...s, display: { ...s.display, listSeparator: e.target.value } }))} placeholder="： " style={inputBaseStyle} />
+            <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+              <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
+                <div style={{ marginBottom: "16px" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, color: "#202223" }}>
+                    <input type="checkbox" checked={state.display.showLegend} onChange={(e) => setState((s) => ({ ...s, display: { ...s.display, showLegend: e.target.checked } }))} />
+                    凡例を表示する
+                  </label>
+                </div>
+                <div style={{ marginBottom: "16px" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, color: "#202223" }}>
+                    <input type="checkbox" checked={state.display.showNotice} onChange={(e) => setState((s) => ({ ...s, display: { ...s.display, showNotice: e.target.checked } }))} />
+                    注意書きを表示する（文言は「表示文言」で設定）
+                  </label>
+                </div>
+                <div style={{ marginBottom: "12px" }}>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>行内の表示内容</label>
+                  <select value={state.display.rowContentMode} onChange={(e) => setState((s) => ({ ...s, display: { ...s.display, rowContentMode: e.target.value } }))} style={selectBaseStyle}>
+                    <option value="symbol_only">マークのみ（◯△✕）</option>
+                    <option value="symbol_and_quantity">マーク＋在庫数</option>
+                    <option value="symbol_quantity_label">マーク＋在庫数＋ラベル</option>
+                    <option value="quantity_only">在庫数のみ</option>
+                    <option value="quantity_label">在庫数＋ラベル</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>リストの区切り文字（ロケーション名と在庫の間）</label>
+                  <input type="text" value={state.display.listSeparator} onChange={(e) => setState((s) => ({ ...s, display: { ...s.display, listSeparator: e.target.value } }))} placeholder="： " style={inputBaseStyle} />
+                </div>
               </div>
             </div>
           </div>

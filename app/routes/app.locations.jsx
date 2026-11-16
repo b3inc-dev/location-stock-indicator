@@ -3,6 +3,7 @@
 import { useRef, useState, useMemo, useEffect } from "react";
 import { useLoaderData, useFetcher, useRevalidator, useOutletContext } from "react-router";
 import shopify from "../shopify.server";
+import { SettingsSections } from "../components/SettingsSections.jsx";
 import { AdminSaveBar } from "../components/adminChrome.jsx";
 import { LocationCompareList } from "../components/LocationCompareList.jsx";
 import { isProFeaturesAllowed } from "../utils/planGate.js";
@@ -465,6 +466,7 @@ export default function LocationsConfigPage() {
     locationsHasNextPage,
   } = loaderData;
   const fetcher = useFetcher();
+  const [section, setSection] = useState("表示・並び順");
   const revalidator = useRevalidator();
   const [rows, setRows] = useState(initialRows);
   const [sortMode, setSortMode] = useState(initialSortMode);
@@ -718,404 +720,411 @@ export default function LocationsConfigPage() {
 
   return (
     <s-page heading="ロケーション設定">
-      <div style={{ padding: "16px", maxWidth: "1200px", paddingBottom: "88px" }}>
-        {/* 表示ロケーション：locationsMode + usePublicName */}
-        <div
-          style={{
-            display: "flex",
-            gap: "24px",
-            alignItems: "flex-start",
-            flexWrap: "wrap",
-            marginBottom: "24px",
-          }}
-        >
-          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>
-              表示するロケーション
-            </div>
-            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
-              商品ページに出すロケーションの範囲と、公開名の使い方を選びます。「アプリで設定したもののみ」は、保存済みの設定に含まれ、表示がオンのロケーションだけが出ます。この一覧を保存すると、読み込んだ全店舗が設定に入ります。
-            </div>
-          </div>
-          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
-            <div
-              style={{
-                background: "#ffffff",
-                borderRadius: 12,
-                boxShadow: "0 0 0 1px #e1e3e5",
-                padding: 16,
-              }}
-            >
-              <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>
-                表示モード
-              </label>
-              <select
-                value={locationsMode}
-                onChange={(e) => setLocationsMode(e.target.value)}
-                style={{ ...selectBaseStyle, marginBottom: 12 }}
-              >
-                <option value="all">すべてのロケーション</option>
-                <option value="online_only">オンライン注文を履行するロケーションのみ</option>
-                <option value="custom_from_app">アプリで設定したもののみ</option>
-              </select>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14 }}>
-                <input
-                  type="checkbox"
-                  checked={!!usePublicName}
-                  onChange={(e) => setUsePublicName(e.target.checked)}
-                />
-                <span>公開名を表示に使う</span>
-              </label>
-              <div style={{ fontSize: 12, color: "#6d7175", marginTop: 4 }}>
-                OFF のときは Shopify のロケーション名を表示します（一覧の公開名列は保存されます）。
+      <div className="location-settings-body">
+        <SettingsSections labels={["表示・並び順", "エリア・受取", "店舗一覧・リンク"]} selected={section} onSelect={setSection} />
+        <div hidden={section !== "表示・並び順"}>
+          {/* 表示ロケーション：locationsMode + usePublicName */}
+          <div
+            style={{
+              display: "flex",
+              gap: "24px",
+              alignItems: "flex-start",
+              flexWrap: "wrap",
+              marginBottom: "24px",
+            }}
+          >
+            <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>
+                表示するロケーション
+              </div>
+              <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
+                商品ページに出すロケーションの範囲と、公開名の使い方を選びます。「アプリで設定したもののみ」は、保存済みの設定に含まれ、表示がオンのロケーションだけが出ます。設定を保存すると、読み込んだ全店舗が設定に入ります。
               </div>
             </div>
-          </div>
-        </div>
-
-        {/* 並び順：左＝説明、右＝カード */}
-        <div
-          style={{
-            display: "flex",
-            gap: "24px",
-            alignItems: "flex-start",
-            flexWrap: "wrap",
-            marginBottom: "24px",
-          }}
-        >
-          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>
-              並び順
-            </div>
-            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
-              商品ページの在庫リストの並び方を選びます。「一覧の並び順を使う」にすると、下の一覧で決めた順（並び順の数値・上下ボタン）がそのまま反映されます。
-              下部の「上部固定」で 1 店舗を選ぶと、その店舗だけ常に先頭に表示され、残りはここで選んだ並び順で並びます。
-            </div>
-          </div>
-          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
-            <div
-              style={{
-                background: "#ffffff",
-                borderRadius: 12,
-                boxShadow: "0 0 0 1px #e1e3e5",
-                padding: 16,
-              }}
-            >
-              <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>
-                並び順
-              </label>
-              <select
-                value={sortMode}
-                onChange={(e) => setSortMode(e.target.value)}
-                style={selectBaseStyle}
-              >
-                <option value="none">一覧の並び順を使う</option>
-                <option value="location_name_asc">ロケーション名 昇順（A→Z）</option>
-                <option value="quantity_desc">在庫数の多い順</option>
-                <option value="quantity_asc">在庫数の少ない順</option>
-                <option value="in_stock_first">在庫ありのロケーションを優先</option>
-                <option value="store_pickup_first">店舗受け取りのロケーションを優先</option>
-                <option value="shipping_first">配送対応のロケーションを優先</option>
-                <option value="local_delivery_first">ローカルデリバリー対応のロケーションを優先</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        {/* エリア/近隣店舗のデザイン（Pro）：エリア設定＋近隣店舗表示設定の見出し */}
-        <ProSectionWrapper isPro={isPro}>
-        <div
-          style={{
-            display: "flex",
-            gap: "24px",
-            alignItems: "flex-start",
-            flexWrap: "wrap",
-            marginBottom: "24px",
-          }}
-        >
-          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <span style={{ fontWeight: 600, fontSize: 14, color: "#202223" }}>エリア/近隣店舗のデザイン</span>
-              <ProBadge />
-            </div>
-            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
-              「エリアでグルーピング」をONにしたとき、ここで登録したグループ名で商品ページの在庫がまとまって表示されます。表示順は右のカードの並び順（数字・上下ボタン）の通りです。下のロケーション一覧の「エリア」列で各ロケーションをどのグループに含めるか選べます。
-            </div>
-            <div style={{ fontSize: 13, color: "#6d7175", lineHeight: 1.5, marginTop: 8 }}>
-              <strong>「エリア」が未設定のロケーション：</strong>「未設定の見出し」で文言を変更できます（デフォルトは「その他」）。見出しのデザインはテーマのカスタマイザーで設定できます。
-            </div>
-          </div>
-          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
-            <div
-              style={{
-                background: "#ffffff",
-                borderRadius: 12,
-                boxShadow: "0 0 0 1px #e1e3e5",
-                padding: 16,
-              }}
-            >
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, marginBottom: 12 }}>
-                <input type="checkbox" checked={!!future.groupByRegion} onChange={(e) => setFuture((f) => ({ ...f, groupByRegion: e.target.checked }))} />
-                <span>エリアでグルーピング</span>
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, marginBottom: 16 }}>
-                <input type="checkbox" checked={!!future.regionAccordionEnabled} onChange={(e) => setFuture((f) => ({ ...f, regionAccordionEnabled: e.target.checked }))} />
-                <span>エリアごとに折りたたみ表示</span>
-              </label>
-              <div style={{ marginBottom: 16, paddingTop: 12, borderTop: "1px solid #e1e3e5" }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>未設定の見出し</label>
-                <input
-                  type="text"
-                  value={future.regionUnsetLabel || "その他"}
-                  onChange={(e) => setFuture((f) => ({ ...f, regionUnsetLabel: e.target.value.trim() || "その他" }))}
-                  style={{ ...selectBaseStyle, width: "100%" }}
-                  placeholder="その他"
-                />
-                <div style={{ fontSize: 12, color: "#6d7175", marginTop: 4 }}>エリア未設定のロケーションをまとめる見出しの文言です。</div>
-              </div>
-              {/* 見出し行（グループ名 → 並び順 → 操作） */}
+            <div style={{ flex: "1 1 320px", minWidth: 280 }}>
               <div
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "8px 0",
-                  marginBottom: 4,
-                  borderBottom: "1px solid #c9cccf",
+                  background: "#ffffff",
+                  borderRadius: 12,
+                  boxShadow: "0 0 0 1px #e1e3e5",
+                  padding: 16,
                 }}
               >
-                <div style={{ flex: 1, fontSize: 14, fontWeight: 600, color: "#6d7175" }}>グループ名</div>
-                <div style={{ width: 120, fontSize: 14, fontWeight: 600, color: "#6d7175" }}>並び順</div>
-                <div style={{ width: 70, fontSize: 14, fontWeight: 600, color: "#6d7175", textAlign: "right" }}>操作</div>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>
+                  表示モード
+                </label>
+                <select
+                  value={locationsMode}
+                  onChange={(e) => setLocationsMode(e.target.value)}
+                  style={{ ...selectBaseStyle, marginBottom: 12 }}
+                >
+                  <option value="all">すべてのロケーション</option>
+                  <option value="online_only">オンライン注文を履行するロケーションのみ</option>
+                  <option value="custom_from_app">アプリで設定したもののみ</option>
+                </select>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14 }}>
+                  <input
+                    type="checkbox"
+                    checked={!!usePublicName}
+                    onChange={(e) => setUsePublicName(e.target.checked)}
+                  />
+                  <span>公開名を表示に使う</span>
+                </label>
+                <div style={{ fontSize: 12, color: "#6d7175", marginTop: 4 }}>
+                  OFF のときは Shopify のロケーション名を表示します（一覧の公開名列は保存されます）。
+                </div>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {regionGroups.map((g, index) => (
-                  <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input
-                      type="text"
-                      value={g.name}
-                      onChange={(e) => updateRegionGroup(g.id, e.target.value)}
-                      style={{ flex: 1, padding: "6px 8px", fontSize: 14, border: "1px solid #c9cccf", borderRadius: 4, minWidth: 0 }}
-                    />
-                    {/* 並び順：数字（増減可能）＋矢印（ロケーション一覧と同じ） */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 4, width: 120 }}>
+            </div>
+          </div>
+
+          {/* 並び順：左＝説明、右＝カード */}
+          <div
+            style={{
+              display: "flex",
+              gap: "24px",
+              alignItems: "flex-start",
+              flexWrap: "wrap",
+              marginBottom: "24px",
+            }}
+          >
+            <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>
+                並び順
+              </div>
+              <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
+                商品ページの在庫リストの並び方を選びます。「一覧の並び順を使う」にすると、「店舗一覧・リンク」で決めた順（並び順の数値・上下ボタン）がそのまま反映されます。
+                「店舗一覧・リンク」の「上部固定」で 1 店舗を選ぶと、その店舗だけ常に先頭に表示され、残りはここで選んだ並び順で並びます。
+              </div>
+            </div>
+            <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+              <div
+                style={{
+                  background: "#ffffff",
+                  borderRadius: 12,
+                  boxShadow: "0 0 0 1px #e1e3e5",
+                  padding: 16,
+                }}
+              >
+                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>
+                  並び順
+                </label>
+                <select
+                  value={sortMode}
+                  onChange={(e) => setSortMode(e.target.value)}
+                  style={selectBaseStyle}
+                >
+                  <option value="none">一覧の並び順を使う</option>
+                  <option value="location_name_asc">ロケーション名 昇順（A→Z）</option>
+                  <option value="quantity_desc">在庫数の多い順</option>
+                  <option value="quantity_asc">在庫数の少ない順</option>
+                  <option value="in_stock_first">在庫ありのロケーションを優先</option>
+                  <option value="store_pickup_first">店舗受け取りのロケーションを優先</option>
+                  <option value="shipping_first">配送対応のロケーションを優先</option>
+                  <option value="local_delivery_first">ローカルデリバリー対応のロケーションを優先</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+        </div>
+        <div hidden={section !== "エリア・受取"}>
+          {/* エリア/近隣店舗のデザイン（Pro）：エリア設定＋近隣店舗表示設定の見出し */}
+          <ProSectionWrapper isPro={isPro}>
+          <div
+            style={{
+              display: "flex",
+              gap: "24px",
+              alignItems: "flex-start",
+              flexWrap: "wrap",
+              marginBottom: "24px",
+            }}
+          >
+            <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <span style={{ fontWeight: 600, fontSize: 14, color: "#202223" }}>エリア/近隣店舗のデザイン</span>
+                <ProBadge />
+              </div>
+              <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
+                「エリアでグルーピング」をONにしたとき、ここで登録したグループ名で商品ページの在庫がまとまって表示されます。表示順は右のカードの並び順（数字・上下ボタン）の通りです。「店舗一覧・リンク」の「エリア」列で各ロケーションをどのグループに含めるか選べます。
+              </div>
+              <div style={{ fontSize: 13, color: "#6d7175", lineHeight: 1.5, marginTop: 8 }}>
+                <strong>「エリア」が未設定のロケーション：</strong>「未設定の見出し」で文言を変更できます（デフォルトは「その他」）。見出しのデザインはテーマのカスタマイザーで設定できます。
+              </div>
+            </div>
+            <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+              <div
+                style={{
+                  background: "#ffffff",
+                  borderRadius: 12,
+                  boxShadow: "0 0 0 1px #e1e3e5",
+                  padding: 16,
+                }}
+              >
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, marginBottom: 12 }}>
+                  <input type="checkbox" checked={!!future.groupByRegion} onChange={(e) => setFuture((f) => ({ ...f, groupByRegion: e.target.checked }))} />
+                  <span>エリアでグルーピング</span>
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, marginBottom: 16 }}>
+                  <input type="checkbox" checked={!!future.regionAccordionEnabled} onChange={(e) => setFuture((f) => ({ ...f, regionAccordionEnabled: e.target.checked }))} />
+                  <span>エリアごとに折りたたみ表示</span>
+                </label>
+                <div style={{ marginBottom: 16, paddingTop: 12, borderTop: "1px solid #e1e3e5" }}>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>未設定の見出し</label>
+                  <input
+                    type="text"
+                    value={future.regionUnsetLabel || "その他"}
+                    onChange={(e) => setFuture((f) => ({ ...f, regionUnsetLabel: e.target.value.trim() || "その他" }))}
+                    style={{ ...selectBaseStyle, width: "100%" }}
+                    placeholder="その他"
+                  />
+                  <div style={{ fontSize: 12, color: "#6d7175", marginTop: 4 }}>エリア未設定のロケーションをまとめる見出しの文言です。</div>
+                </div>
+                {/* 見出し行（グループ名 → 並び順 → 操作） */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "8px 0",
+                    marginBottom: 4,
+                    borderBottom: "1px solid #c9cccf",
+                  }}
+                >
+                  <div style={{ flex: 1, fontSize: 14, fontWeight: 600, color: "#6d7175" }}>グループ名</div>
+                  <div style={{ width: 120, fontSize: 14, fontWeight: 600, color: "#6d7175" }}>並び順</div>
+                  <div style={{ width: 70, fontSize: 14, fontWeight: 600, color: "#6d7175", textAlign: "right" }}>操作</div>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {regionGroups.map((g, index) => (
+                    <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <input
-                        type="number"
-                        min={1}
-                        value={g.sortOrder ?? index + 1}
-                        onChange={(e) => updateRegionGroupSortOrder(g.id, e.target.value)}
-                        style={{
-                          width: 44,
-                          padding: "4px 6px",
-                          borderRadius: 4,
-                          border: "1px solid #c9cccf",
-                          fontSize: 14,
-                          textAlign: "center",
-                          boxSizing: "border-box",
-                        }}
+                        type="text"
+                        value={g.name}
+                        onChange={(e) => updateRegionGroup(g.id, e.target.value)}
+                        style={{ flex: 1, padding: "6px 8px", fontSize: 14, border: "1px solid #c9cccf", borderRadius: 4, minWidth: 0 }}
                       />
+                      {/* 並び順：数字（増減可能）＋矢印（ロケーション一覧と同じ） */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, width: 120 }}>
+                        <input
+                          type="number"
+                          min={1}
+                          value={g.sortOrder ?? index + 1}
+                          onChange={(e) => updateRegionGroupSortOrder(g.id, e.target.value)}
+                          style={{
+                            width: 44,
+                            padding: "4px 6px",
+                            borderRadius: 4,
+                            border: "1px solid #c9cccf",
+                            fontSize: 14,
+                            textAlign: "center",
+                            boxSizing: "border-box",
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => moveRegionGroupUp(index)}
+                          disabled={index === 0}
+                          style={{
+                            padding: "4px 8px",
+                            borderRadius: 4,
+                            border: "1px solid #c9cccf",
+                            background: "#fff",
+                            fontSize: 14,
+                            cursor: index === 0 ? "not-allowed" : "pointer",
+                            opacity: index === 0 ? 0.5 : 1,
+                          }}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveRegionGroupDown(index)}
+                          disabled={index === regionGroups.length - 1}
+                          style={{
+                            padding: "4px 8px",
+                            borderRadius: 4,
+                            border: "1px solid #c9cccf",
+                            background: "#fff",
+                            fontSize: 14,
+                            cursor: index === regionGroups.length - 1 ? "not-allowed" : "pointer",
+                            opacity: index === regionGroups.length - 1 ? 0.5 : 1,
+                          }}
+                        >
+                          ↓
+                        </button>
+                      </div>
                       <button
                         type="button"
-                        onClick={() => moveRegionGroupUp(index)}
-                        disabled={index === 0}
-                        style={{
-                          padding: "4px 8px",
-                          borderRadius: 4,
-                          border: "1px solid #c9cccf",
-                          background: "#fff",
-                          fontSize: 14,
-                          cursor: index === 0 ? "not-allowed" : "pointer",
-                          opacity: index === 0 ? 0.5 : 1,
-                        }}
+                        onClick={() => removeRegionGroup(g.id)}
+                        style={{ padding: "6px 10px", fontSize: 13, border: "1px solid #c9cccf", borderRadius: 4, background: "#fff", cursor: "pointer", flexShrink: 0 }}
                       >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => moveRegionGroupDown(index)}
-                        disabled={index === regionGroups.length - 1}
-                        style={{
-                          padding: "4px 8px",
-                          borderRadius: 4,
-                          border: "1px solid #c9cccf",
-                          background: "#fff",
-                          fontSize: 14,
-                          cursor: index === regionGroups.length - 1 ? "not-allowed" : "pointer",
-                          opacity: index === regionGroups.length - 1 ? 0.5 : 1,
-                        }}
-                      >
-                        ↓
+                        削除
                       </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => removeRegionGroup(g.id)}
-                      style={{ padding: "6px 10px", fontSize: 13, border: "1px solid #c9cccf", borderRadius: 4, background: "#fff", cursor: "pointer", flexShrink: 0 }}
-                    >
-                      削除
-                    </button>
-                  </div>
-                ))}
+                  ))}
+                </div>
+                <button type="button" onClick={addRegionGroup} style={{ marginTop: 12, padding: "8px 14px", fontSize: 14, border: "1px solid #2c6ecb", borderRadius: 6, background: "#2c6ecb", color: "#fff", cursor: "pointer" }}>エリアを追加</button>
               </div>
-              <button type="button" onClick={addRegionGroup} style={{ marginTop: 12, padding: "8px 14px", fontSize: 14, border: "1px solid #2c6ecb", borderRadius: 6, background: "#2c6ecb", color: "#fff", cursor: "pointer" }}>エリアを追加</button>
             </div>
           </div>
-        </div>
-        </ProSectionWrapper>
+          </ProSectionWrapper>
 
-        {/* 近隣店舗表示設定：左＝タイトル・説明、右＝カード（Pro） */}
-        <ProSectionWrapper isPro={isPro}>
-        <div style={{ display: "flex", gap: "24px", alignItems: "flex-start", flexWrap: "wrap", marginBottom: "24px" }}>
-          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <span style={{ fontWeight: 600, fontSize: 14, color: "#202223" }}>近隣店舗表示設定</span>
-              <ProBadge />
+          {/* 近隣店舗表示設定：左＝タイトル・説明、右＝カード（Pro） */}
+          <ProSectionWrapper isPro={isPro}>
+          <div style={{ display: "flex", gap: "24px", alignItems: "flex-start", flexWrap: "wrap", marginBottom: "24px" }}>
+            <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <span style={{ fontWeight: 600, fontSize: 14, color: "#202223" }}>近隣店舗表示設定</span>
+                <ProBadge />
+              </div>
+              <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
+                チェックを入れると商品ページの在庫一覧の最上部に「近隣店舗」アコーディオンが表示されます。顧客がクリックすると位置情報の許可が求められ、許可すると一番近い店舗がアコーディオン内に表示されます。本社・倉庫など近隣検索から除外したいロケーションは、「店舗一覧・リンク」の「近隣除外」でONにしてください。
+              </div>
+            </div>
+            <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+              <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, marginBottom: 12 }}>
+                  <input type="checkbox" checked={!!future.nearbyFirstEnabled} onChange={(e) => setFuture((f) => ({ ...f, nearbyFirstEnabled: e.target.checked }))} />
+                  <span>近隣店舗を表示</span>
+                </label>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>近隣店舗の見出し</label>
+                  <input
+                    type="text"
+                    value={future.nearbyHeading ?? ""}
+                    onChange={(e) => setFuture((f) => ({ ...f, nearbyHeading: e.target.value }))}
+                    style={{ ...selectBaseStyle, width: "100%" }}
+                    placeholder="例：近隣店舗（未入力の場合は「近隣店舗」と表示）"
+                  />
+                  <div style={{ fontSize: 12, color: "#6d7175", marginTop: 4 }}>アコーディオンの見出しに表示する文言です。未入力の場合は「近隣店舗」と表示されます。</div>
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>その他ロケーションの見出し</label>
+                  <input
+                    type="text"
+                    value={future.nearbyOtherHeading ?? ""}
+                    onChange={(e) => setFuture((f) => ({ ...f, nearbyOtherHeading: e.target.value }))}
+                    style={{ ...selectBaseStyle, width: "100%" }}
+                    placeholder="例：店舗一覧（未入力の場合は見出しは表示されません）"
+                  />
+                  <div style={{ fontSize: 12, color: "#6d7175", marginTop: 4 }}>近隣店舗を表示にしたとき、近隣店舗の下に並ぶ「その他」ロケーション一覧の直前に表示する見出しです。入力があった場合のみ見出しを表示し、未入力の場合は見出し行は出さずロケーションのみ表示します。</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          </ProSectionWrapper>
+
+          {/* 店舗受取設定：左＝タイトル・説明、右＝カード（Pro） */}
+          <ProSectionWrapper isPro={isPro}>
+          <div style={{ display: "flex", gap: "24px", alignItems: "flex-start", flexWrap: "wrap", marginBottom: "24px" }}>
+            <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <span style={{ fontWeight: 600, fontSize: 14, color: "#202223" }}>店舗受け取りボタン</span>
+                <ProBadge />
+              </div>
+              <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
+                「この店舗で受け取る」ボタンを表示すると、各ロケーション行に店舗受け取り用のボタンが表示されます。ボタンをタップするとデフォルトでカートに追加されます。「ボタンタップ後にチェックアウトまでリダイレクトする」をONにすると、カートに追加したあとそのままチェックアウトページへ移動します。ボタンの見た目はテーマのカスタマイザーで変更できます。
+              </div>
+            </div>
+            <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+              <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, marginBottom: 12 }}>
+                  <input type="checkbox" checked={!!future.showOrderPickButton} onChange={(e) => setFuture((f) => ({ ...f, showOrderPickButton: e.target.checked }))} />
+                  <span>「この店舗で受け取る」ボタンを表示</span>
+                </label>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>ボタンラベル</label>
+                  <input type="text" value={future.orderPickButtonLabel} onChange={(e) => setFuture((f) => ({ ...f, orderPickButtonLabel: e.target.value }))} style={selectBaseStyle} placeholder="この店舗で受け取る" />
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>追加中の表示（読み込み中）</label>
+                  <input type="text" value={future.orderPickAddingLabel} onChange={(e) => setFuture((f) => ({ ...f, orderPickAddingLabel: e.target.value }))} style={selectBaseStyle} placeholder="空欄＝ローディングマークのみ" />
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>追加後の表示（成功メッセージ）</label>
+                  <input type="text" value={future.orderPickAddedLabel} onChange={(e) => setFuture((f) => ({ ...f, orderPickAddedLabel: e.target.value }))} style={selectBaseStyle} placeholder="追加しました" />
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫なし時の表示（ボタンではなくテキスト）</label>
+                  <input type="text" value={future.orderPickOutOfStockLabel} onChange={(e) => setFuture((f) => ({ ...f, orderPickOutOfStockLabel: e.target.value }))} style={selectBaseStyle} placeholder="Sold Out" />
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>カート追加後モーダル：タイトル</label>
+                  <input type="text" value={future.orderPickModalTitle} onChange={(e) => setFuture((f) => ({ ...f, orderPickModalTitle: e.target.value }))} style={selectBaseStyle} placeholder="カートに追加しました（{count}点）" />
+                  <div style={{ fontSize: 12, color: "#6d7175", marginTop: 4 }}>「{"{count}"}」を点数に置き換えます（例：カートに追加しました（3点））</div>
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>カート追加後モーダル：説明文</label>
+                  <textarea value={future.orderPickModalBody} onChange={(e) => setFuture((f) => ({ ...f, orderPickModalBody: e.target.value }))} style={{ ...selectBaseStyle, minHeight: 60 }} placeholder="チェックアウトページでお届け先を「受取」を選択して受取ご希望の店舗をご選択ください。" rows={3} />
+                </div>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14 }}>
+                  <input type="checkbox" checked={!!future.orderPickRedirectToCheckout} onChange={(e) => setFuture((f) => ({ ...f, orderPickRedirectToCheckout: e.target.checked }))} />
+                  <span>ボタンタップ後にチェックアウトまでリダイレクトする</span>
+                </label>
+              </div>
+            </div>
+          </div>
+          </ProSectionWrapper>
+
+        </div>
+        <div hidden={section !== "店舗一覧・リンク"}>
+          {/* ロケーション名のリンク設定：一括でリンク表示ON/OFF ＋ 行ごとにURL入力 */}
+          <div style={{ display: "flex", gap: "24px", alignItems: "flex-start", flexWrap: "wrap", marginBottom: "24px" }}>
+            <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>ロケーション名のリンク設定</div>
+              <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
+                「リンクを表示する」をONにすると、商品ページの在庫一覧でロケーション名をリンクにできます。下の一覧の「リンクURL」列にURLを入力したロケーションだけがリンク表示され、未入力のロケーションはリンクになりません。
+              </div>
+            </div>
+            <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+              <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14 }}>
+                  <input type="checkbox" checked={!!future.showLocationLinks} onChange={(e) => setFuture((f) => ({ ...f, showLocationLinks: e.target.checked }))} />
+                  <span>リンクを表示する</span>
+                </label>
+                <div style={{ fontSize: 12, color: "#6d7175", marginTop: 8 }}>
+                  ONのとき、下の一覧でURLを入力したロケーションのみリンク表示されます。URLが空の行はリンクになりません。
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>
+              ロケーション一覧
             </div>
             <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
-              チェックを入れると商品ページの在庫一覧の最上部に「近隣店舗」アコーディオンが表示されます。顧客がクリックすると位置情報の許可が求められ、許可すると一番近い店舗がアコーディオン内に表示されます。本社・倉庫など近隣検索から除外したいロケーションは、下のロケーション一覧の「近隣除外」でONにしてください。
+              店舗名の横に表示状態を置いています。チェックを外した店舗は「非表示」です。
+              公開名を保存するとその名前で表示し、未入力のときは Shopify のロケーション名を使います。
+              並び順は数値と上下ボタンで変更でき、「一覧の並び順を使う」のときはこの順番が商品ページに反映されます。上部固定にしたロケーションは常に先頭に表示され、エリアの選択はできません。
             </div>
           </div>
-          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
-            <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, marginBottom: 12 }}>
-                <input type="checkbox" checked={!!future.nearbyFirstEnabled} onChange={(e) => setFuture((f) => ({ ...f, nearbyFirstEnabled: e.target.checked }))} />
-                <span>近隣店舗を表示</span>
-              </label>
-              <div style={{ marginBottom: 12 }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>近隣店舗の見出し</label>
-                <input
-                  type="text"
-                  value={future.nearbyHeading ?? ""}
-                  onChange={(e) => setFuture((f) => ({ ...f, nearbyHeading: e.target.value }))}
-                  style={{ ...selectBaseStyle, width: "100%" }}
-                  placeholder="例：近隣店舗（未入力の場合は「近隣店舗」と表示）"
-                />
-                <div style={{ fontSize: 12, color: "#6d7175", marginTop: 4 }}>アコーディオンの見出しに表示する文言です。未入力の場合は「近隣店舗」と表示されます。</div>
-              </div>
-              <div>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>その他ロケーションの見出し</label>
-                <input
-                  type="text"
-                  value={future.nearbyOtherHeading ?? ""}
-                  onChange={(e) => setFuture((f) => ({ ...f, nearbyOtherHeading: e.target.value }))}
-                  style={{ ...selectBaseStyle, width: "100%" }}
-                  placeholder="例：店舗一覧（未入力の場合は見出しは表示されません）"
-                />
-                <div style={{ fontSize: 12, color: "#6d7175", marginTop: 4 }}>近隣店舗を表示にしたとき、近隣店舗の下に並ぶ「その他」ロケーション一覧の直前に表示する見出しです。入力があった場合のみ見出しを表示し、未入力の場合は見出し行は出さずロケーションのみ表示します。</div>
-              </div>
-            </div>
-          </div>
-        </div>
-        </ProSectionWrapper>
 
-        {/* 店舗受取設定：左＝タイトル・説明、右＝カード（Pro） */}
-        <ProSectionWrapper isPro={isPro}>
-        <div style={{ display: "flex", gap: "24px", alignItems: "flex-start", flexWrap: "wrap", marginBottom: "24px" }}>
-          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <span style={{ fontWeight: 600, fontSize: 14, color: "#202223" }}>店舗受け取りボタン</span>
-              <ProBadge />
-            </div>
-            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
-              「この店舗で受け取る」ボタンを表示すると、各ロケーション行に店舗受け取り用のボタンが表示されます。ボタンをタップするとデフォルトでカートに追加されます。「ボタンタップ後にチェックアウトまでリダイレクトする」をONにすると、カートに追加したあとそのままチェックアウトページへ移動します。ボタンの見た目はテーマのカスタマイザーで変更できます。
-            </div>
+          <div
+            style={{
+              background: "#ffffff",
+              borderRadius: 12,
+              boxShadow: "0 0 0 1px #e1e3e5",
+              padding: 16,
+            }}
+          >
+            <LocationCompareList
+              rows={rows}
+              regionGroups={regionGroups}
+              isPro={isPro}
+              distributionNote={describeDistributionEditing(shopPlan)}
+              locationsMode={locationsMode}
+              savedLocationsMode={initialLocationsMode}
+              pinnedLocationId={pinnedLocationId}
+              hasNextPage={!!locationsHasNextPage}
+              onPinnedLocationId={setPinnedLocationId}
+              onUpdateRow={updateRow}
+              onUpdateRegionGroup={updateRowRegionGroup}
+              onMoveRowUp={moveRowUp}
+              onMoveRowDown={moveRowDown}
+              onSortOrder={handleSortOrder}
+            />
           </div>
-          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
-            <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, marginBottom: 12 }}>
-                <input type="checkbox" checked={!!future.showOrderPickButton} onChange={(e) => setFuture((f) => ({ ...f, showOrderPickButton: e.target.checked }))} />
-                <span>「この店舗で受け取る」ボタンを表示</span>
-              </label>
-              <div style={{ marginBottom: 12 }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>ボタンラベル</label>
-                <input type="text" value={future.orderPickButtonLabel} onChange={(e) => setFuture((f) => ({ ...f, orderPickButtonLabel: e.target.value }))} style={selectBaseStyle} placeholder="この店舗で受け取る" />
-              </div>
-              <div style={{ marginBottom: 12 }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>追加中の表示（読み込み中）</label>
-                <input type="text" value={future.orderPickAddingLabel} onChange={(e) => setFuture((f) => ({ ...f, orderPickAddingLabel: e.target.value }))} style={selectBaseStyle} placeholder="空欄＝ローディングマークのみ" />
-              </div>
-              <div style={{ marginBottom: 12 }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>追加後の表示（成功メッセージ）</label>
-                <input type="text" value={future.orderPickAddedLabel} onChange={(e) => setFuture((f) => ({ ...f, orderPickAddedLabel: e.target.value }))} style={selectBaseStyle} placeholder="追加しました" />
-              </div>
-              <div style={{ marginBottom: 12 }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>在庫なし時の表示（ボタンではなくテキスト）</label>
-                <input type="text" value={future.orderPickOutOfStockLabel} onChange={(e) => setFuture((f) => ({ ...f, orderPickOutOfStockLabel: e.target.value }))} style={selectBaseStyle} placeholder="Sold Out" />
-              </div>
-              <div style={{ marginBottom: 12 }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>カート追加後モーダル：タイトル</label>
-                <input type="text" value={future.orderPickModalTitle} onChange={(e) => setFuture((f) => ({ ...f, orderPickModalTitle: e.target.value }))} style={selectBaseStyle} placeholder="カートに追加しました（{count}点）" />
-                <div style={{ fontSize: 12, color: "#6d7175", marginTop: 4 }}>「{"{count}"}」を点数に置き換えます（例：カートに追加しました（3点））</div>
-              </div>
-              <div style={{ marginBottom: 12 }}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#202223" }}>カート追加後モーダル：説明文</label>
-                <textarea value={future.orderPickModalBody} onChange={(e) => setFuture((f) => ({ ...f, orderPickModalBody: e.target.value }))} style={{ ...selectBaseStyle, minHeight: 60 }} placeholder="チェックアウトページでお届け先を「受取」を選択して受取ご希望の店舗をご選択ください。" rows={3} />
-              </div>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14 }}>
-                <input type="checkbox" checked={!!future.orderPickRedirectToCheckout} onChange={(e) => setFuture((f) => ({ ...f, orderPickRedirectToCheckout: e.target.checked }))} />
-                <span>ボタンタップ後にチェックアウトまでリダイレクトする</span>
-              </label>
-            </div>
-          </div>
-        </div>
-        </ProSectionWrapper>
-
-        {/* ロケーション名のリンク設定：一括でリンク表示ON/OFF ＋ 行ごとにURL入力 */}
-        <div style={{ display: "flex", gap: "24px", alignItems: "flex-start", flexWrap: "wrap", marginBottom: "24px" }}>
-          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>ロケーション名のリンク設定</div>
-            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
-              「リンクを表示する」をONにすると、商品ページの在庫一覧でロケーション名をリンクにできます。下の一覧の「リンクURL」列にURLを入力したロケーションだけがリンク表示され、未入力のロケーションはリンクになりません。
-            </div>
-          </div>
-          <div style={{ flex: "1 1 320px", minWidth: 280 }}>
-            <div style={{ background: "#ffffff", borderRadius: 12, boxShadow: "0 0 0 1px #e1e3e5", padding: 16 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14 }}>
-                <input type="checkbox" checked={!!future.showLocationLinks} onChange={(e) => setFuture((f) => ({ ...f, showLocationLinks: e.target.checked }))} />
-                <span>リンクを表示する</span>
-              </label>
-              <div style={{ fontSize: 12, color: "#6d7175", marginTop: 8 }}>
-                ONのとき、下の一覧でURLを入力したロケーションのみリンク表示されます。URLが空の行はリンクになりません。
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>
-            ロケーション一覧
-          </div>
-          <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5 }}>
-            店舗名の横に表示状態を置いています。チェックを外した店舗は「非表示」です。
-            公開名を保存するとその名前で表示し、未入力のときは Shopify のロケーション名を使います。
-            並び順は数値と上下ボタンで変更でき、「一覧の並び順を使う」のときはこの順番が商品ページに反映されます。上部固定にしたロケーションは常に先頭に表示され、エリアの選択はできません。
-          </div>
-        </div>
-
-        <div
-          style={{
-            background: "#ffffff",
-            borderRadius: 12,
-            boxShadow: "0 0 0 1px #e1e3e5",
-            padding: 16,
-          }}
-        >
-          <LocationCompareList
-            rows={rows}
-            regionGroups={regionGroups}
-            isPro={isPro}
-            distributionNote={describeDistributionEditing(shopPlan)}
-            locationsMode={locationsMode}
-            savedLocationsMode={initialLocationsMode}
-            pinnedLocationId={pinnedLocationId}
-            hasNextPage={!!locationsHasNextPage}
-            onPinnedLocationId={setPinnedLocationId}
-            onUpdateRow={updateRow}
-            onUpdateRegionGroup={updateRowRegionGroup}
-            onMoveRowUp={moveRowUp}
-            onMoveRowDown={moveRowDown}
-            onSortOrder={handleSortOrder}
-          />
         </div>
       </div>
 

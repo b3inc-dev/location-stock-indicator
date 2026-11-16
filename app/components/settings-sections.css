@@ -1,0 +1,23 @@
+.location-settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #e1e3e5;
+  padding-bottom: 8px;
+}
+
+.location-settings-tabs button {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: #202223;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.location-settings-tabs button[aria-pressed="true"] {
+  background: #e5e7eb;
+  font-weight: 600;
+}
