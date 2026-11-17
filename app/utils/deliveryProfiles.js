@@ -355,6 +355,26 @@ export async function detectMarketDrivenShipping(session) {
   }
 }
 
+function isThrottleError(error) {
+  return error?.extensions?.code === "THROTTLED" || error?.message === "Throttled";
+}
+
+async function readDeliveryProfiles(admin) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const response = await admin.graphql(DELIVERY_PROFILES_QUERY);
+      const result = await response.json();
+      if (attempt > 0 || !result.errors?.length || !result.errors.every(isThrottleError)) {
+        return result;
+      }
+    } catch (error) {
+      if (attempt > 0 || !isThrottleError(error)) throw error;
+    }
+    // Only a throttled, read-only query gets a second attempt.
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+}
+
 /**
  * MDS / legacy を分岐して location 配送フラグ Map を返す。
  * @param {object} admin - admin.graphql を持つクライアント（legacy 用）
@@ -395,8 +415,7 @@ export async function loadLocationDeliveryFlags(admin, session, options = {}) {
 
   // legacy（false）または判定不能（null）→ deliveryProfiles
   try {
-    const dpRes = await admin.graphql(DELIVERY_PROFILES_QUERY);
-    const dpResult = await dpRes.json();
+    const dpResult = await readDeliveryProfiles(admin);
     if (dpResult.errors?.length) {
       console.warn(
         "[location-stock] deliveryProfiles query returned GraphQL errors (要因: スコープ未付与 or API 制限):",
