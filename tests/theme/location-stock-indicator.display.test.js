@@ -5,7 +5,10 @@ import { createContext, runInContext } from "node:vm";
 import { fileURLToPath } from "node:url";
 
 const SCRIPT_PATH = fileURLToPath(
-  new URL("./location-stock-indicator.js", import.meta.url)
+  new URL(
+    "../../extensions/location-stock-theme/assets/location-stock-indicator.js",
+    import.meta.url
+  )
 );
 const SCRIPT = readFileSync(SCRIPT_PATH, "utf8");
 
