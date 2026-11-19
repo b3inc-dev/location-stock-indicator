@@ -26,9 +26,13 @@ api_version = "2026-01"
   compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
   uri = "/webhooks/compliance"
 
+[access.admin]
+direct_api_mode = "online"
+embedded_app_direct_api_access = true
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_inventory,read_locations,read_products,read_shipping,read_markets,write_app_proxy"
+scopes = "read_inventory,read_locations,read_products,read_shipping,read_orders,read_merchant_managed_fulfillment_orders,read_markets,write_app_proxy"
 
 [auth]
 redirect_urls = [ "https://location-stock-indicator-ciara.onrender.com/api/auth" ]
