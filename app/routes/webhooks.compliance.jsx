@@ -4,6 +4,7 @@
 
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+import {redactCustomerPosData, redactShopPosData} from "../utils/posRedact.server.js";
 
 export const action = async ({ request }) => {
   // HMAC 検証：無効な場合は 401 Unauthorized が throw される
@@ -16,16 +17,25 @@ export const action = async ({ request }) => {
   }
 
   if (topic === "customers/redact") {
-    // 当アプリは顧客単位のデータを保存していない。削除対象なしで受領確認。
-    console.log(`[compliance] customers/redact for ${shop}`, payload?.customer?.id ?? "");
+    // 顧客の名前・連絡先は保存していない。POS Lite の受取・配送の処理用に
+    // 注文 ID を持つ行（PosWebhookClaim・PosOrderLock）だけ、orders_to_redact の注文分を消す。
+    const deleted = await redactCustomerPosData(db, shop, payload);
+    console.log(
+      `[compliance] customers/redact for ${shop}`,
+      payload?.customer?.id ?? "",
+      `pos claims deleted: ${deleted.claims}, pos locks deleted: ${deleted.locks}`,
+    );
     return new Response(null, { status: 200 });
   }
 
   if (topic === "shop/redact") {
-    // アンインストール 48 時間後に送信。当ショップのセッションを削除。
+    // アンインストール 48 時間後に送信。当ショップのセッションと POS Lite の処理用の行を削除。
     if (shop) {
       await db.session.deleteMany({ where: { shop } });
-      console.log(`[compliance] shop/redact for ${shop}: sessions deleted`);
+      const deleted = await redactShopPosData(db, shop);
+      console.log(
+        `[compliance] shop/redact for ${shop}: sessions deleted, pos claims deleted: ${deleted.claims}, pos locks deleted: ${deleted.locks}`,
+      );
     }
     return new Response(null, { status: 200 });
   }

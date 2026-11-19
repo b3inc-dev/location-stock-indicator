@@ -1,4 +1,7 @@
-import {pickupOrders, pickupDetails} from "./pickup.js";
+import {pickupOrders, pickupDetails, preparePickup, completePickup} from "./pickup.js";
+import {renderDelivery} from "./delivery-screen.js";
+import {renderReview} from "./review-screen.js";
+import {requirePosAccess} from "./access.js";
 
 async function request(query, variables) {
   const response = await fetch("shopify:admin/api/graphql.json", {
@@ -12,7 +15,7 @@ async function request(query, variables) {
   return payload.data;
 }
 
-export default function () {
+export function renderPickup() {
   const page = document.createElement("s-page");
   page.setAttribute("heading", "店舗受取");
   const scroll = document.createElement("s-scroll-box");
@@ -33,12 +36,13 @@ export default function () {
     list.replaceChildren();
     line("読み込み中…");
     try {
+      await requirePosAccess();
       const location = shopify.session.currentSession.locationId;
       const rows = await pickupOrders(location, request);
       if (location !== shopify.session.currentSession.locationId) throw new Error("店舗が切り替わりました。更新してください。");
       list.replaceChildren();
       if (!rows.length) line("この店舗の未完了の受取注文はありません。");
-      const label = {OPEN: "未完了", IN_PROGRESS: "処理中", ON_HOLD: "保留", SCHEDULED: "予定"};
+      const label = {OPEN: "準備待ち", IN_PROGRESS: "引渡待ち", ON_HOLD: "保留", SCHEDULED: "予定"};
       for (const row of rows) {
         const show = document.createElement("s-button");
         const detail = document.createElement("s-stack");
@@ -48,6 +52,7 @@ export default function () {
           detail.replaceChildren();
           line("明細を読み込み中…", detail);
           try {
+            await requirePosAccess();
             const items = await pickupDetails(row.id, location, request);
             if (location !== shopify.session.currentSession.locationId) throw new Error("店舗が変わりました。一覧を更新してください。");
             detail.replaceChildren();
@@ -55,6 +60,29 @@ export default function () {
             for (const item of items) {
               const name = [item.productTitle, item.variantTitle, item.sku].filter(Boolean).join(" / ");
               line(name + "　" + item.remainingQuantity + "点", detail);
+            }
+            if (row.status === "ON_HOLD" || row.status === "SCHEDULED") {
+              line("この状態では操作できません。", detail);
+            } else if (row.status === "OPEN" || row.status === "IN_PROGRESS") {
+              const action = document.createElement("s-button");
+              action.textContent = row.status === "OPEN" ? "準備完了" : "引渡完了";
+              action.addEventListener("click", async () => {
+                action.disabled = true;
+                try {
+                  await requirePosAccess();
+                  const result = row.status === "OPEN"
+                    ? await preparePickup(row.id, location, request)
+                    : await completePickup(row.id, location, request);
+                  detail.replaceChildren();
+                  line(result.already ? "最新の状態を確認しました。再送信はしていません。" : (row.status === "OPEN" ? "準備完了の通知を送りました。" : "引渡完了を記録しました。"), detail);
+                  await refresh();
+                } catch (error) {
+                  line(error.message || "更新できませんでした。もう一度操作してください。", detail);
+                } finally {
+                  action.disabled = false;
+                }
+              });
+              detail.append(action);
             }
           } catch (error) {
             detail.replaceChildren();
@@ -74,4 +102,16 @@ export default function () {
   }
   button.addEventListener("click", refresh);
   void refresh();
+}
+
+export default async function () {
+  let mode = "pickup";
+  try {
+    mode = (await shopify.storage.get("lsi-mode")) || "pickup";
+  } catch {
+    mode = "pickup";
+  }
+  if (mode === "delivery") renderDelivery();
+  else if (mode === "review") renderReview();
+  else renderPickup();
 }
