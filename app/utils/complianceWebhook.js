@@ -23,10 +23,17 @@ export function normalizeWebhookTopic(topic) {
 }
 
 /**
- * @param {{ topic: unknown, shop?: string | null, payload?: any, db: any, log?: (...args: any[]) => void }} args
- * @returns {Promise<{ status: number, handled: string | null }>}
+ * @param {{
+ *   topic: unknown,
+ *   shop?: string | null,
+ *   payload?: any,
+ *   db: any,
+ *   isShopStillInstalled: (shop: string) => Promise<boolean>,
+ *   log?: (...args: any[]) => void,
+ * }} args
+ * @returns {Promise<{ status: number, handled: string | null, skipped?: string }>}
  */
-export async function handleComplianceWebhook({ topic, shop, payload, db, log = console.log }) {
+export async function handleComplianceWebhook({ topic, shop, payload, db, isShopStillInstalled, log = console.log }) {
   const normalized = normalizeWebhookTopic(topic);
 
   switch (normalized) {
@@ -43,12 +50,21 @@ export async function handleComplianceWebhook({ topic, shop, payload, db, log = 
     case COMPLIANCE_TOPICS.SHOP_REDACT: {
       // アンインストールの 48 時間後に届く。この店の DB の行をすべて消す。
       const shopDomain = shop || payload?.shop_domain || null;
-      if (shopDomain) {
-        const result = await db.session.deleteMany({ where: { shop: shopDomain } });
-        log(`[compliance] shop/redact for ${shopDomain}: sessions deleted`, result?.count ?? 0);
-      } else {
+      if (!shopDomain) {
         log("[compliance] shop/redact without shop domain; nothing deleted");
+        return { status: 200, handled: normalized, skipped: "no_shop" };
       }
+      // 48 時間のうちに入れ直した店なら、入れ直したあとのセッションを消さない。
+      // 確かめられないとき（通信の失敗など）は投げて 500 にし、Shopify にもう一度送ってもらう。
+      if (typeof isShopStillInstalled !== "function") {
+        throw new Error("isShopStillInstalled is required for shop/redact");
+      }
+      if (await isShopStillInstalled(shopDomain)) {
+        log(`[compliance] shop/redact for ${shopDomain}: app is installed again; skipped delete`);
+        return { status: 200, handled: normalized, skipped: "reinstalled" };
+      }
+      const result = await db.session.deleteMany({ where: { shop: shopDomain } });
+      log(`[compliance] shop/redact for ${shopDomain}: sessions deleted`, result?.count ?? 0);
       return { status: 200, handled: normalized };
     }
     default: {
