@@ -1,0 +1,186 @@
+{
+  "block": {
+    "name": "Location stock indicator"
+  },
+  "settings": {
+    "header_title_layout": {
+      "content": "タイトルとレイアウト"
+    },
+    "heading_text": {
+      "label": "タイトル",
+      "default": "各店舗の在庫状況",
+      "info": "空欄のままにするとタイトルを表示しません。"
+    },
+    "heading_level": {
+      "label": "タイトルの見出しレベル",
+      "info": "見た目のサイズは「タイトルの文字サイズ」で調整します。",
+      "options": {
+        "h3": "H3（既定）",
+        "h2": "H2"
+      }
+    },
+    "heading_align": {
+      "label": "タイトルの揃え",
+      "options": {
+        "left": "左寄せ",
+        "center": "中央",
+        "right": "右寄せ"
+      }
+    },
+    "heading_font_size": {
+      "label": "タイトルの文字サイズ（px）"
+    },
+    "layout_type": {
+      "label": "レイアウト",
+      "options": {
+        "table": "表（テーブル）",
+        "list": "リスト（1行）",
+        "stacked": "2行（ロケーション名＋在庫）"
+      }
+    },
+    "location_align": {
+      "label": "ロケーション名の揃え",
+      "options": {
+        "left": "左寄せ",
+        "center": "中央",
+        "right": "右寄せ"
+      }
+    },
+    "status_align": {
+      "label": "在庫表示の揃え",
+      "options": {
+        "left": "左寄せ",
+        "center": "中央",
+        "right": "右寄せ"
+      }
+    },
+    "font_size": {
+      "label": "本文の文字サイズ（px）"
+    },
+    "margin_bottom": {
+      "label": "下マージン（px）"
+    },
+    "content_align": {
+      "label": "ブロック全体の配置",
+      "options": {
+        "left": "左寄せ",
+        "center": "中央寄せ",
+        "right": "右寄せ"
+      }
+    },
+    "header_legend_notice": {
+      "content": "凡例・注意書き・行・枠線"
+    },
+    "legend_position": {
+      "label": "凡例の表示位置",
+      "options": {
+        "top_left": "リストの上・左寄せ",
+        "top_center": "リストの上・中央",
+        "top_right": "リストの上・右寄せ",
+        "bottom_left": "リストの下・左寄せ",
+        "bottom_center": "リストの下・中央",
+        "bottom_right": "リストの下・右寄せ"
+      }
+    },
+    "notice_position": {
+      "label": "注意書きの位置",
+      "options": {
+        "top_left": "リストの上・左寄せ",
+        "top_center": "リストの上・中央",
+        "top_right": "リストの上・右寄せ",
+        "bottom_left": "リストの下・左寄せ",
+        "bottom_center": "リストの下・中央",
+        "bottom_right": "リストの下・右寄せ"
+      }
+    },
+    "row_padding_y": {
+      "label": "行の余白（px）",
+      "info": "上下・左右の両方に適用します。"
+    },
+    "border_style": {
+      "label": "枠線のスタイル",
+      "options": {
+        "none": "枠線なし",
+        "rows": "行ごとのみ",
+        "full": "外枠＋行ごと"
+      }
+    },
+    "border_color": {
+      "label": "枠線の色"
+    },
+    "status_color_preset": {
+      "label": "在庫マークの色",
+      "options": {
+        "default": "標準（緑／黄／赤）",
+        "muted": "落ち着いた色",
+        "mono": "モノクロ"
+      }
+    },
+    "header_region_pickup": {
+      "content": "エリア/近隣・店舗受け取り"
+    },
+    "region_pickup_note": {
+      "content": "アプリ側でエリア／近隣／店舗受け取りをONにしたときのみ反映されます。"
+    },
+    "region_style_preset": {
+      "label": "エリア／近隣見出しのスタイル",
+      "options": {
+        "default": "標準",
+        "subtle": "控えめ",
+        "emphasis": "強調"
+      }
+    },
+    "region_heading_align": {
+      "label": "見出しの配置",
+      "options": {
+        "left": "左寄せ",
+        "center": "中央",
+        "right": "右寄せ"
+      }
+    },
+    "accordion_icon": {
+      "label": "折りたたみマーク",
+      "options": {
+        "chevron": "三角（▼/▶）",
+        "angle": "山括弧（＞/∨）",
+        "plus_minus": "プラス・マイナス（+/−）",
+        "arrow": "矢印（↓/→）"
+      }
+    },
+    "order_pick_btn_style": {
+      "label": "受け取りボタンの形",
+      "options": {
+        "solid_square": "ソリッド×スクエア",
+        "solid_round": "ソリッド×ラウンド",
+        "solid_pill": "ソリッド×ピル",
+        "outline_square": "アウトライン×スクエア",
+        "outline_round": "アウトライン×ラウンド",
+        "outline_pill": "アウトライン×ピル",
+        "ghost": "ゴースト"
+      }
+    },
+    "order_pick_btn_theme": {
+      "label": "受け取りボタンの色",
+      "options": {
+        "brand": "ブランド（濃い青）",
+        "dark": "ダーク",
+        "light": "ライト"
+      }
+    },
+    "order_pick_col_width": {
+      "label": "ボタン列の幅（テーブル時・%）"
+    },
+    "order_pick_btn_align": {
+      "label": "ボタンの左右位置",
+      "options": {
+        "left": "左寄せ",
+        "center": "中央",
+        "right": "右寄せ"
+      }
+    },
+    "custom_css": {
+      "label": "追加CSS",
+      "info": "ルートは #lsi-（block ID） をセレクタに使えます。"
+    }
+  }
+}

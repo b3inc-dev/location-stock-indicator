@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback } from "react";
 import { useLoaderData, useOutletContext, Link } from "react-router";
 import { authenticate } from "../shopify.server";
 import { getAnalyticsDailyData } from "../analytics.server";
+import { createT, resolveAdminLocale } from "../i18n/adminI18n.js";
 
 /**
  * 分析ページ用: shop と locations を1クエリで取得（app.locations と同じ形式で構文エラーを防ぐ）。
@@ -107,11 +108,14 @@ export default function AppAnalytics() {
   const { locations, dailyData: initialDailyData } = useLoaderData();
   const outletContext = useOutletContext();
   const shopPlan = outletContext?.shopPlan ?? null;
+  const t =
+    outletContext?.t ||
+    createT(resolveAdminLocale(shopPlan));
   const isPro = shopPlan?.distribution === "inhouse" || shopPlan?.plan === "pro";
 
   if (!isPro && shopPlan?.distribution === "public") {
     return (
-      <s-page heading="分析">
+      <s-page heading={t("analytics.heading")}>
         <div style={{ padding: "16px", maxWidth: "560px" }}>
           <div
             style={{
@@ -124,10 +128,10 @@ export default function AppAnalytics() {
             }}
           >
             <div style={{ fontSize: "16px", fontWeight: 700, color: "#202223", marginBottom: "8px" }}>
-              分析は Pro プランでご利用いただけます
+              {t("analytics.proOnlyTitle")}
             </div>
             <div style={{ fontSize: "14px", color: "#6d7175", marginBottom: "16px", lineHeight: 1.5 }}>
-              エリア表示回数・近隣店舗クリック・店舗受け取りボタンクリックなどの分析機能は、Pro プランにアップグレードするとご利用できます。
+              {t("analytics.proOnlyBody")}
             </div>
             <Link
               to="/app/plan"
@@ -142,7 +146,7 @@ export default function AppAnalytics() {
                 textDecoration: "none",
               }}
             >
-              料金プランを見る
+              {t("analytics.viewPlans")}
             </Link>
           </div>
         </div>
@@ -218,12 +222,12 @@ export default function AppAnalytics() {
 
   const handleDownloadCSV = useCallback(() => {
     const headers = [
-      "日付",
-      "エリア表示回数",
-      "近隣店舗クリック数",
-      ...filteredLocations.map((loc) => `${loc.name} 表示`),
-      "店舗受け取りボタンクリック数",
-      ...filteredLocations.map((loc) => `${loc.name} クリック`),
+      t("analytics.colDate"),
+      t("analytics.colAreaViews"),
+      t("analytics.colNearbyClicks"),
+      ...filteredLocations.map((loc) => t("analytics.colLocViews", { name: loc.name })),
+      t("analytics.colPickupClicks"),
+      ...filteredLocations.map((loc) => t("analytics.colLocClicks", { name: loc.name })),
     ];
     const rows = [];
 
@@ -233,7 +237,7 @@ export default function AppAnalytics() {
       filteredLocations.reduce((s, loc) => s + (row.orderPickByLocation?.[loc.id] ?? 0), 0);
 
     rows.push([
-      "合計",
+      t("analytics.total"),
       totals.areaDisplayCount,
       nearbyClickTotal,
       ...filteredLocations.map((loc) => totals.nearbyDisplayByLocation[loc.id] ?? 0),
@@ -258,10 +262,11 @@ export default function AppAnalytics() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `分析_${startDate}_${endDate}.csv`;
+    link.download = t("analytics.csvFilename", { start: startDate, end: endDate });
     link.click();
     URL.revokeObjectURL(url);
   }, [
+    t,
     filteredLocations,
     totals,
     dailyData,
@@ -272,14 +277,14 @@ export default function AppAnalytics() {
   ]);
 
   return (
-    <s-page heading="分析">
+    <s-page heading={t("analytics.heading")}>
       <div style={{ padding: "16px", maxWidth: "1200px", paddingBottom: "40px" }}>
         <div style={{ display: "flex", gap: "24px", alignItems: "flex-start", flexWrap: "wrap" }}>
           {/* 左: フィルター */}
           <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>分析</div>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>{t("analytics.title")}</div>
             <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5, marginBottom: 16 }}>
-              期間とロケーションで絞り込みます。選択したロケーションの合計が「近隣店舗クリック数」「店舗受け取りボタンクリック数」になります。
+              {t("analytics.desc")}
             </div>
             <div
               style={{
@@ -289,8 +294,8 @@ export default function AppAnalytics() {
                 padding: 16,
               }}
             >
-              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12, color: "#202223" }}>フィルター</div>
-              <div style={{ fontSize: 13, color: "#6d7175", marginBottom: 12 }}>表示期間</div>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12, color: "#202223" }}>{t("analytics.filters")}</div>
+              <div style={{ fontSize: 13, color: "#6d7175", marginBottom: 12 }}>{t("analytics.dateRange")}</div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
                 <input
                   type="date"
@@ -306,7 +311,7 @@ export default function AppAnalytics() {
                   style={inputBaseStyle}
                 />
               </div>
-              <div style={{ fontSize: 13, color: "#6d7175", marginBottom: 8 }}>ロケーション（複数選択可）</div>
+              <div style={{ fontSize: 13, color: "#6d7175", marginBottom: 8 }}>{t("analytics.locationsMulti")}</div>
               <div
                 style={{
                   maxHeight: 200,
@@ -335,7 +340,7 @@ export default function AppAnalytics() {
                     readOnly
                     style={{ width: 16, height: 16, flexShrink: 0 }}
                   />
-                  <span style={{ fontWeight: isAllLocationsSelected ? 600 : 500 }}>全て</span>
+                  <span style={{ fontWeight: isAllLocationsSelected ? 600 : 500 }}>{t("analytics.all")}</span>
                 </div>
                 {locations.map((loc) => {
                   const isSelected = selectedLocationIds.has(loc.id);
@@ -399,7 +404,7 @@ export default function AppAnalytics() {
                 }}
               >
                 <span style={{ fontSize: 14, color: "#6d7175" }}>
-                  表示: {filteredLocations.length} ロケーション
+                  {t("analytics.showingCount", { count: filteredLocations.length })}
                 </span>
                 <button
                   type="button"
@@ -415,7 +420,7 @@ export default function AppAnalytics() {
                     cursor: "pointer",
                   }}
                 >
-                  CSVダウンロード
+                  {t("analytics.csvDownload")}
                 </button>
               </div>
 
@@ -429,9 +434,9 @@ export default function AppAnalytics() {
                     lineHeight: 1.5,
                   }}
                 >
-                  指定期間にデータがありません。
+                  {t("analytics.emptyTitle")}
                   <br />
-                  分析データの収集は今後実装予定です。データがたまると、ここに合計と日別の数値が表示されます。
+                  {t("analytics.emptyBody")}
                 </div>
               ) : (
                 <div style={{ overflowX: "auto" }}>
@@ -439,13 +444,13 @@ export default function AppAnalytics() {
                     <thead>
                       <tr style={{ borderBottom: "2px solid #e1e3e5", background: "#f6f6f7" }}>
                         <th style={{ padding: "10px 12px", textAlign: "left", fontWeight: 600, color: "#202223" }}>
-                          日付
+                          {t("analytics.colDate")}
                         </th>
                         <th style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, color: "#202223" }}>
-                          エリア表示回数
+                          {t("analytics.colAreaViews")}
                         </th>
                         <th style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, color: "#202223" }}>
-                          近隣店舗クリック数
+                          {t("analytics.colNearbyClicks")}
                         </th>
                         {filteredLocations.map((loc) => (
                           <th
@@ -457,7 +462,7 @@ export default function AppAnalytics() {
                               color: "#202223",
                             }}
                           >
-                            {loc.name} 表示
+                            {t("analytics.colLocViews", { name: loc.name })}
                           </th>
                         ))}
                         <th
@@ -468,7 +473,7 @@ export default function AppAnalytics() {
                             color: "#202223",
                           }}
                         >
-                          店舗受け取りボタンクリック数
+                          {t("analytics.colPickupClicks")}
                         </th>
                         {filteredLocations.map((loc) => (
                           <th
@@ -480,7 +485,7 @@ export default function AppAnalytics() {
                               color: "#202223",
                             }}
                           >
-                            {loc.name} クリック
+                            {t("analytics.colLocClicks", { name: loc.name })}
                           </th>
                         ))}
                       </tr>
@@ -493,7 +498,7 @@ export default function AppAnalytics() {
                           fontWeight: 600,
                         }}
                       >
-                        <td style={{ padding: "10px 12px", color: "#202223" }}>合計</td>
+                        <td style={{ padding: "10px 12px", color: "#202223" }}>{t("analytics.total")}</td>
                         <td style={{ padding: "10px 12px", textAlign: "right" }}>
                           {totals.areaDisplayCount}
                         </td>

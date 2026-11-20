@@ -1,8 +1,9 @@
 // app/routes/app.plan.jsx - 料金プランページ（プラン選択＋プラン別機能の紹介）POS Stock 同様 UI
-import { Form, redirect, useLoaderData } from "react-router";
+import { Form, redirect, useLoaderData, useOutletContext } from "react-router";
 import { authenticate } from "../shopify.server";
 import { getShopPlan } from "../utils/shopPlan.server.js";
 import { createAppSubscription } from "../utils/billing.js";
+import { createT, resolveAdminLocale } from "../i18n/adminI18n.js";
 
 const APP_HANDLE = process.env.SHOPIFY_APP_HANDLE || "app";
 
@@ -40,6 +41,10 @@ export async function action({ request }) {
 
 export default function PlanPage() {
   const { shopPlan, pricingPlansUrl, requiredFromQuery } = useLoaderData();
+  const outletContext = useOutletContext();
+  const t =
+    outletContext?.t ||
+    createT(resolveAdminLocale(shopPlan));
   const { plan, locationsCount, distribution, isDevelopmentStore, locationPlanMismatch, maxLocationsForPlan, planRequired } =
     shopPlan ?? {};
   const isInhouse = distribution === "inhouse";
@@ -47,7 +52,7 @@ export default function PlanPage() {
 
   if (isInhouse) {
     return (
-      <s-page heading="料金プラン">
+      <s-page heading={t("plan.heading")}>
         <div style={{ padding: "16px", maxWidth: "600px", margin: "0 16px" }}>
           <div
             style={{
@@ -57,10 +62,10 @@ export default function PlanPage() {
               boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
             }}
           >
-            <s-text emphasis="bold">全機能をご利用いただけます</s-text>
+            <s-text emphasis="bold">{t("plan.inhouseTitle")}</s-text>
             <div style={{ marginTop: "8px" }}>
               <s-text tone="subdued" size="small">
-                このアプリでは料金プランの選択はありません。
+                {t("plan.inhouseBody")}
               </s-text>
             </div>
           </div>
@@ -70,7 +75,7 @@ export default function PlanPage() {
   }
 
   return (
-    <s-page heading="料金プラン">
+    <s-page heading={t("plan.heading")}>
       <div style={{ padding: "16px", maxWidth: "900px" }}>
         {showRequiredBanner && (
           <div
@@ -82,10 +87,10 @@ export default function PlanPage() {
               borderRadius: "8px",
             }}
           >
-            <s-text emphasis="bold">料金プランの選択が必要です</s-text>
+            <s-text emphasis="bold">{t("plan.requiredTitle")}</s-text>
             <div style={{ marginTop: "8px" }}>
               <s-text size="small">
-                プラン未選択の間は、商品ページのロケーション別在庫は表示されません。Lite または Pro を選択してください。
+                {t("plan.requiredBody")}
               </s-text>
             </div>
           </div>
@@ -101,11 +106,14 @@ export default function PlanPage() {
             }}
           >
             <div style={{ fontSize: "16px", fontWeight: 700, color: "#202223", marginBottom: "8px" }}>
-              ロケーション数がプランと一致していません
+              {t("plan.mismatchTitle")}
             </div>
             <div style={{ fontSize: "14px", color: "#202223", marginBottom: "12px", lineHeight: 1.5 }}>
-              現在のプランは<strong>{maxLocationsForPlan}ロケーション</strong>までです。ストアのロケーション数は
-              <strong>{locationsCount}</strong>のため、プラン変更が必要です。変更が反映されるまで設定などの機能はご利用いただけません。
+              {t("plan.mismatchBodyBefore")}{" "}
+              <strong>{t("plan.mismatchLocations", { count: maxLocationsForPlan })}</strong>
+              {t("plan.mismatchBodyMid")}
+              <strong>{locationsCount}</strong>
+              {t("plan.mismatchBodyAfter")}
             </div>
             <a
               href={pricingPlansUrl}
@@ -122,10 +130,10 @@ export default function PlanPage() {
                 textDecoration: "none",
               }}
             >
-              Shopify でプランを変更する
+              {t("plan.changeOnShopify")}
             </a>
             <div style={{ marginTop: "8px", fontSize: "13px", color: "#6d7175" }}>
-              プラン変更後、このページを再読み込みしてください。
+              {t("plan.reloadAfterChange")}
             </div>
           </div>
         )}
@@ -140,10 +148,10 @@ export default function PlanPage() {
               borderLeft: "4px solid #008060",
             }}
           >
-            <s-text emphasis="bold">開発ストアのため課金は発生しません</s-text>
+            <s-text emphasis="bold">{t("plan.devTitle")}</s-text>
             <div style={{ marginTop: "4px" }}>
               <s-text tone="subdued" size="small">
-                全機能をご利用いただけます。本番ストアでは下記の料金が適用されます。
+                {t("plan.devBody")}
               </s-text>
             </div>
           </div>
@@ -161,30 +169,30 @@ export default function PlanPage() {
               gap: "8px",
             }}
           >
-            <span style={{ fontSize: "18px", fontWeight: 700, color: "#202223" }}>料金プラン</span>
-            <span style={{ fontSize: "14px", color: "#6d7175" }}>ロケーション数: {locationsCount}</span>
+            <span style={{ fontSize: "18px", fontWeight: 700, color: "#202223" }}>{t("plan.sectionTitle")}</span>
+            <span style={{ fontSize: "14px", color: "#6d7175" }}>{t("plan.locationCountLabel", { count: locationsCount })}</span>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px" }}>
             <PlanCard
+              t={t}
               planKey="lite"
               name="Lite"
-              priceSummary="$20/月"
-              priceDetail="10ロケーションまで。定額です。"
-              trial="7日間無料"
-              summary="基本の在庫表示・並び順・閾値・公開名・リンクなど。エリア・近隣店舗・店舗受け取り・分析は Pro でご利用いただけます。"
+              priceSummary={t("plan.litePrice")}
+              priceDetail={t("plan.liteDetail")}
+              trial={t("plan.liteTrial")}
+              summary={t("plan.liteSummary")}
               isCurrent={plan === "lite"}
-              pricingPlansUrl={pricingPlansUrl}
             />
             <PlanCard
+              t={t}
               planKey="pro"
               name="Pro"
-              priceSummary="$20/月〜"
-              priceDetail="$20 ＋ 1ロケーションあたり $2/月（ロケーション数に制限なし）"
-              trial="14日間無料"
-              summary="エリア設定・近隣店舗表示・店舗受け取りボタン・分析（管理画面）を含む全機能。"
+              priceSummary={t("plan.proPrice")}
+              priceDetail={t("plan.proDetail")}
+              trial={t("plan.proTrial")}
+              summary={t("plan.proSummary")}
               isCurrent={plan === "pro"}
-              pricingPlansUrl={pricingPlansUrl}
             />
           </div>
         </div>
@@ -192,7 +200,7 @@ export default function PlanPage() {
         {/* 全てのプランで利用可能な機能 */}
         <div style={{ marginBottom: "24px" }}>
           <div style={{ marginBottom: "12px", fontSize: "18px", fontWeight: 700, color: "#202223" }}>
-            全てのプランで利用可能な機能
+            {t("plan.allPlansTitle")}
           </div>
           <div
             style={{
@@ -203,16 +211,16 @@ export default function PlanPage() {
             }}
           >
             <FeatureCard
-              title="在庫表示"
-              description="閾値（在庫なし/残りわずか/在庫あり）・在庫マーク・ラベル・メッセージの設定。"
+              title={t("plan.featureStockTitle")}
+              description={t("plan.featureStockDesc")}
             />
             <FeatureCard
-              title="並び順・上部固定"
-              description="ロケーションの並び順と、1件の上部固定ロケーションを設定。"
+              title={t("plan.featureSortTitle")}
+              description={t("plan.featureSortDesc")}
             />
             <FeatureCard
-              title="ロケーション表示"
-              description="表示ON/OFF・公開名・リンクURL の設定。"
+              title={t("plan.featureLocTitle")}
+              description={t("plan.featureLocDesc")}
             />
           </div>
         </div>
@@ -221,7 +229,7 @@ export default function PlanPage() {
         <div style={{ marginBottom: "24px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
             <span style={{ fontSize: "18px", fontWeight: 700, color: "#202223" }}>
-              Pro プランで利用可能な機能
+              {t("plan.proPlansTitle")}
             </span>
             <span
               style={{
@@ -243,23 +251,23 @@ export default function PlanPage() {
             }}
           >
             <FeatureCard
-              title="エリア設定"
-              description="ロケーションをエリアでグルーピング・折りたたみ・未設定の見出し。"
+              title={t("plan.featureAreaTitle")}
+              description={t("plan.featureAreaDesc")}
               pro
             />
             <FeatureCard
-              title="近隣店舗表示"
-              description="近隣店舗を優先表示・その他ロケーションの見出し。"
+              title={t("plan.featureNearbyTitle")}
+              description={t("plan.featureNearbyDesc")}
               pro
             />
             <FeatureCard
-              title="店舗受け取り"
-              description="「この店舗で受け取る」ボタン・ラベル・リダイレクト・モーダル。"
+              title={t("plan.featurePickupTitle")}
+              description={t("plan.featurePickupDesc")}
               pro
             />
             <FeatureCard
-              title="分析（管理画面）"
-              description="エリア表示回数・近隣クリック・店舗受け取りクリックなどの分析。"
+              title={t("plan.featureAnalyticsTitle")}
+              description={t("plan.featureAnalyticsDesc")}
               pro
             />
           </div>
@@ -271,7 +279,7 @@ export default function PlanPage() {
                 rel="noopener noreferrer"
                 style={{ fontSize: "14px", color: "#2c6ecb" }}
               >
-                アップグレードして全機能を使う →
+                {t("plan.upgradeLink")}
               </a>
             </div>
           )}
@@ -282,6 +290,7 @@ export default function PlanPage() {
 }
 
 function PlanCard({
+  t,
   planKey,
   name,
   priceSummary,
@@ -289,7 +298,6 @@ function PlanCard({
   trial,
   summary,
   isCurrent,
-  pricingPlansUrl,
 }) {
   return (
     <div
@@ -324,7 +332,7 @@ function PlanCard({
             fontWeight: 500,
           }}
         >
-          このプランを利用中
+          {t("plan.currentPlanBadge")}
         </div>
       ) : (
         <Form method="post" style={{ display: "inline-block" }}>
@@ -342,7 +350,7 @@ function PlanCard({
               cursor: "pointer",
             }}
           >
-            このプランを選択する
+            {t("plan.selectThisPlan")}
           </button>
         </Form>
       )}

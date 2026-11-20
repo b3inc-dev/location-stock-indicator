@@ -6,6 +6,7 @@ import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { authenticate } from "../shopify.server";
 import { AppNavBar } from "../components/AppNavBar";
 import { getShopPlan } from "../utils/shopPlan.server.js";
+import { createT, resolveAdminLocale } from "../i18n/adminI18n.js";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
@@ -36,6 +37,8 @@ export default function App() {
   const isLoading = navigation.state === "loading";
   const showPlanLink = shopPlan?.distribution === "public";
   const showAnalyticsLink = !!shopPlan?.features?.analytics;
+  const locale = resolveAdminLocale(shopPlan);
+  const t = createT(locale);
 
   return (
     <AppProvider embedded apiKey={apiKey}>
@@ -56,19 +59,19 @@ export default function App() {
             boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
           }}
         >
-          読み込み中…
+          {t("common.loading")}
         </div>
       )}
       <s-app-nav>
-        <s-link href="/app/locations">ロケーション設定</s-link>
-        <s-link href="/app/settings">在庫表示設定</s-link>
-        {showAnalyticsLink && <s-link href="/app/analytics">分析</s-link>}
-        {showPlanLink && <s-link href="/app/plan">料金プラン</s-link>}
+        <s-link href="/app/locations">{t("nav.locations")}</s-link>
+        <s-link href="/app/settings">{t("nav.settings")}</s-link>
+        {showAnalyticsLink && <s-link href="/app/analytics">{t("nav.analytics")}</s-link>}
+        {showPlanLink && <s-link href="/app/plan">{t("nav.plan")}</s-link>}
       </s-app-nav>
       {/* 上部メニュー（s-app-nav が表示されない環境用・常に表示） */}
-      <AppNavBar shopPlan={shopPlan} />
+      <AppNavBar shopPlan={shopPlan} t={t} />
 
-      <Outlet context={{ shopPlan }} />
+      <Outlet context={{ shopPlan, locale, t }} />
     </AppProvider>
   );
 }

@@ -1,0 +1,186 @@
+{
+  "block": {
+    "name": "Location stock indicator"
+  },
+  "settings": {
+    "header_title_layout": {
+      "content": "Title and layout"
+    },
+    "heading_text": {
+      "label": "Title",
+      "default": "Stock status by store",
+      "info": "Leave blank to hide the title."
+    },
+    "heading_level": {
+      "label": "Title heading level",
+      "info": "Visual size is controlled by “Title font size”.",
+      "options": {
+        "h3": "H3 (default)",
+        "h2": "H2"
+      }
+    },
+    "heading_align": {
+      "label": "Title alignment",
+      "options": {
+        "left": "Left",
+        "center": "Center",
+        "right": "Right"
+      }
+    },
+    "heading_font_size": {
+      "label": "Title font size (px)"
+    },
+    "layout_type": {
+      "label": "Layout",
+      "options": {
+        "table": "Table",
+        "list": "List (single line)",
+        "stacked": "Two lines (location + stock)"
+      }
+    },
+    "location_align": {
+      "label": "Location name alignment",
+      "options": {
+        "left": "Left",
+        "center": "Center",
+        "right": "Right"
+      }
+    },
+    "status_align": {
+      "label": "Stock display alignment",
+      "options": {
+        "left": "Left",
+        "center": "Center",
+        "right": "Right"
+      }
+    },
+    "font_size": {
+      "label": "Body font size (px)"
+    },
+    "margin_bottom": {
+      "label": "Bottom margin (px)"
+    },
+    "content_align": {
+      "label": "Block alignment",
+      "options": {
+        "left": "Left",
+        "center": "Center",
+        "right": "Right"
+      }
+    },
+    "header_legend_notice": {
+      "content": "Legend, notice, rows, and borders"
+    },
+    "legend_position": {
+      "label": "Legend position",
+      "options": {
+        "top_left": "Above list · left",
+        "top_center": "Above list · center",
+        "top_right": "Above list · right",
+        "bottom_left": "Below list · left",
+        "bottom_center": "Below list · center",
+        "bottom_right": "Below list · right"
+      }
+    },
+    "notice_position": {
+      "label": "Notice position",
+      "options": {
+        "top_left": "Above list · left",
+        "top_center": "Above list · center",
+        "top_right": "Above list · right",
+        "bottom_left": "Below list · left",
+        "bottom_center": "Below list · center",
+        "bottom_right": "Below list · right"
+      }
+    },
+    "row_padding_y": {
+      "label": "Row padding (px)",
+      "info": "Applies to both vertical and horizontal padding."
+    },
+    "border_style": {
+      "label": "Border style",
+      "options": {
+        "none": "No border",
+        "rows": "Row dividers only",
+        "full": "Outer border + row dividers"
+      }
+    },
+    "border_color": {
+      "label": "Border color"
+    },
+    "status_color_preset": {
+      "label": "Stock mark colors",
+      "options": {
+        "default": "Default (green / yellow / red)",
+        "muted": "Muted",
+        "mono": "Monochrome"
+      }
+    },
+    "header_region_pickup": {
+      "content": "Regions / nearby and store pickup"
+    },
+    "region_pickup_note": {
+      "content": "Applied only when region, nearby, or store pickup is enabled in the app."
+    },
+    "region_style_preset": {
+      "label": "Region / nearby heading style",
+      "options": {
+        "default": "Default",
+        "subtle": "Subtle",
+        "emphasis": "Emphasis"
+      }
+    },
+    "region_heading_align": {
+      "label": "Heading alignment",
+      "options": {
+        "left": "Left",
+        "center": "Center",
+        "right": "Right"
+      }
+    },
+    "accordion_icon": {
+      "label": "Collapse icon",
+      "options": {
+        "chevron": "Triangle (▼/▶)",
+        "angle": "Angle (＞/∨)",
+        "plus_minus": "Plus / minus (+/−)",
+        "arrow": "Arrow (↓/→)"
+      }
+    },
+    "order_pick_btn_style": {
+      "label": "Pickup button shape",
+      "options": {
+        "solid_square": "Solid · square",
+        "solid_round": "Solid · round",
+        "solid_pill": "Solid · pill",
+        "outline_square": "Outline · square",
+        "outline_round": "Outline · round",
+        "outline_pill": "Outline · pill",
+        "ghost": "Ghost"
+      }
+    },
+    "order_pick_btn_theme": {
+      "label": "Pickup button color",
+      "options": {
+        "brand": "Brand (dark blue)",
+        "dark": "Dark",
+        "light": "Light"
+      }
+    },
+    "order_pick_col_width": {
+      "label": "Button column width (table, %)"
+    },
+    "order_pick_btn_align": {
+      "label": "Button horizontal position",
+      "options": {
+        "left": "Left",
+        "center": "Center",
+        "right": "Right"
+      }
+    },
+    "custom_css": {
+      "label": "Custom CSS",
+      "info": "Use #lsi- (block ID) as a root selector."
+    }
+  }
+}

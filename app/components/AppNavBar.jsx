@@ -3,22 +3,24 @@
  * s-app-nav が表示されない環境でもメニューを提供する。
  */
 import { Link, useLocation } from "react-router";
+import { createT, resolveAdminLocale } from "../i18n/adminI18n.js";
 
-export function AppNavBar({ shopPlan }) {
+export function AppNavBar({ shopPlan, t: tProp }) {
   const location = useLocation();
   const search = location.search || "";
   const showPlanLink = shopPlan?.distribution === "public";
   const showAnalyticsLink = !!shopPlan?.features?.analytics;
+  const t = tProp || createT(resolveAdminLocale(shopPlan));
 
   const items = [
-    { path: "/app/locations", label: "ロケーション設定" },
-    { path: "/app/settings", label: "在庫表示設定" },
+    { path: "/app/locations", label: t("nav.locations") },
+    { path: "/app/settings", label: t("nav.settings") },
   ];
   if (showAnalyticsLink) {
-    items.push({ path: "/app/analytics", label: "分析" });
+    items.push({ path: "/app/analytics", label: t("nav.analytics") });
   }
   if (showPlanLink) {
-    items.push({ path: "/app/plan", label: "料金プラン" });
+    items.push({ path: "/app/plan", label: t("nav.plan") });
   }
 
   return (
