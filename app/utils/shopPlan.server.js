@@ -170,7 +170,15 @@ export async function getShopPlan(admin, currentShop, options = {}) {
   // Lite のときロケーション数が 10 を超えていたらプラン不一致
   let locationPlanMismatch = false;
   let maxLocationsForPlan;
-  if (distribution === "public" && !forceInhouse && plan === "lite" && locationsCount > 10) {
+  // 開発ストア（審査用の店も含む）は全機能を使えるので、テスト課金で Lite を選んでも画面を止めない。
+  // ただし FORCE_PLAN_LITE=1（開発ストアで Lite の動きを確かめる用）のときは今までどおり止める。
+  if (
+    distribution === "public" &&
+    !forceInhouse &&
+    (!isDevelopmentStore || process.env.FORCE_PLAN_LITE === "1") &&
+    plan === "lite" &&
+    locationsCount > 10
+  ) {
     locationPlanMismatch = true;
     maxLocationsForPlan = 10;
   }

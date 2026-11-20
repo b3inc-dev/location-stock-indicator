@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildPricingPlansUrl, createAppSubscription, shouldUseTestCharge } from "./billing.js";
+import { buildEmbeddedReturnUrl, buildPricingPlansUrl, createAppSubscription, shouldUseTestCharge } from "./billing.js";
 
 function fakeAdmin() {
   const calls = [];
@@ -21,8 +21,26 @@ describe("shouldUseTestCharge", () => {
   it("is true for development stores", () => {
     assert.equal(shouldUseTestCharge({ isDevelopmentStore: true }, {}), true);
   });
-  it("is true when SHOPIFY_BILLING_TEST=1", () => {
+  it("is true when SHOPIFY_BILLING_TEST=1 outside production", () => {
     assert.equal(shouldUseTestCharge({ isDevelopmentStore: false }, { SHOPIFY_BILLING_TEST: "1" }), true);
+    assert.equal(
+      shouldUseTestCharge({ isDevelopmentStore: false }, { SHOPIFY_BILLING_TEST: "1", NODE_ENV: "development" }),
+      true,
+    );
+  });
+  it("ignores SHOPIFY_BILLING_TEST=1 in production and warns loudly", () => {
+    const warnings = [];
+    const res = shouldUseTestCharge(
+      { isDevelopmentStore: false },
+      { SHOPIFY_BILLING_TEST: "1", NODE_ENV: "production" },
+      (msg) => warnings.push(msg),
+    );
+    assert.equal(res, false);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /SHOPIFY_BILLING_TEST=1 is set in production/);
+  });
+  it("still uses test charges for development stores in production", () => {
+    assert.equal(shouldUseTestCharge({ isDevelopmentStore: true }, { NODE_ENV: "production" }), true);
   });
   it("is false for paid stores by default", () => {
     assert.equal(shouldUseTestCharge({ isDevelopmentStore: false }, {}), false);
@@ -60,4 +78,21 @@ describe("createAppSubscription", () => {
       assert.equal(admin.calls[0].variables.test, false);
     });
   }
+});
+
+describe("buildEmbeddedReturnUrl", () => {
+  it("returns the embedded admin URL with the client id (library default form)", () => {
+    assert.equal(
+      buildEmbeddedReturnUrl("demo.myshopify.com", "abc123", "/app/plan"),
+      "https://admin.shopify.com/store/demo/apps/abc123/app/plan",
+    );
+    assert.equal(
+      buildEmbeddedReturnUrl("demo.myshopify.com", "abc123", "app/plan"),
+      "https://admin.shopify.com/store/demo/apps/abc123/app/plan",
+    );
+  });
+  it("returns null when the API key or shop is missing", () => {
+    assert.equal(buildEmbeddedReturnUrl("demo.myshopify.com", ""), null);
+    assert.equal(buildEmbeddedReturnUrl("", "abc123"), null);
+  });
 });

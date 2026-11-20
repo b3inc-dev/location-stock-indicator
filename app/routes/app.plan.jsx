@@ -4,7 +4,12 @@
 import { Form, redirect, useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 import { getShopPlan } from "../utils/shopPlan.server.js";
-import { buildPricingPlansUrl, createAppSubscription, shouldUseTestCharge } from "../utils/billing.js";
+import {
+  buildEmbeddedReturnUrl,
+  buildPricingPlansUrl,
+  createAppSubscription,
+  shouldUseTestCharge,
+} from "../utils/billing.js";
 
 // Partner のアプリのハンドル。未設定のときは管理画面のプラン選択ページへのリンクを出さない
 // （"app" などの推測した値で間違った URL を作らない）。
@@ -35,9 +40,13 @@ export async function action({ request }) {
   if (shopPlan.distribution === "inhouse") return null;
 
   const url = new URL(request.url);
-  // 承認のあと Shopify は returnUrl を iframe の外で開く。?shop= を付けておくと
-  // authenticate.admin が管理画面の中のアプリ画面へ戻す。
-  const returnUrl = `${url.origin}${url.pathname}?shop=${encodeURIComponent(session.shop)}`;
+  // 承認のあと Shopify は returnUrl を iframe の外で開く（charge_id だけが付く）。
+  // 管理画面の中のアプリの URL にして、そのまま埋め込みのアプリ画面へ戻れるようにする。
+  const returnUrl = buildEmbeddedReturnUrl(session?.shop, process.env.SHOPIFY_API_KEY, "/app/plan");
+  if (!returnUrl) {
+    console.error("[billing] SHOPIFY_API_KEY or shop is missing; cannot build returnUrl");
+    return redirect(`${url.pathname}?billingError=1`);
+  }
   const { confirmationUrl, userErrors } = await createAppSubscription(admin, plan, returnUrl, {
     test: shouldUseTestCharge(shopPlan),
   });

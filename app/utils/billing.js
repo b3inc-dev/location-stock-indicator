@@ -128,15 +128,43 @@ export async function reportUsageRecord(
 
 /**
  * テスト課金（test: true）にするか。
- * 開発ストア（審査用の店も含む）では本物の請求を作らずに承認の流れを試せるようにする。
- * SHOPIFY_BILLING_TEST=1 のときも、開発中の確認用にテスト課金にする。
+ * - 開発ストア（審査用の店も含む）では、本物の請求を作らずに承認の流れを試せるようにする。
+ * - SHOPIFY_BILLING_TEST=1 は開発中の確認用。NODE_ENV=production では効かせない
+ *   （公開用の本番 Render に残っていても、本当の店がテスト課金にならないように）。そのときは強い警告をログに出す。
  * @param {{ isDevelopmentStore?: boolean } | null | undefined} shopPlan
  * @param {Record<string, string | undefined>} [env]
+ * @param {(...args: any[]) => void} [warn]
  * @returns {boolean}
  */
-export function shouldUseTestCharge(shopPlan, env = process.env) {
+export function shouldUseTestCharge(shopPlan, env = process.env, warn = console.warn) {
   if (shopPlan?.isDevelopmentStore === true) return true;
-  return String(env?.SHOPIFY_BILLING_TEST ?? "").trim() === "1";
+  const flag = String(env?.SHOPIFY_BILLING_TEST ?? "").trim() === "1";
+  if (!flag) return false;
+  if (String(env?.NODE_ENV ?? "").trim() === "production") {
+    warn(
+      "[billing] WARNING: SHOPIFY_BILLING_TEST=1 is set in production. It is ignored; real charges are created. Remove it from this server's environment.",
+    );
+    return false;
+  }
+  return true;
+}
+
+/**
+ * 承認のあとに戻る先（管理画面の中のアプリの URL）。
+ * ライブラリの billing.request が初めから使う形と同じ: https://admin.shopify.com/store/<店>/apps/<client_id><path>
+ * Shopify は承認のあと returnUrl を iframe の外で開き charge_id だけを付けるので、
+ * アプリの URL（?shop= だけ）では authenticate.admin が host を読めずに戻れない。
+ * @param {string | null | undefined} shop - xxx.myshopify.com
+ * @param {string | null | undefined} apiKey - SHOPIFY_API_KEY（client_id）
+ * @param {string} [path] - アプリの中の道（既定 /app/plan）
+ * @returns {string | null}
+ */
+export function buildEmbeddedReturnUrl(shop, apiKey, path = "/app/plan") {
+  const key = String(apiKey ?? "").trim();
+  const storeHandle = String(shop ?? "").trim().replace(/\.myshopify\.com$/i, "");
+  if (!key || !storeHandle) return null;
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return `https://admin.shopify.com/store/${encodeURIComponent(storeHandle)}/apps/${encodeURIComponent(key)}${p}`;
 }
 
 /**
