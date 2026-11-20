@@ -161,7 +161,6 @@ describe("probeShopStillInstalled", () => {
 
   for (const err of [
     Object.assign(new Error("Unauthorized"), { response: { code: 401 } }),
-    Object.assign(new Error("Forbidden"), { response: { code: 403 } }),
     new Response(null, { status: 401 }),
     new Error("[API] Invalid API key or access token (unrecognized login or wrong password)"),
     new Error("invalid_grant"),
@@ -177,6 +176,21 @@ describe("probeShopStillInstalled", () => {
       assert.equal(res, false);
     });
   }
+
+  it("does not treat 403 as not installed (rethrown, nothing deleted)", async () => {
+    const err = Object.assign(new Error("Forbidden"), { response: { code: 403 } });
+    assert.equal(isNotInstalledError(err), false);
+    await assert.rejects(
+      probeShopStillInstalled({
+        shop: "a.myshopify.com",
+        findOfflineSession: async () => ({ id: "offline" }),
+        runProbeQuery: async () => {
+          throw err;
+        },
+      }),
+      /Forbidden/,
+    );
+  });
 
   it("rethrows other failures (5xx / network) so nothing is deleted yet", async () => {
     const err = Object.assign(new Error("Bad gateway"), { response: { code: 502 } });

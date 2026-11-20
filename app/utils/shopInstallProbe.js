@@ -4,7 +4,8 @@
 // 入れ直したあとのデータを消さないよう、消す前にオフラインのセッションで Admin API を 1 回呼ぶ。
 // - オフラインのセッションが無い → 入っていない → 消してよい（false）
 // - 呼べた → 今も入っている → 消さない（true）
-// - 401 / 403 / トークンが無効 → 入っていない → 消してよい（false）
+// - 401 / トークンが無効 → 入っていない → 消してよい（false）
+//   （403 は権限の問題などでも返るので「入っていない」とは見ない。投げて、もう一度送ってもらう）
 // - それ以外の失敗（通信・5xx など）→ 分からないので投げる（ルートが 500 を返し、Shopify がもう一度送る）
 
 export const INSTALL_PROBE_QUERY = `#graphql
@@ -31,7 +32,7 @@ function statusOf(err) {
  */
 export function isNotInstalledError(err) {
   const status = statusOf(err);
-  if (status === 401 || status === 403) return true;
+  if (status === 401) return true;
   const text = [err?.message, err?.response?.body && JSON.stringify(err.response.body)]
     .filter(Boolean)
     .join(" ");
