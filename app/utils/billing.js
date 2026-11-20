@@ -127,14 +127,43 @@ export async function reportUsageRecord(
 }
 
 /**
+ * テスト課金（test: true）にするか。
+ * 開発ストア（審査用の店も含む）では本物の請求を作らずに承認の流れを試せるようにする。
+ * SHOPIFY_BILLING_TEST=1 のときも、開発中の確認用にテスト課金にする。
+ * @param {{ isDevelopmentStore?: boolean } | null | undefined} shopPlan
+ * @param {Record<string, string | undefined>} [env]
+ * @returns {boolean}
+ */
+export function shouldUseTestCharge(shopPlan, env = process.env) {
+  if (shopPlan?.isDevelopmentStore === true) return true;
+  return String(env?.SHOPIFY_BILLING_TEST ?? "").trim() === "1";
+}
+
+/**
+ * Shopify 管理画面のプラン選択ページの URL。
+ * アプリのハンドルが分からないときは null（間違った URL を作らない）。
+ * @param {string | null | undefined} shop - xxx.myshopify.com
+ * @param {string | null | undefined} appHandle - Partner のアプリのハンドル（SHOPIFY_APP_HANDLE）
+ * @returns {string | null}
+ */
+export function buildPricingPlansUrl(shop, appHandle) {
+  const handle = String(appHandle ?? "").trim();
+  const storeHandle = String(shop ?? "").trim().replace(/\.myshopify\.com$/i, "");
+  if (!handle || !storeHandle) return null;
+  return `https://admin.shopify.com/store/${encodeURIComponent(storeHandle)}/charges/${encodeURIComponent(handle)}/pricing_plans`;
+}
+
+/**
  * サブスクリプションを作成し、承認用 URL を返す。
  * Lite: Recurring $20 のみ。Pro: Recurring $20 ＋ Usage $2/ロケーション。
  * @param {object} admin - graphql メソッドを持つオブジェクト
  * @param {"lite"|"pro"} plan
  * @param {string} returnUrl
+ * @param {{ test?: boolean }} [options] - test: true でテスト課金（開発ストア用）
  * @returns {Promise<{ confirmationUrl: string|null; userErrors: Array<{ message: string }> }>}
  */
-export async function createAppSubscription(admin, plan, returnUrl) {
+export async function createAppSubscription(admin, plan, returnUrl, options = {}) {
+  const test = options.test === true;
   const trialDays = TRIAL_DAYS[plan];
   const basePrice = BASE_PRICE[plan];
 
@@ -145,13 +174,15 @@ export async function createAppSubscription(admin, plan, returnUrl) {
         $name: String!,
         $returnUrl: URL!,
         $lineItems: [AppSubscriptionLineItemInput!]!,
-        $trialDays: Int
+        $trialDays: Int,
+        $test: Boolean
       ) {
         appSubscriptionCreate(
           name: $name,
           returnUrl: $returnUrl,
           lineItems: $lineItems,
-          trialDays: $trialDays
+          trialDays: $trialDays,
+          test: $test
         ) {
           userErrors { message }
           confirmationUrl
@@ -170,7 +201,7 @@ export async function createAppSubscription(admin, plan, returnUrl) {
       },
     ];
     const resp = await admin.graphql(mutation, {
-      variables: { name, returnUrl, lineItems, trialDays },
+      variables: { name, returnUrl, lineItems, trialDays, test },
     });
     const data = await resp.json();
     const payload = data?.data?.appSubscriptionCreate;
@@ -189,13 +220,15 @@ export async function createAppSubscription(admin, plan, returnUrl) {
       $name: String!,
       $returnUrl: URL!,
       $lineItems: [AppSubscriptionLineItemInput!]!,
-      $trialDays: Int
+      $trialDays: Int,
+      $test: Boolean
     ) {
       appSubscriptionCreate(
         name: $name,
         returnUrl: $returnUrl,
         lineItems: $lineItems,
-        trialDays: $trialDays
+        trialDays: $trialDays,
+        test: $test
       ) {
         userErrors { message }
         confirmationUrl
@@ -222,7 +255,7 @@ export async function createAppSubscription(admin, plan, returnUrl) {
     },
   ];
   const resp = await admin.graphql(mutation, {
-    variables: { name, returnUrl, lineItems, trialDays },
+    variables: { name, returnUrl, lineItems, trialDays, test },
   });
   const data = await resp.json();
   const payload = data?.data?.appSubscriptionCreate;

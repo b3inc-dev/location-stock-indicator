@@ -111,7 +111,9 @@ export async function getShopPlan(admin, currentShop, options = {}) {
   if (distribution === "inhouse") {
     plan = "pro";
   } else if (isDevelopmentStore) {
-    plan = "pro";
+    // 開発ストア（審査用の店も含む）は全機能を使える。テスト課金でプランを選んだときは、
+    // 画面の「利用中のプラン」がそのプランになるよう、選んだプランを優先する。
+    plan = planFromBilling ?? "pro";
   } else {
     plan = planFromBilling;
   }

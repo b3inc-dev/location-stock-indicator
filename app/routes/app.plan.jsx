@@ -1,41 +1,50 @@
 // app/routes/app.plan.jsx - 料金プランページ（プラン選択＋プラン別機能の紹介）POS Stock 同様 UI
+// プラン選択は Billing API（appSubscriptionCreate）で作り、承認ページへは authenticate.admin の
+// redirect(url, { target: "_top" }) で移る。埋め込み画面（iframe）の中のまま承認ページへ移ると開かないため。
 import { Form, redirect, useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 import { getShopPlan } from "../utils/shopPlan.server.js";
-import { createAppSubscription } from "../utils/billing.js";
+import { buildPricingPlansUrl, createAppSubscription, shouldUseTestCharge } from "../utils/billing.js";
 
-const APP_HANDLE = process.env.SHOPIFY_APP_HANDLE || "app";
+// Partner のアプリのハンドル。未設定のときは管理画面のプラン選択ページへのリンクを出さない
+// （"app" などの推測した値で間違った URL を作らない）。
+function getAppHandle() {
+  return (process.env.SHOPIFY_APP_HANDLE ?? "").trim();
+}
 
 export async function loader({ request }) {
   const { admin, session } = await authenticate.admin(request);
   const shopPlan = await getShopPlan(admin, session?.shop);
 
-  const storeHandle = session.shop.replace(".myshopify.com", "");
-  const pricingPlansUrl = `https://admin.shopify.com/store/${storeHandle}/charges/${APP_HANDLE}/pricing_plans`;
+  const pricingPlansUrl = buildPricingPlansUrl(session?.shop, getAppHandle());
   const url = new URL(request.url);
   const requiredFromQuery = url.searchParams.get("required") === "1";
 
   return { shopPlan, pricingPlansUrl, requiredFromQuery };
 }
 
-/** プラン選択ボタン押下: サブスク作成 → Shopify の承認 URL へリダイレクト */
+/** プラン選択ボタン押下: サブスク作成 → Shopify の承認 URL へ（iframe の外へ _top で）移る */
 export async function action({ request }) {
   if (request.method !== "POST") return null;
   const formData = await request.formData();
   const plan = formData.get("plan");
   if (plan !== "lite" && plan !== "pro") return null;
 
-  const { admin, session } = await authenticate.admin(request);
+  const { admin, session, redirect: authRedirect } = await authenticate.admin(request);
   const shopPlan = await getShopPlan(admin, session?.shop);
   if (shopPlan.distribution === "inhouse") return null;
 
   const url = new URL(request.url);
-  const returnUrl = `${url.origin}${url.pathname}`;
-  const { confirmationUrl, userErrors } = await createAppSubscription(admin, plan, returnUrl);
+  // 承認のあと Shopify は returnUrl を iframe の外で開く。?shop= を付けておくと
+  // authenticate.admin が管理画面の中のアプリ画面へ戻す。
+  const returnUrl = `${url.origin}${url.pathname}?shop=${encodeURIComponent(session.shop)}`;
+  const { confirmationUrl, userErrors } = await createAppSubscription(admin, plan, returnUrl, {
+    test: shouldUseTestCharge(shopPlan),
+  });
   if (userErrors.length > 0 || !confirmationUrl) {
     return redirect(`${url.pathname}?billingError=1`);
   }
-  return redirect(confirmationUrl);
+  return authRedirect(confirmationUrl, { target: "_top" });
 }
 
 export default function PlanPage() {
@@ -107,6 +116,7 @@ export default function PlanPage() {
               現在のプランは<strong>{maxLocationsForPlan}ロケーション</strong>までです。ストアのロケーション数は
               <strong>{locationsCount}</strong>のため、プラン変更が必要です。変更が反映されるまで設定などの機能はご利用いただけません。
             </div>
+            {pricingPlansUrl ? (
             <a
               href={pricingPlansUrl}
               target="_blank"
@@ -124,6 +134,11 @@ export default function PlanPage() {
             >
               Shopify でプランを変更する
             </a>
+            ) : (
+              <div style={{ fontSize: "14px", color: "#202223" }}>
+                下の料金プランから Pro を選んでください。
+              </div>
+            )}
             <div style={{ marginTop: "8px", fontSize: "13px", color: "#6d7175" }}>
               プラン変更後、このページを再読み込みしてください。
             </div>
@@ -263,7 +278,7 @@ export default function PlanPage() {
               pro
             />
           </div>
-          {plan !== "pro" && (
+          {plan !== "pro" && pricingPlansUrl && (
             <div style={{ marginTop: "16px" }}>
               <a
                 href={pricingPlansUrl}
