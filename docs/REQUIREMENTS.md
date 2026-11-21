@@ -563,8 +563,10 @@
 
 | プラン | 料金 | ロケーション数 | 利用可能な機能 |
 |--------|------|-----------------|----------------|
-| **Lite** | $20/月（定額） | 最大 10 | 基本表示のみ（エリア・近隣店舗・店舗受け取り・分析なし） |
-| **Pro** | $20/月 ＋ ロケーション数×$2/月（従量） | 制限なし | 全機能 |
+| **Lite** | $20/月（定額） | 最大 10 | 基本表示のみ（エリア・近隣店舗・店舗受け取り・分析なし。POS の受取待ち一覧・準備完了と引き渡し・店舗ごとの送料と出荷元・持ち帰りと配送の同時会計も含まない） |
+| **Pro** | $20/月 ＋ ロケーション数×$2/月（従量） | 制限なし | 全機能。アプリが Pro なら Shopify POS Lite の端末でも次の4機能を使える |
+
+公開版でアプリ Pro 限定の POS 機能は、①自店舗の受取待ち一覧、②準備完了と店頭での引き渡し、③店舗ごとの送料・出荷元の設定、④持ち帰りと配送の同時会計（同じ会計で商品・数量を分ける）。Shopify POS Lite は利用端末の対応条件であり、アプリの Lite にはこの4機能を含めない。基本の店舗別在庫表示の区分と料金は上表のまま変更しない。料金プランページの Lite 説明は基本の在庫表示に限定し、Pro の機能一覧にこの4機能を書く。受入は `docs/POS_LITE_OPERATIONS.md` の受入表。
 
 - **カスタムアプリ**: 全機能利用可能（課金なし）。
 - **開発ストア**: 全機能利用可能（課金なし）。Lite の挙動を確認したい場合は環境変数 `FORCE_PLAN_LITE=1` で Lite 相当に強制可能（`docs/PLAN_SETTINGS_DESIGN.md` の「開発・検証用」参照）。
@@ -578,7 +580,7 @@
 | **課金** | `app/utils/billing.js` で Lite/Pro の `createAppSubscription`（Lite: 定額のみ、Pro: 定額＋従量）、`reportUsageRecord`（Pro のロケーション数課金）、`getPlanFromActiveSubscriptions` などを実装。 |
 | **ルート共通** | `app/routes/app.jsx` の loader で `getShopPlan` を呼び、`shopPlan` を Outlet context に渡す。`locationPlanMismatch` のときは `/app`・`/app/plan` 以外へアクセスすると `/app/plan` にリダイレクト。 |
 | **ホーム** | `app._index.jsx` で「現在の料金プラン」「ロケーション数」カードを表示。公開時はプラン未選択・Lite 時にアップグレード誘導リンク。 |
-| **料金プランページ** | `app.plan.jsx` で Lite/Pro の説明・選択・機能一覧。公開時のみ「このプランを選択する」で Billing API の confirmationUrl へ遷移。 |
+| **料金プランページ** | `app.plan.jsx` で Lite/Pro の説明・選択・機能一覧。Lite の説明は基本の在庫表示に限定し、POS の受取待ち一覧・準備完了と引き渡し・店舗ごとの送料と出荷元・持ち帰りと配送の同時会計は Pro の機能一覧に書く。公開時のみ「このプランを選択する」で Billing API の confirmationUrl へ遷移。 |
 | **ロケーション設定** | `app.locations.jsx` で `shopPlan` を参照。Pro 専用セクション（エリア/近隣店舗のデザイン、近隣店舗表示設定、店舗受け取りボタン）に Pro バッジを表示し、Lite 時は同じ内容をグレーアウト・編集不可。保存時は Lite のとき Pro 専用項目（`regionGroupId`、`excludeFromNearby`、店舗受け取り関連の `future`）を送らない／OFF で上書き。ロケーション一覧の「エリア」「近隣除外」列は Lite 時は表示のみ（編集不可・保存時も送信しない）。 |
 | **分析** | `app.analytics.jsx` で公開アプリかつ Lite のときは分析コンテンツを非表示にし、「分析は Pro プランでご利用いただけます」と料金プランへのリンクを表示。 |
 | **ストアフロント** | App Proxy（`app/routes/apps.location-stock.js`）内で `getShopPlan` を呼び、Lite のときは返す `config.future` の Pro 専用フラグ（エリア・近隣・店舗受け取りなど）を強制で `false` にし、テーマ側で Pro 機能が有効にならないようにする。 |

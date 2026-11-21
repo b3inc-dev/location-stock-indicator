@@ -116,5 +116,6 @@
 ## 10. プラン関連ルール（要約）
 
 - Lite: ロケーション最大 10。超過で `locationPlanMismatch` → `/app/plan` へ誘導（`app.jsx`）。
+- 公開版の POS 4機能（自店舗の受取待ち一覧、準備完了と引き渡し、店舗ごとの送料・出荷元、持ち帰りと配送の同時会計）はアプリ Pro 限定。Shopify POS Lite は端末条件であり、アプリ Lite には含めない。基本の店舗別在庫表示の区分と料金は変えない。受入表は `POS_LITE_OPERATIONS.md`。
 - 料金・機能表の正: `PLAN_SETTINGS_DESIGN.md` / `REQUIREMENTS.md` §13。
 - `FORCE_PLAN_LITE=1` で Lite 強制（開発確認用）。
