@@ -46,6 +46,7 @@ Location Stock は、ショップの複数ロケーション（店舗・倉庫�
 | **read_locations** | To list locations (name, address, coordinates) and to determine which locations have local pickup enabled (`localPickupSettingsV2`). Used for the location table in the admin, for “nearby store” sorting by distance, and for showing the store pickup button only where pickup is available. |
 | **read_products** | To fetch product variant and inventory item data when the storefront requests stock by variant (via App Proxy). Required to show per-location inventory for the selected variant on the product page. |
 | **read_shipping** | To determine, per location, whether shipping and/or local delivery is configured (from delivery profiles). This is used to show “Shipping” / “Local delivery” indicators and to support sort options such as “Shipping first” or “Local delivery first” in the admin and on the storefront. |
+| **read_markets** | To support market-driven shipping. When the shop uses market-driven shipping (`shop.features.marketDrivenShipping`), shipping and local delivery are configured per market instead of in delivery profiles, so the app reads `markets { delivery }` to decide, per location, whether shipping and/or local delivery is available. Read only; the app never changes markets. |
 | **write_app_proxy** | To register the App Proxy URL so that the theme block can request inventory and config from the app at `/apps/location-stock?variant_id=...`. The storefront does not have direct Admin API access; the proxy is the only way to return this data to the theme. |
 
 **削除済みスコープ**: `write_products` — コード上商品の作成・更新は行わず、設定は Shop metafield（`metafieldsSet`）のみ。最小スコープのため両 toml から削除済み。Render の `SCOPES` 環境変数も合わせて更新すること（deploy 承認後）。
@@ -56,6 +57,7 @@ Location Stock は、ショップの複数ロケーション（店舗・倉庫�
 - **read_locations**：ロケーション一覧（名前・住所・緯度経度）および店舗受け取りの有無（`localPickupSettingsV2`）を取得するため。管理画面のロケーション表・近隣店舗の距離ソート・店舗受け取りボタンの表示判定に使用しています。
 - **read_products**：ストアフロントで選択中のバリアントの在庫を取得するため。App Proxy がバリアント ID を受け取り、商品・在庫情報を取得して返すために必要です。
 - **read_shipping**：配送プロファイルから、ロケーションごとに「配送対応」「ローカルデリバリー対応」を判定するため。「配送対応」表示や「配送を先に」などの並び順に使用しています。
+- **read_markets**：マーケット主導配送を使う店では、配送・ローカルデリバリーが配送プロファイルではなくマーケットごとに設定されるため、`markets { delivery }` を読んで、ロケーションごとの「配送対応」「ローカルデリバリー対応」を決めています（`app/utils/deliveryProfiles.js`。読むだけで、マーケットは変えません）。
 - **write_app_proxy**：テーマブロックが `/apps/location-stock?variant_id=...` で在庫・設定を取得できるよう、App Proxy URL を登録するために必要です。
 
 ---
