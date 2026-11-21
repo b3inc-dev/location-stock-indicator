@@ -7,6 +7,8 @@ import { getShopPlan } from "../utils/shopPlan.server.js";
 import { LITE_MAX_LOCATIONS, buildManagedPricingPlansUrl } from "../utils/billing.js";
 
 import { NOTICE_STYLES, buildPlanPageNotice } from "../utils/planNotice.js";
+import { describeUsageReportForMerchant } from "../utils/appEventsUsage.server.js";
+import prisma from "../db.server.js";
 
 export async function loader({ request }) {
   const { admin, session } = await authenticate.admin(request);
@@ -16,7 +18,24 @@ export async function loader({ request }) {
   if (shopPlan.distribution === "public" && !pricingPlansUrl) {
     console.error("[app.plan] cannot build pricing_plans URL (SHOPIFY_APP_HANDLE missing?) shop=", session?.shop);
   }
-  return { shopPlan, pricingPlansUrl };
+  // Pro の従量（App Events API）の報告の状態。読めなくても画面は出す
+  let usageReportNote = null;
+  const usage = shopPlan.proLocationUsage;
+  if (usage && session?.shop) {
+    try {
+      const row = usage.periodEnd
+        ? await prisma.appUsageReport.findUnique({
+            where: { shop_periodEnd: { shop: session.shop.trim().toLowerCase(), periodEnd: usage.periodEnd } },
+            select: { status: true },
+          })
+        : null;
+      usageReportNote = describeUsageReportForMerchant(row);
+    } catch (e) {
+      console.warn("[app.plan] usage report read failed:", e instanceof Error ? e.message : String(e));
+      usageReportNote = "報告の状態を読めませんでした。少し待ってから再読み込みしてください。";
+    }
+  }
+  return { shopPlan, pricingPlansUrl, usageReportNote };
 }
 
 /**
@@ -36,7 +55,8 @@ export async function action({ request }) {
 }
 
 export default function PlanPage() {
-  const { shopPlan, pricingPlansUrl } = useLoaderData();
+  const { shopPlan, pricingPlansUrl, usageReportNote } = useLoaderData();
+  const proUsage = shopPlan?.proLocationUsage;
   const { plan, locationsCount, distribution, isDevelopmentStore, locationPlanMismatch, maxLocationsForPlan, planCheckFailed } =
     shopPlan ?? {};
   const isInhouse = distribution === "inhouse";
@@ -128,6 +148,29 @@ export default function PlanPage() {
               primary
             />
           </div>
+          {proUsage && proUsage.units > 0 ? (
+            <div
+              style={{
+                marginTop: "16px",
+                padding: "12px 16px",
+                background: "#fff",
+                border: "1px solid #e1e3e5",
+                borderRadius: "8px",
+                fontSize: "14px",
+                color: "#202223",
+                lineHeight: 1.5,
+              }}
+            >
+              <div style={{ fontWeight: 700, marginBottom: "4px" }}>ロケーション数の従量（Pro）</div>
+              <div>
+                ロケーション <strong>{proUsage.units} か所</strong> × ${proUsage.unitPriceUsd} ＝ <strong>${proUsage.amountUsd}</strong>
+                ／請求期間（基本料金とは別に、Shopify の請求に載ります）
+              </div>
+              <div style={{ marginTop: "4px", fontSize: "13px", color: "#6d7175" }}>
+                請求期間ごとに 1 回、その時点のロケーション数で数えます。{usageReportNote ?? ""}
+              </div>
+            </div>
+          ) : null}
           <div style={{ marginTop: "12px", fontSize: "13px", color: "#6d7175", lineHeight: 1.5 }}>
             料金・無料期間は Shopify のプラン選択ページに表示されます。プランの選択・変更・解約も Shopify の画面で行います。変更のあと、このページを再読み込みしてください。
           </div>
