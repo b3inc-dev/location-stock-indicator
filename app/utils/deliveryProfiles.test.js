@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  loadLocationDeliveryFlags,
   isLocalDeliveryMethodName,
   getConnectionNodes,
   buildLocationDeliveryFlags,
@@ -160,4 +161,32 @@ describe("buildLocationDeliveryFlagsFromMarkets", () => {
     assert.equal(map.get("gid://shopify/Location/10").hasShipping, true);
     assert.equal(map.get("gid://shopify/Location/11").hasShipping, true);
   });
+});
+
+describe("legacy delivery profile throttling", () => {
+  const success = { data: { deliveryProfiles: { nodes: [] } } };
+  const throttle = { errors: [{ extensions: { code: "THROTTLED" } }] };
+
+  for (const [title, replies, source] of [
+    ["recovers from the SDK throttle error", [new Error("Throttled"), success], "deliveryProfiles"],
+    ["stops after a second throttle response", [throttle, throttle], "none"],
+    ["does not retry other failures", [new Error("Access denied")], "none"],
+    ["does not retry a mixed GraphQL error response", [
+      { errors: [...throttle.errors, { message: "Access denied" }] },
+    ], "none"],
+  ]) {
+    it(title, async () => {
+      let calls = 0;
+      const admin = {
+        async graphql() {
+          const reply = replies[calls++];
+          if (reply instanceof Error) throw reply;
+          return { json: async () => reply };
+        },
+      };
+      const result = await loadLocationDeliveryFlags(admin, null);
+      assert.equal(result.source, source);
+      assert.equal(calls, replies.length);
+    });
+  }
 });

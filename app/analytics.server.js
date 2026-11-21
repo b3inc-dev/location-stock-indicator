@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 /**
  * 分析データのメタフィールド（月単位: location_stock.analytics_YYYY_MM）の読み書き
  * - 1日分: { areaDisplayCount, nearbyClickCount, nearbyDisplayByLocation: { [locationId]: count }, orderPickClickCount, orderPickByLocation: { [locationId]: count } }
@@ -54,6 +56,7 @@ const METAFIELD_GET_QUERY = `#graphql
       id
       metafield(namespace: "location_stock", key: $key) {
         value
+        compareDigest
       }
     }
   }
@@ -63,7 +66,7 @@ const METAFIELD_SET_MUTATION = `#graphql
   mutation SetAnalyticsMetafield($metafields: [MetafieldsSetInput!]!) {
     metafieldsSet(metafields: $metafields) {
       metafields { id namespace key }
-      userErrors { field message }
+      userErrors { code field message }
     }
   }
 `;
@@ -87,7 +90,7 @@ export async function getMonthAnalytics(admin, shopId, key) {
 /**
  * 指定月の分析JSONを保存
  */
-export async function setMonthAnalytics(admin, shopId, key, data) {
+export async function setMonthAnalytics(admin, shopId, key, data, compareDigest) {
   const value = JSON.stringify(data);
   const res = await admin.graphql(METAFIELD_SET_MUTATION, {
     variables: {
@@ -97,16 +100,24 @@ export async function setMonthAnalytics(admin, shopId, key, data) {
           key,
           type: "json",
           ownerId: shopId,
+          compareDigest,
           value,
         },
       ],
     },
   });
   const json = await res.json();
-  const errors = json?.data?.metafieldsSet?.userErrors || [];
+  const result = json?.data?.metafieldsSet;
+  if (json.errors?.length || !Array.isArray(result?.userErrors)) {
+    throw new Error("Analytics mutation result unavailable");
+  }
+  const errors = result.userErrors;
+  if (errors.length && errors.every(error => error.code === "STALE_OBJECT")) return false;
   if (errors.length > 0) {
     throw new Error(errors.map((e) => e.message).join("; "));
   }
+  if (!result.metafields?.[0]?.id) throw new Error("Analytics mutation result unavailable");
+  return true;
 }
 
 /**
@@ -121,7 +132,55 @@ export async function recordAnalyticsEvent(admin, shopId, dateStr, eventType, pa
   const key = getMonthKey(dateStr);
   if (!key) return;
 
-  const monthData = await getMonthAnalytics(admin, shopId, key);
+  const eventId = randomUUID();
+  let uncertain = false;
+  let snapshot = await readForUpdate(admin, key);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const updated = { ...snapshot.data };
+    incrementDay(updated, dateStr, eventType, payload, eventId);
+    try {
+      if (await setMonthAnalytics(admin, shopId, key, updated, snapshot.digest)) return;
+    } catch (error) {
+      // An upstream internal error can arrive after the mutation committed.
+      if (!isInternalError(error)) throw error;
+      const observed = await readForUpdate(admin, key);
+      if (observed.data[dateStr]?.lastAnalyticsEventId === eventId) return;
+      if (observed.digest !== snapshot.digest || attempt > 0) throw error;
+      uncertain = true;
+      snapshot = observed;
+      continue;
+    }
+    if (uncertain) {
+      const observed = await readForUpdate(admin, key);
+      if (observed.data[dateStr]?.lastAnalyticsEventId === eventId) return;
+      throw new Error("Analytics update outcome unknown");
+    }
+    // An explicit stale digest guarantees the increment did not commit.
+    if (attempt < 2) snapshot = await readForUpdate(admin, key);
+  }
+  throw new Error("Analytics update conflicted");
+}
+
+function isInternalError(error) {
+  const errors = error?.body?.errors?.graphQLErrors ?? error?.body?.errors;
+  if (Array.isArray(errors) && errors.some(item => item?.extensions?.code === "INTERNAL_SERVER_ERROR")) return true;
+  return error?.constructor?.name === "GraphqlQueryError" && /^Internal error\b/i.test(error.message);
+}
+
+async function readForUpdate(admin, key) {
+  const res = await admin.graphql(METAFIELD_GET_QUERY, { variables: { key } });
+  const json = await res.json();
+  const field = json?.data?.shop?.metafield;
+  if (json.errors?.length || field === undefined) throw new Error("Analytics read unavailable");
+  if (field === null) return { data: {}, digest: null };
+  const data = JSON.parse(field.value);
+  if (!data || typeof data !== "object" || Array.isArray(data) || !field.compareDigest) {
+    throw new Error("Invalid analytics month");
+  }
+  return { data, digest: field.compareDigest };
+}
+
+function incrementDay(monthData, dateStr, eventType, payload, eventId) {
   const day = ensureDay(monthData[dateStr]);
 
   if (eventType === "area_display") {
@@ -140,8 +199,7 @@ export async function recordAnalyticsEvent(admin, shopId, dateStr, eventType, pa
     }
   }
 
-  monthData[dateStr] = day;
-  await setMonthAnalytics(admin, shopId, key, monthData);
+  monthData[dateStr] = { ...day, lastAnalyticsEventId: eventId };
 }
 
 /**
