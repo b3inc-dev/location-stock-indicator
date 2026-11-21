@@ -139,12 +139,16 @@ export default function AppIndex() {
   const isInhouse = distribution === "inhouse";
   const showBillingNote = !isInhouse && isDevelopmentStore;
 
-  const planLabel =
-    plan === "pro"
-      ? "Pro"
-      : plan === "lite"
-        ? "Lite（7日間トライアル中）"
-        : "プランが選択されていません";
+  const planCheckFailed = !isInhouse && shopPlan?.planCheckFailed === true;
+  const planLabel = isInhouse
+    ? "Pro"
+    : planCheckFailed
+      ? "契約の状態を確認できませんでした"
+      : plan === "pro"
+        ? "Pro"
+        : plan === "lite"
+          ? "Lite"
+          : "プランが選択されていません";
 
   return (
     <s-page heading="ホーム">
@@ -176,7 +180,7 @@ export default function AppIndex() {
             </div>
             {!isInhouse && !plan && (
               <Link to="/app/plan" style={{ fontSize: "14px", color: "#2c6ecb" }}>
-                料金プランを選択する
+                {planCheckFailed ? "料金プランの画面で確かめる" : "料金プランを選択する"}
               </Link>
             )}
             {!isInhouse && plan === "lite" && (
@@ -191,7 +195,7 @@ export default function AppIndex() {
             )}
             {showBillingNote && (
               <span style={{ fontSize: "14px", color: "#6d7175", display: "block", marginTop: "4px" }}>
-                開発ストアのため課金は発生しません
+                開発ストアはテスト課金のため請求されません
               </span>
             )}
           </SummaryCard>

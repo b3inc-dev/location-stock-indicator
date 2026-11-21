@@ -1,49 +1,54 @@
 // app/routes/app.plan.jsx - 料金プランページ（プラン選択＋プラン別機能の紹介）POS Stock 同様 UI
-import { Form, redirect, useLoaderData } from "react-router";
+// 公開アプリは Shopify App Pricing（Managed Pricing）。プランの選択・変更・解約は Shopify の pricing_plans で行う。
+// アプリは appSubscriptionCreate を呼ばない。埋め込み画面の外（target="_top"）で開く。
+import { useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 import { getShopPlan } from "../utils/shopPlan.server.js";
-import { createAppSubscription } from "../utils/billing.js";
+import { LITE_MAX_LOCATIONS, buildManagedPricingPlansUrl } from "../utils/billing.js";
 
-const APP_HANDLE = process.env.SHOPIFY_APP_HANDLE || "app";
+import { NOTICE_STYLES, buildPlanPageNotice } from "../utils/planNotice.js";
 
 export async function loader({ request }) {
   const { admin, session } = await authenticate.admin(request);
   const shopPlan = await getShopPlan(admin, session?.shop);
-
-  const storeHandle = session.shop.replace(".myshopify.com", "");
-  const pricingPlansUrl = `https://admin.shopify.com/store/${storeHandle}/charges/${APP_HANDLE}/pricing_plans`;
-  const url = new URL(request.url);
-  const requiredFromQuery = url.searchParams.get("required") === "1";
-
-  return { shopPlan, pricingPlansUrl, requiredFromQuery };
+  const pricingPlansUrl =
+    shopPlan.distribution === "public" ? buildManagedPricingPlansUrl(session?.shop) : null;
+  if (shopPlan.distribution === "public" && !pricingPlansUrl) {
+    console.error("[app.plan] cannot build pricing_plans URL (SHOPIFY_APP_HANDLE missing?) shop=", session?.shop);
+  }
+  return { shopPlan, pricingPlansUrl };
 }
 
-/** プラン選択ボタン押下: サブスク作成 → Shopify の承認 URL へリダイレクト */
+/**
+ * 互換用: 古い画面からの POST（プラン選択）を Shopify のプラン選択ページへ _top で移す。
+ * 課金はアプリで作らない（Managed Pricing）。
+ */
 export async function action({ request }) {
   if (request.method !== "POST") return null;
-  const formData = await request.formData();
-  const plan = formData.get("plan");
-  if (plan !== "lite" && plan !== "pro") return null;
-
-  const { admin, session } = await authenticate.admin(request);
-  const shopPlan = await getShopPlan(admin, session?.shop);
+  const auth = await authenticate.admin(request);
+  const shopPlan = await getShopPlan(auth.admin, auth.session?.shop);
   if (shopPlan.distribution === "inhouse") return null;
-
-  const url = new URL(request.url);
-  const returnUrl = `${url.origin}${url.pathname}`;
-  const { confirmationUrl, userErrors } = await createAppSubscription(admin, plan, returnUrl);
-  if (userErrors.length > 0 || !confirmationUrl) {
-    return redirect(`${url.pathname}?billingError=1`);
+  const pricingPlansUrl = buildManagedPricingPlansUrl(auth.session?.shop);
+  if (!pricingPlansUrl) {
+    return { ok: false, error: "プラン選択ページの URL を作れませんでした。" };
   }
-  return redirect(confirmationUrl);
+  return auth.redirect(pricingPlansUrl, { target: "_top" });
 }
 
 export default function PlanPage() {
-  const { shopPlan, pricingPlansUrl, requiredFromQuery } = useLoaderData();
-  const { plan, locationsCount, distribution, isDevelopmentStore, locationPlanMismatch, maxLocationsForPlan, planRequired } =
+  const { shopPlan, pricingPlansUrl } = useLoaderData();
+  const { plan, locationsCount, distribution, isDevelopmentStore, locationPlanMismatch, maxLocationsForPlan, planCheckFailed } =
     shopPlan ?? {};
   const isInhouse = distribution === "inhouse";
-  const showRequiredBanner = Boolean(planRequired || requiredFromQuery);
+  const notice = buildPlanPageNotice({
+    plan,
+    planCheckFailed: planCheckFailed === true,
+    pricingPlansUrl,
+    locationPlanMismatch: locationPlanMismatch === true,
+    maxLocationsForPlan,
+    locationsCount,
+    isDevelopmentStore,
+  });
 
   if (isInhouse) {
     return (
@@ -72,80 +77,21 @@ export default function PlanPage() {
   return (
     <s-page heading="料金プラン">
       <div style={{ padding: "16px", maxWidth: "900px" }}>
-        {showRequiredBanner && (
+        {notice && (
           <div
-            style={{
-              marginBottom: "16px",
-              padding: "16px",
-              background: "#eaf4ff",
-              border: "1px solid #2c6ecb",
-              borderRadius: "8px",
-            }}
-          >
-            <s-text emphasis="bold">料金プランの選択が必要です</s-text>
-            <div style={{ marginTop: "8px" }}>
-              <s-text size="small">
-                プラン未選択の間は、商品ページのロケーション別在庫は表示されません。Lite または Pro を選択してください。
-              </s-text>
-            </div>
-          </div>
-        )}
-        {locationPlanMismatch && maxLocationsForPlan != null && (
-          <div
-            style={{
-              marginBottom: "16px",
-              padding: "16px",
-              background: "#fff4e5",
-              border: "1px solid #e0b252",
-              borderRadius: "8px",
-            }}
-          >
-            <div style={{ fontSize: "16px", fontWeight: 700, color: "#202223", marginBottom: "8px" }}>
-              ロケーション数がプランと一致していません
-            </div>
-            <div style={{ fontSize: "14px", color: "#202223", marginBottom: "12px", lineHeight: 1.5 }}>
-              現在のプランは<strong>{maxLocationsForPlan}ロケーション</strong>までです。ストアのロケーション数は
-              <strong>{locationsCount}</strong>のため、プラン変更が必要です。変更が反映されるまで設定などの機能はご利用いただけません。
-            </div>
-            <a
-              href={pricingPlansUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: "inline-block",
-                padding: "10px 20px",
-                background: "#2c6ecb",
-                color: "#fff",
-                borderRadius: "6px",
-                fontSize: "14px",
-                fontWeight: 600,
-                textDecoration: "none",
-              }}
-            >
-              Shopify でプランを変更する
-            </a>
-            <div style={{ marginTop: "8px", fontSize: "13px", color: "#6d7175" }}>
-              プラン変更後、このページを再読み込みしてください。
-            </div>
-          </div>
-        )}
-
-        {isDevelopmentStore && (
-          <div
+            role={notice.tone === "critical" ? "alert" : "status"}
             style={{
               marginBottom: "16px",
               padding: "12px 16px",
-              background: "#e3f1df",
+              background: NOTICE_STYLES[notice.tone].background,
+              border: `1px solid ${NOTICE_STYLES[notice.tone].border}`,
               borderRadius: "8px",
-              borderLeft: "4px solid #008060",
             }}
           >
-            <s-text emphasis="bold">開発ストアのため課金は発生しません</s-text>
-            <div style={{ marginTop: "4px" }}>
-              <s-text tone="subdued" size="small">
-                全機能をご利用いただけます。本番ストアでは下記の料金が適用されます。
-              </s-text>
+            <div style={{ fontSize: "14px", fontWeight: 700, color: "#202223", marginBottom: "4px" }}>
+              {notice.heading}
             </div>
+            <div style={{ fontSize: "14px", color: "#202223", lineHeight: 1.5 }}>{notice.body}</div>
           </div>
         )}
 
@@ -167,25 +113,23 @@ export default function PlanPage() {
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px" }}>
             <PlanCard
-              planKey="lite"
               name="Lite"
-              priceSummary="$20/月"
-              priceDetail="10ロケーションまで。定額です。"
-              trial="7日間無料"
+              priceDetail={`${LITE_MAX_LOCATIONS}ロケーションまで。`}
               summary="基本の在庫表示・並び順・閾値・公開名・リンクなど。エリア・近隣店舗・店舗受け取り・分析は Pro でご利用いただけます。"
               isCurrent={plan === "lite"}
               pricingPlansUrl={pricingPlansUrl}
             />
             <PlanCard
-              planKey="pro"
               name="Pro"
-              priceSummary="$20/月〜"
-              priceDetail="$20 ＋ 1ロケーションあたり $2/月（ロケーション数に制限なし）"
-              trial="14日間無料"
+              priceDetail="ロケーション数に制限なし。"
               summary="エリア設定・近隣店舗表示・店舗受け取りボタン・分析（管理画面）を含む全機能。"
               isCurrent={plan === "pro"}
               pricingPlansUrl={pricingPlansUrl}
+              primary
             />
+          </div>
+          <div style={{ marginTop: "12px", fontSize: "13px", color: "#6d7175", lineHeight: 1.5 }}>
+            料金・無料期間は Shopify のプラン選択ページに表示されます。プランの選択・変更・解約も Shopify の画面で行います。変更のあと、このページを再読み込みしてください。
           </div>
         </div>
 
@@ -263,34 +207,13 @@ export default function PlanPage() {
               pro
             />
           </div>
-          {plan !== "pro" && (
-            <div style={{ marginTop: "16px" }}>
-              <a
-                href={pricingPlansUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ fontSize: "14px", color: "#2c6ecb" }}
-              >
-                アップグレードして全機能を使う →
-              </a>
-            </div>
-          )}
         </div>
       </div>
     </s-page>
   );
 }
 
-function PlanCard({
-  planKey,
-  name,
-  priceSummary,
-  priceDetail,
-  trial,
-  summary,
-  isCurrent,
-  pricingPlansUrl,
-}) {
+function PlanCard({ name, priceDetail, summary, isCurrent, pricingPlansUrl, primary }) {
   return (
     <div
       style={{
@@ -302,51 +225,57 @@ function PlanCard({
       }}
     >
       <div style={{ marginBottom: "12px", fontSize: "20px", fontWeight: 700 }}>{name}</div>
-      <div style={{ marginBottom: "6px", fontSize: "18px", fontWeight: 700, color: "#202223" }}>
-        {priceSummary}
-      </div>
-      <div style={{ marginBottom: "6px", fontSize: "12px", color: "#6d7175", lineHeight: 1.4 }}>
+      <div style={{ marginBottom: "6px", fontSize: "14px", color: "#202223", lineHeight: 1.4 }}>
         {priceDetail}
       </div>
-      <div style={{ marginBottom: "12px", fontSize: "13px", color: "#6d7175" }}>{trial}</div>
       <div style={{ marginBottom: "16px", fontSize: "14px", color: "#6d7175", lineHeight: 1.4 }}>
         {summary}
       </div>
       {isCurrent ? (
-        <div
-          style={{
-            display: "inline-block",
-            padding: "8px 16px",
-            background: "#e1e3e5",
-            color: "#414f3b",
-            borderRadius: "6px",
-            fontSize: "14px",
-            fontWeight: 500,
-          }}
-        >
-          このプランを利用中
-        </div>
-      ) : (
-        <Form method="post" style={{ display: "inline-block" }}>
-          <input type="hidden" name="plan" value={planKey} />
-          <button
-            type="submit"
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
+          <span
             style={{
-              padding: "8px 16px",
-              background: "#2c6ecb",
-              color: "#fff",
-              border: "none",
-              borderRadius: "6px",
-              fontSize: "14px",
-              fontWeight: 500,
-              cursor: "pointer",
+              display: "inline-block",
+              padding: "4px 10px",
+              background: "#cdfee1",
+              color: "#0c5132",
+              borderRadius: "8px",
+              fontSize: "13px",
+              fontWeight: 600,
             }}
           >
-            このプランを選択する
-          </button>
-        </Form>
-      )}
+            利用中
+          </span>
+          {pricingPlansUrl && <PricingPlansButton href={pricingPlansUrl} label="Shopify でプランを変更" />}
+        </div>
+      ) : pricingPlansUrl ? (
+        <PricingPlansButton href={pricingPlansUrl} label="このプランを選ぶ" primary={primary} />
+      ) : null}
     </div>
+  );
+}
+
+/** Shopify のプラン選択ページへ埋め込み画面の外（_top）で移るボタン */
+function PricingPlansButton({ href, label, primary }) {
+  return (
+    <a
+      href={href}
+      target="_top"
+      rel="noopener noreferrer"
+      style={{
+        display: "inline-block",
+        padding: "6px 14px",
+        background: primary ? "#303030" : "#fff",
+        color: primary ? "#fff" : "#303030",
+        border: primary ? "1px solid #303030" : "1px solid #c9cccf",
+        borderRadius: "8px",
+        fontSize: "13px",
+        fontWeight: 600,
+        textDecoration: "none",
+      }}
+    >
+      {label}
+    </a>
   );
 }
 

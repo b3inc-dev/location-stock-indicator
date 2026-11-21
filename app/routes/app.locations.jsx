@@ -3,6 +3,7 @@
 import { useRef, useState, useMemo, useEffect } from "react";
 import { useLoaderData, useFetcher, useRevalidator, useOutletContext } from "react-router";
 import shopify from "../shopify.server";
+import { adminWritePlanBlock } from "../utils/shopPlan.server.js";
 
 /**
  * ロケーション一覧 + shop メタフィールド(location_stock.config) を取得
@@ -214,6 +215,10 @@ export async function action({ request }) {
   const { admin, session } = await shopify.authenticate.admin(request);
   const shop = session?.shop ?? "(unknown)";
   const formData = await request.formData();
+
+  // 公開用: 未契約・契約を読めない・Lite の上限超えのときは保存しない（自社用は通す）
+  const planBlock = await adminWritePlanBlock(admin, session?.shop);
+  if (planBlock) return planBlock;
 
   const shopId = formData.get("shopId");
   if (!shopId) {

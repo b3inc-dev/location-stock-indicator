@@ -740,9 +740,7 @@ export async function loader({ request }) {
             // Lite / plan null では記録しない（features.analytics）
             let analyticsPlan = null;
             try {
-              analyticsPlan = await getShopPlan(admin, session?.shop, {
-                reportUsage: false,
-              });
+              analyticsPlan = await getShopPlan(admin, session?.shop);
             } catch (planErr) {
               console.error(
                 "[location-stock] getShopPlan failed (analytics skip):",
@@ -917,11 +915,23 @@ export async function loader({ request }) {
     // プラン取得失敗時は fail-closed（無料開放・Pro バイパスをしない）。
     let shopPlan = null;
     try {
-      shopPlan = await getShopPlan(admin, session?.shop, {
-        reportUsage: false,
-      });
+      shopPlan = await getShopPlan(admin, session?.shop);
     } catch (planErr) {
       console.error("[location-stock] getShopPlan failed (fail-closed):", planErr);
+    }
+
+    if (!shopPlan || (shopPlan.distribution !== "inhouse" && shopPlan.planCheckFailed)) {
+      logAppProxyError(
+        session?.shop,
+        variantId,
+        "plan_check_failed",
+        "料金プランの契約を Shopify から読めなかったため、ストアフロント在庫を返しません（fail-closed）。",
+        null
+      );
+      return errorJson(
+        "plan_check_failed",
+        "在庫を読み込めませんでした。しばらくしてから再読み込みしてください。"
+      );
     }
 
     if (!isStorefrontInventoryAllowed(shopPlan)) {
@@ -1073,9 +1083,7 @@ export async function action({ request }) {
     }
     let analyticsPlan = null;
     try {
-      analyticsPlan = await getShopPlan(admin, session?.shop, {
-        reportUsage: false,
-      });
+      analyticsPlan = await getShopPlan(admin, session?.shop);
     } catch (planErr) {
       console.error(
         "[location-stock] getShopPlan failed (analytics action skip):",
