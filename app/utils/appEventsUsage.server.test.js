@@ -9,12 +9,14 @@ import {
   describeUsageReportForMerchant,
   getEventHandle,
   reportProLocationUsage,
+  PERIOD_END_MARGIN_MS,
   RETRY_AFTER_MS,
 } from "./appEventsUsage.server.js";
 
 const SHOP = "demo.myshopify.com";
 const GID = "gid://shopify/Shop/12345678";
-const PERIOD = "2026-12-21T00:00:00Z";
+// 期間の終わりは遠い先にする（今の時計で動くテストが、日付が過ぎて period_ended にならないように）
+const PERIOD = "2099-12-21T00:00:00Z";
 const ENV_ON = { APP_EVENTS_USAGE_ENABLED: "1", APP_EVENTS_CLIENT_ID: "cid", APP_EVENTS_CLIENT_SECRET: "sec" };
 
 /** Prisma の appUsageReport の偽物（(shop, periodEnd) と idempotencyKey の一意を守る） */
@@ -87,8 +89,8 @@ describe("数の計算とキー", () => {
 
   test("キーは店と期間で決まり、64 文字以内", () => {
     const k = buildIdempotencyKey(GID, PERIOD);
-    assert.equal(k, "lsi-loc-12345678-20261221T000000Z");
-    assert.equal(buildIdempotencyKey(GID, "2026-12-21T00:00:00.000Z"), k);
+    assert.equal(k, "lsi-loc-12345678-20991221T000000Z");
+    assert.equal(buildIdempotencyKey(GID, "2099-12-21T00:00:00.000Z"), k);
     assert.ok(k.length <= 64);
     assert.equal(buildIdempotencyKey("bad", PERIOD), null);
     assert.equal(buildIdempotencyKey(GID, "not a date"), null);
@@ -113,7 +115,7 @@ describe("1 店・1 期間に 1 回", () => {
       shop_id: GID,
       event_handle: "pro_location",
       timestamp: "2026-11-25T03:04:05Z",
-      idempotency_key: "lsi-loc-12345678-20261221T000000Z",
+      idempotency_key: "lsi-loc-12345678-20991221T000000Z",
       attributes: { value: 13 },
     });
     assert.equal(store.rows[0].status, "sent");
@@ -227,6 +229,20 @@ describe("スイッチ・上限・失敗", () => {
     const store = fakeStore();
     assert.equal((await reportProLocationUsage(input({ periodEnd: null }), { store, env: ENV_ON })).reason, "missing_period");
     assert.equal((await reportProLocationUsage(input({ shopGid: null }), { store, env: ENV_ON })).reason, "missing_shop_id");
+  });
+
+  test("請求期間が終わった（終わりそう）なら、古い期間のキーで送らない（次の期間と 2 重にしない）", async () => {
+    const store = fakeStore();
+    const fetchImpl = fakeFetch([503, 202]);
+    let now = Date.parse(PERIOD) - PERIOD_END_MARGIN_MS - 60_000;
+    const deps = { store, env: ENV_ON, fetchImpl, now: () => now, force: true };
+    assert.equal((await reportProLocationUsage(input(), deps)).outcome, "failed");
+    now = Date.parse(PERIOD) + 1;
+    assert.equal((await reportProLocationUsage(input(), deps)).reason, "period_ended");
+    now = Date.parse(PERIOD) - PERIOD_END_MARGIN_MS + 1;
+    assert.equal((await reportProLocationUsage(input(), deps)).reason, "period_ended");
+    assert.equal(fetchImpl.events().length, 1);
+    assert.equal(store.rows[0].status, "failed");
   });
 
   test("店に見せる文", () => {
