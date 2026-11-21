@@ -35,6 +35,12 @@ export const RETRY_AFTER_MS = 10 * 60_000;
 export const MAX_ATTEMPTS = 8;
 /** sending のまま止まった行（落ちたなど）を取り直すまでの時間 */
 export const STALE_SENDING_MS = 5 * 60_000;
+/**
+ * 請求期間の終わりがこれより近い（または過ぎた）ときは送らない。
+ * イベントの timestamp は「今」なので、期間が終わったあとに古い期間のキーで送ると、次の期間の請求に入り、
+ * 次の期間のキーで送る分と 2 回になる（Shopify の currentPeriodEnd が更新に遅れたとき・失敗の送り直しのとき）。
+ */
+export const PERIOD_END_MARGIN_MS = 10 * 60_000;
 /** 同じ店・同じ期間の DB 確認の間隔（管理画面を開くたびに DB を読まない） */
 export const RECHECK_MS = 10 * 60_000;
 export function isUsageReportingEnabled(env = process.env) {
@@ -182,6 +188,11 @@ export async function reportProLocationUsage(input, deps) {
   if (!input.periodEnd || !Number.isFinite(Date.parse(input.periodEnd))) {
     console.warn(`[app-events-usage] no currentPeriodEnd; cannot report. shop=${input.shop}`);
     return { outcome: "skipped", reason: "missing_period" };
+  }
+  if (nowFn() >= Date.parse(input.periodEnd) - PERIOD_END_MARGIN_MS) {
+    // 期間が終わった（終わりそう）。今送ると次の期間の請求に入って 2 重になるので送らない（記録も変えない）
+    console.warn(`[app-events-usage] period ended or ending; not sent. shop=${input.shop} periodEnd=${input.periodEnd}`);
+    return { outcome: "skipped", reason: "period_ended" };
   }
   const idempotencyKey = input.shopGid ? buildIdempotencyKey(input.shopGid, input.periodEnd) : null;
   if (!input.shopGid || !idempotencyKey) {
