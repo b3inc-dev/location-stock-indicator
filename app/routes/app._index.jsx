@@ -2,17 +2,20 @@
 
 import { Link, useLoaderData, useOutletContext } from "react-router";
 import { authenticate } from "../shopify.server";
+import { buildThemeAppBlockDeepLink } from "../utils/themeDeepLink.js";
 
 /**
  * Home 画面用 loader
  * - セッション確認（未ログインなら Shopify 側へリダイレクト）
- * - shop ドメインだけ UI に渡しておく（表示に使いたいとき用）
+ * - shop ドメインと、テーマエディタを開く URL を渡す
  */
 export async function loader({ request }) {
   const { session } = await authenticate.admin(request);
 
   return {
     shop: session.shop, // 例: "location-stock-indicator.myshopify.com"
+    // eslint-disable-next-line no-undef
+    themeDeepLinkUrl: buildThemeAppBlockDeepLink(session.shop, process.env.SHOPIFY_API_KEY),
   };
 }
 
@@ -105,6 +108,39 @@ function DeliveryProfileCard({ shop }) {
   );
 }
 
+/**
+ * 3. テーマにブロックを足す案内（App Store 要件 5.1.3: 設定の手順とテーマエディタへのリンク）
+ * URL を作れないとき（SHOPIFY_API_KEY が無い等）は、手で足す手順だけを出す。
+ */
+function ThemeBlockSetupCard({ deepLinkUrl }) {
+  return (
+    <div
+      style={{
+        marginBottom: "16px",
+        padding: "16px",
+        background: "#fff",
+        borderRadius: "8px",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+      }}
+    >
+      <div style={{ marginBottom: "8px", fontSize: "14px", fontWeight: 600, color: "#6d7175" }}>
+        3. テーマにブロックを追加
+      </div>
+      <div style={{ marginBottom: "12px", fontSize: "14px", color: "#6d7175", lineHeight: 1.5 }}>
+        商品ページに「Location stock indicator」ブロックを追加すると、ロケーション別の在庫が表示されます。テーマエディタで位置を確かめてから、テーマを保存してください。
+      </div>
+      <div style={{ marginBottom: "12px", fontSize: "13px", color: "#6d7175", lineHeight: 1.5 }}>
+        手で追加するとき: オンラインストア → テーマ → カスタマイズ → 商品ページ → 「アプリ」から「Location stock indicator」を追加して保存します。
+      </div>
+      {deepLinkUrl && (
+        <s-button variant="primary" href={deepLinkUrl} target="_blank">
+          テーマエディタを開く
+        </s-button>
+      )}
+    </div>
+  );
+}
+
 /** POS Stock の SummaryCard に準拠：タイトル＋子要素 */
 function SummaryCard({ title, children, style = {} }) {
   return (
@@ -129,7 +165,7 @@ function SummaryCard({ title, children, style = {} }) {
  * /app の Home 画面（POS Stock のカード構成に準拠：プラン・ロケーション数＋導入ステップ）
  */
 export default function AppIndex() {
-  const { shop } = useLoaderData();
+  const { shop, themeDeepLinkUrl } = useLoaderData();
   const outletContext = useOutletContext();
   const shopPlan = outletContext?.shopPlan ?? null;
   const distribution = shopPlan?.distribution;
@@ -215,6 +251,7 @@ export default function AppIndex() {
             buttonLabel="在庫表示設定を開く"
             to="/app/settings"
           />
+          <ThemeBlockSetupCard deepLinkUrl={themeDeepLinkUrl} />
         </div>
       </div>
     </s-page>
