@@ -64,6 +64,14 @@ describe("getShopPlan (public, managed pricing)", () => {
     assert.equal(p.locationPlanMismatch, undefined);
   });
 
+  it("Pro → proLocationUsage（$2 × ロケーション数・請求期間）。Lite には無い", async () => {
+    const sub = { name: "Pro", status: "ACTIVE", currentPeriodEnd: "2026-12-21T00:00:00Z" };
+    const p = await getShopPlan(adminReturning(data({ subs: [sub], locations: 7 })), "s.myshopify.com");
+    assert.deepEqual(p.proLocationUsage, { units: 7, unitPriceUsd: 2, amountUsd: 14, periodEnd: "2026-12-21T00:00:00Z" });
+    const lite = await getShopPlan(adminReturning(data({ subs: [{ name: "Lite", status: "ACTIVE" }], locations: 7 })), "s.myshopify.com");
+    assert.equal(lite.proLocationUsage, undefined);
+  });
+
   it("Lite with more than 10 locations → locationPlanMismatch", async () => {
     const p = await getShopPlan(adminReturning(data({ subs: [{ name: "Lite", status: "ACTIVE" }], locations: 11 })), "s.myshopify.com");
     assert.equal(p.locationPlanMismatch, true);
@@ -108,6 +116,13 @@ describe("getShopPlan (inhouse / Ciara unchanged)", () => {
     assert.equal(p.distribution, "inhouse");
     assert.equal(p.locationsCount, 15);
     assert.equal(p.locationPlanMismatch, undefined);
+  });
+
+  it("自社用は従量を数えない（reportUsage: true でも）", async () => {
+    process.env.SHOPIFY_API_KEY = INHOUSE_CLIENT_ID;
+    const sub = { name: "Pro", status: "ACTIVE", currentPeriodEnd: "2026-12-21T00:00:00Z" };
+    const p = await getShopPlan(adminReturning(data({ subs: [sub], locations: 15 })), "ciara.myshopify.com", { reportUsage: true });
+    assert.equal(p.proLocationUsage, undefined);
   });
 
   it("adminWritePlanBlock does not call GraphQL for inhouse", async () => {

@@ -9,7 +9,8 @@ import { getShopPlan } from "../utils/shopPlan.server.js";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
-  const shopPlan = await getShopPlan(admin, session?.shop);
+  // 管理画面のレイアウトだけが Pro の従量（App Events API）の報告を頼む（待たない。1 請求期間 1 回）
+  const shopPlan = await getShopPlan(admin, session?.shop, { reportUsage: true });
 
   const url = new URL(request.url);
   const path = url.pathname;

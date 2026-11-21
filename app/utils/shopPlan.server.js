@@ -15,10 +15,12 @@ import {
   requiresPlanSelection,
 } from "./planGate.js";
 import { resolvePlanDistribution } from "./planDistribution.js";
+import { computeProLocationUsage, reportProLocationUsage } from "./appEventsUsage.server.js";
 
 const SHOP_PLAN_QUERY = `#graphql
   query ShopPlanAndLocations($first: Int!) {
     shop {
+      id
       plan {
         partnerDevelopment
       }
@@ -29,6 +31,7 @@ const SHOP_PLAN_QUERY = `#graphql
         id
         name
         status
+        currentPeriodEnd
       }
     }
   }
@@ -46,7 +49,8 @@ export function getPlanDistribution(shop) {
  * プラン情報を取得する。
  * @param {object} admin - GraphQL を実行する admin オブジェクト
  * @param {string} [currentShop] - ショップドメイン
- * @param {object} [_options] - 互換のため受け取るだけ（以前の reportUsage。Managed Pricing では従量報告をしない）
+ * @param {{ reportUsage?: boolean }} [options] - reportUsage: true のときだけ Pro の従量（App Events API）を待たずに報告する。
+ *   管理画面のレイアウト（app.jsx）だけが true を渡す。ストアフロント（App Proxy）・保存の門番は渡さない（課金の副作用を付けない）
  * @returns {Promise<{
  *   distribution: "inhouse"|"public";
  *   plan: "lite"|"pro"|null;
@@ -63,15 +67,18 @@ export function getPlanDistribution(shop) {
  *   planCheckFailed?: boolean;
  *   locationPlanMismatch?: boolean;
  *   maxLocationsForPlan?: number;
+ *   proLocationUsage?: { units: number; unitPriceUsd: number; amountUsd: number; periodEnd: string|null };
  * }>}
  */
-// eslint-disable-next-line no-unused-vars
-export async function getShopPlan(admin, currentShop, _options = {}) {
+export async function getShopPlan(admin, currentShop, options = {}) {
   const { distribution, forceInhouse } = getPlanDistribution(currentShop);
 
   let locationsCount = 0;
   let isDevelopmentStore = false;
   let planFromBilling = null;
+  let shopGid = null;
+  /** @type {Array<{ status?: string; currentPeriodEnd?: string|null }>} */
+  let activeSubs = [];
   /** Shopify から契約の一覧を読めたか（読めない＝未契約とは言えない） */
   let subscriptionsRead = false;
 
@@ -81,9 +88,11 @@ export async function getShopPlan(admin, currentShop, _options = {}) {
     const d = data?.data;
     locationsCount = d?.locations?.nodes?.length ?? 0;
     isDevelopmentStore = d?.shop?.plan?.partnerDevelopment === true;
+    shopGid = typeof d?.shop?.id === "string" ? d.shop.id : null;
     const subs = d?.currentAppInstallation?.activeSubscriptions;
     if (Array.isArray(subs)) {
       subscriptionsRead = true;
+      activeSubs = subs;
       planFromBilling = getPlanFromActiveSubscriptions(subs);
     } else if (distribution === "public") {
       const errs = Array.isArray(data?.errors) ? data.errors.map((e) => e?.message).join("; ") : "";
@@ -128,6 +137,31 @@ export async function getShopPlan(admin, currentShop, _options = {}) {
     maxLocationsForPlan = maxForPlan;
   }
 
+  // Pro の従量（$2 × ロケーション数）。公開用・Pro のときだけ。1 請求期間に 1 回だけ App Events API で送る
+  // （送るか・失敗の記録は appEventsUsage.server.js。ここでは待たない）
+  let proLocationUsage;
+  if (distribution === "public" && !forceInhouse && plan === "pro") {
+    const usage = computeProLocationUsage(plan, locationsCount);
+    if (usage.units > 0) {
+      const periodEnd =
+        activeSubs.find((s) => String(s?.status || "").toUpperCase() === "ACTIVE" && s?.currentPeriodEnd)?.currentPeriodEnd ?? null;
+      proLocationUsage = { units: usage.units, unitPriceUsd: usage.unitPriceUsd, amountUsd: usage.amountUsd, periodEnd };
+      const shopForReport = String(currentShop ?? "").trim().toLowerCase();
+      if (options?.reportUsage === true && shopForReport) {
+        void import("../db.server.js")
+          .then(({ default: prisma }) =>
+            reportProLocationUsage(
+              { shop: shopForReport, shopGid, plan, locationsCount, periodEnd },
+              { store: prisma.appUsageReport }
+            )
+          )
+          .catch((e) => {
+            console.error("[getShopPlan] pro location usage report crashed:", e instanceof Error ? e.message : String(e));
+          });
+      }
+    }
+  }
+
   return {
     distribution,
     plan,
@@ -137,6 +171,7 @@ export async function getShopPlan(admin, currentShop, _options = {}) {
     ...(planRequired ? { planRequired: true } : {}),
     ...(planCheckFailed ? { planCheckFailed: true } : {}),
     ...(locationPlanMismatch ? { locationPlanMismatch: true, maxLocationsForPlan } : {}),
+    ...(proLocationUsage ? { proLocationUsage } : {}),
   };
 }
 
