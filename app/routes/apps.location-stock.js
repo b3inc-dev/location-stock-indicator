@@ -13,6 +13,7 @@ import {
 } from "../utils/refresh-offline-session.js";
 import { loadLocationDeliveryFlags } from "../utils/deliveryProfiles.js";
 import { cacheGet, cacheSet } from "../utils/shortCache.js";
+import { classifyAppProxyThrown } from "../utils/appProxyThrown.js";
 
 /** 配送フラグ短命キャッシュ（ms）— Admin API 連打緩和 */
 const DELIVERY_FLAGS_TTL_MS = 60_000;
@@ -949,6 +950,15 @@ export async function loader({ request }) {
       config: globalConfig,
     });
   } catch (error) {
+    const classified = classifyAppProxyThrown(error);
+    if (classified.kind === "expected_response") {
+      // 署名拒否などの Response。URL・本文・リクエストの値はログに残さない。
+      console.error(
+        "[location-stock] App Proxy expected response",
+        JSON.stringify(classified.log)
+      );
+      return classified.response;
+    }
     let variantId = null;
     try {
       variantId = new URL(request.url).searchParams.get("variant_id");
@@ -957,13 +967,10 @@ export async function loader({ request }) {
       null,
       variantId,
       "internal_error",
-      error instanceof Error ? error.message : String(error),
-      error
+      classified.logMessage,
+      error instanceof Error ? error : null
     );
-    return errorJson(
-      "internal_error",
-      error instanceof Error ? error.message : String(error)
-    );
+    return errorJson("internal_error", classified.message);
   }
 }
 
@@ -1085,9 +1092,23 @@ export async function action({ request }) {
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error("[location-stock] analytics action error:", err);
+    const classified = classifyAppProxyThrown(err);
+    if (classified.kind === "expected_response") {
+      console.error(
+        "[location-stock] App Proxy expected response",
+        JSON.stringify({ route: "action", status: classified.log.status })
+      );
+      return classified.response;
+    }
+    console.error(
+      "[location-stock] analytics action error",
+      JSON.stringify({ message: classified.logMessage })
+    );
     return new Response(
-      JSON.stringify({ ok: false, error: err instanceof Error ? err.message : "Internal error" }),
+      JSON.stringify({
+        ok: false,
+        error: err instanceof Error ? err.message : "Internal error",
+      }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
