@@ -1,13 +1,50 @@
 /**
- * Location Stock Indicator：公開アプリ用 Billing ユーティリティ
- * - Lite: $20/月 定額・10ロケーションまで
- * - Pro: $20/月 ＋ ロケーション数 × $2（Usage）
- * 設計: docs/PLAN_SETTINGS_DESIGN.md
+ * Location Stock Indicator：公開アプリの料金プラン（Shopify App Pricing / Managed Pricing）
+ *
+ * 2026-11-21 T 決定: 公開用は Shopify App Pricing（Managed Pricing）で課金する（POS Stock と同じ）。
+ * - プランと料金は Partner Dashboard で作る。アプリは appSubscriptionCreate を呼ばない。
+ * - 店は Shopify のプラン選択ページ（admin.shopify.com/store/<店>/charges/<app handle>/pricing_plans）で選ぶ。
+ * - アプリは currentAppInstallation.activeSubscriptions のプラン名（"Lite" / "Pro" を含む）を読んで機能を決める。
+ * - Managed Pricing には従量課金（usage）が無いので、appUsageRecordCreate は使わない。
  */
 
 /**
- * アクティブなサブスクリプション一覧からプランを判定する。
- * 名前に "Pro" を含む → pro、"Lite" を含む → lite。複数ある場合は Pro を優先。
+ * 公開アプリの App Handle（pricing_plans の URL 用）。
+ * SHOPIFY_APP_HANDLE が無いときは null。分からない値（"app" など）で URL を作らない
+ * （間違った URL は accounts.shopify.com に飛び、埋め込み画面では開けない）。
+ * @param {Record<string, string|undefined>} [env]
+ * @returns {string|null}
+ */
+export function getPublicAppHandle(env = process.env) {
+  const fromEnv = String(env?.SHOPIFY_APP_HANDLE ?? "").trim();
+  return fromEnv || null;
+}
+
+/**
+ * Shopify App Pricing のプラン選択ページの URL。
+ * 必ず admin.shopify.com を使う。埋め込み画面からは target "_top" で開く。
+ * @param {string|null|undefined} shopDomain - 例: my-store.myshopify.com
+ * @param {Record<string, string|undefined>} [env]
+ * @returns {string|null} 店かハンドルが分からないときは null
+ */
+export function buildManagedPricingPlansUrl(shopDomain, env = process.env) {
+  const shop = String(shopDomain ?? "").trim().toLowerCase();
+  if (!shop) return null;
+  const storeHandle = shop
+    .replace(/^https?:\/\//, "")
+    .split("/")[0]
+    .replace(/\.myshopify\.com$/i, "");
+  if (!storeHandle || storeHandle.includes(".") || storeHandle === "admin") return null;
+  const appHandle = getPublicAppHandle(env);
+  if (!appHandle) return null;
+  return `https://admin.shopify.com/store/${encodeURIComponent(storeHandle)}/charges/${encodeURIComponent(appHandle)}/pricing_plans`;
+}
+
+/**
+ * 有効な契約の一覧からプランを決める。
+ * 名前に "Pro" を含む → pro、"Lite" を含む → lite。両方あれば Pro。
+ * 有効な契約があるのに名前から読めないとき → lite（払っている店を「未契約」として止めない。POS Stock と同じ）。
+ * 開発ストアのテスト課金も Shopify は ACTIVE で返すので、契約として数える。
  * @param {Array<{ name?: string; status?: string }>} subscriptions
  * @returns {"lite"|"pro"|null}
  */
@@ -19,216 +56,21 @@ export function getPlanFromActiveSubscriptions(subscriptions) {
   const hasLite = active.some((s) => /lite/i.test(String(s?.name || "")));
   if (hasPro) return "pro";
   if (hasLite) return "lite";
-  return null;
+  console.warn(
+    "[billing] active subscription name has neither Pro nor Lite; treating as lite:",
+    active.map((s) => String(s?.name || "")).join(", ")
+  );
+  return "lite";
 }
 
-/**
- * Lite プランは 10 ロケーションまで。サブスク名に "Lite" を含む場合は 10 を返す。
- * Pro は制限なしなので null。
- * @param {string} name
- * @returns {10|null}
- */
-export function getMaxLocationsFromSubscriptionName(name) {
-  const n = String(name || "").trim();
-  if (!n) return null;
-  if (/lite/i.test(n)) return 10;
-  return null; // Pro は上限なし
-}
-
-/** Pro の従量単価（USD/ロケーション/月） */
-export const USAGE_PRICE_PER_LOCATION = 2;
-
-/** 基本料金（USD/30日） */
-export const BASE_PRICE = { lite: 20, pro: 20 };
-
-/** Pro の Usage 上限（USD/月）目安 */
-export const USAGE_CAP_USD = 500;
-
-/** トライアル日数 */
-export const TRIAL_DAYS = { lite: 7, pro: 14 };
+/** Lite で使えるロケーション数の上限 */
+export const LITE_MAX_LOCATIONS = 10;
 
 /**
- * Pro の従量料金を計算する。$2 × ロケーション数。Lite は 0。
- * @param {"lite"|"pro"} plan
- * @param {number} locationsCount
- * @returns {{ amountUsd: number }}
+ * プランで使えるロケーション数の上限。Lite は 10、Pro は上限なし（null）。
+ * @param {"lite"|"pro"|null} plan
+ * @returns {number|null}
  */
-export function calculateUsageAmount(plan, locationsCount) {
-  if (plan !== "pro" || locationsCount <= 0) return { amountUsd: 0 };
-  return { amountUsd: locationsCount * USAGE_PRICE_PER_LOCATION };
-}
-
-/**
- * Usage 用の LineItem（AppUsagePricing の __typename を持つ行）の id を取得する。
- * @param {object} subscription - lineItems を持つサブスクリプション
- * @returns {string|null}
- */
-export function getUsageLineItemId(subscription) {
-  const items = subscription?.lineItems ?? [];
-  for (const item of items) {
-    const typename = item?.plan?.pricingDetails?.__typename ?? "";
-    if (typename === "AppUsagePricing") {
-      return item.id ?? null;
-    }
-  }
-  return null;
-}
-
-/**
- * 従量課金を 1 件報告する。同一請求期間の重複は idempotencyKey で防止。
- * @param {object} admin - graphql メソッドを持つオブジェクト
- * @param {string} subscriptionLineItemId
- * @param {number} amountUsd
- * @param {string} description
- * @param {string} idempotencyKey
- * @returns {Promise<{ success: boolean; userErrors?: Array<{ message: string }> }>}
- */
-export async function reportUsageRecord(
-  admin,
-  subscriptionLineItemId,
-  amountUsd,
-  description,
-  idempotencyKey
-) {
-  if (amountUsd <= 0) return { success: true };
-  const mutation = `#graphql
-    mutation AppUsageRecordCreate(
-      $subscriptionLineItemId: ID!,
-      $price: MoneyInput!,
-      $description: String!,
-      $idempotencyKey: String
-    ) {
-      appUsageRecordCreate(
-        subscriptionLineItemId: $subscriptionLineItemId,
-        price: $price,
-        description: $description,
-        idempotencyKey: $idempotencyKey
-      ) {
-        userErrors { message }
-        appUsageRecord { id }
-      }
-    }
-  `;
-  const resp = await admin.graphql(mutation, {
-    variables: {
-      subscriptionLineItemId,
-      price: { amount: amountUsd.toFixed(2), currencyCode: "USD" },
-      description,
-      idempotencyKey,
-    },
-  });
-  const data = await resp.json();
-  const payload = data?.data?.appUsageRecordCreate;
-  const userErrors = payload?.userErrors ?? [];
-  if (userErrors.length > 0) {
-    return { success: false, userErrors };
-  }
-  return { success: true };
-}
-
-/**
- * サブスクリプションを作成し、承認用 URL を返す。
- * Lite: Recurring $20 のみ。Pro: Recurring $20 ＋ Usage $2/ロケーション。
- * @param {object} admin - graphql メソッドを持つオブジェクト
- * @param {"lite"|"pro"} plan
- * @param {string} returnUrl
- * @returns {Promise<{ confirmationUrl: string|null; userErrors: Array<{ message: string }> }>}
- */
-export async function createAppSubscription(admin, plan, returnUrl) {
-  const trialDays = TRIAL_DAYS[plan];
-  const basePrice = BASE_PRICE[plan];
-
-  if (plan === "lite") {
-    const name = "Lite - 10 locations";
-    const mutation = `#graphql
-      mutation AppSubscriptionCreate(
-        $name: String!,
-        $returnUrl: URL!,
-        $lineItems: [AppSubscriptionLineItemInput!]!,
-        $trialDays: Int
-      ) {
-        appSubscriptionCreate(
-          name: $name,
-          returnUrl: $returnUrl,
-          lineItems: $lineItems,
-          trialDays: $trialDays
-        ) {
-          userErrors { message }
-          confirmationUrl
-          appSubscription { id }
-        }
-      }
-    `;
-    const lineItems = [
-      {
-        plan: {
-          appRecurringPricingDetails: {
-            price: { amount: String(basePrice), currencyCode: "USD" },
-            interval: "EVERY_30_DAYS",
-          },
-        },
-      },
-    ];
-    const resp = await admin.graphql(mutation, {
-      variables: { name, returnUrl, lineItems, trialDays },
-    });
-    const data = await resp.json();
-    const payload = data?.data?.appSubscriptionCreate;
-    const userErrors = payload?.userErrors ?? [];
-    if (userErrors.length > 0) {
-      return { confirmationUrl: null, userErrors };
-    }
-    return { confirmationUrl: payload?.confirmationUrl ?? null, userErrors: [] };
-  }
-
-  // Pro: Recurring $20 + Usage $2 per location
-  const name = "Pro - usage per location";
-  const terms = "$2 per location per month";
-  const mutation = `#graphql
-    mutation AppSubscriptionCreate(
-      $name: String!,
-      $returnUrl: URL!,
-      $lineItems: [AppSubscriptionLineItemInput!]!,
-      $trialDays: Int
-    ) {
-      appSubscriptionCreate(
-        name: $name,
-        returnUrl: $returnUrl,
-        lineItems: $lineItems,
-        trialDays: $trialDays
-      ) {
-        userErrors { message }
-        confirmationUrl
-        appSubscription { id }
-      }
-    }
-  `;
-  const lineItems = [
-    {
-      plan: {
-        appUsagePricingDetails: {
-          terms,
-          cappedAmount: { amount: String(USAGE_CAP_USD), currencyCode: "USD" },
-        },
-      },
-    },
-    {
-      plan: {
-        appRecurringPricingDetails: {
-          price: { amount: String(basePrice), currencyCode: "USD" },
-          interval: "EVERY_30_DAYS",
-        },
-      },
-    },
-  ];
-  const resp = await admin.graphql(mutation, {
-    variables: { name, returnUrl, lineItems, trialDays },
-  });
-  const data = await resp.json();
-  const payload = data?.data?.appSubscriptionCreate;
-  const userErrors = payload?.userErrors ?? [];
-  if (userErrors.length > 0) {
-    return { confirmationUrl: null, userErrors };
-  }
-  return { confirmationUrl: payload?.confirmationUrl ?? null, userErrors: [] };
+export function getMaxLocationsForPlan(plan) {
+  return plan === "lite" ? LITE_MAX_LOCATIONS : null;
 }
