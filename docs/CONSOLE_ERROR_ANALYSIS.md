@@ -21,7 +21,7 @@ GET https://location-stock-indicator.myshopify.com/sf_private_access_tokens net:
 （bbb-logo-cap:76 などで発生）
 ```
 
-> **ストアのドメインについて（2026-11-22 に直した）**: 開発ストアの myshopify のドメインは `location-stock-indicator.myshopify.com` です。管理画面の URL に出る名前（`admin.shopify.com/store/bbbincbbb` の `bbbincbbb`）とは違います。前はここを `bbbincbbb.myshopify.com` と書いていましたが、そのドメインは開発ストアのものではありません。上のログの行も、ドメインだけ直しています。
+> **ストアのドメインについて（2026-11-22 に直した）**: 開発ストアの myshopify のドメインは `location-stock-indicator.myshopify.com` です。管理画面の URL に出る名前（`admin.shopify.com/store/bbbincbbb` の `bbbincbbb`）とは違います。前はここを管理画面の名前に `.myshopify.com` を付けたドメインで書いていましたが、それは開発ストアのドメインではありません。上のログの行も、ドメインだけ直しています。
 
 - **本アプリ（Location stock indicator）では** `/sf_private_access_tokens` は使用していません。在庫取得は `/apps/location-stock?variant_id=...` を fetch しています。
 - 上記 401 は **テーマ（bbb-logo-cap）または他アプリ** が `sf_private_access_tokens` を呼び出している際の認証失敗です。
