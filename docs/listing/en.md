@@ -2,7 +2,8 @@
 
 - 説明は日本語、貼る文は英語。印は [README.md](README.md) と同じ。
 - 上限: App name 30 / Introduction 100 / Details 500 / Feature 80 each（Best practices）【事実】。
-- **管理画面とテーマのブロックの設定名は日本語だけ**【事実】。英語の画面とスキーマは PR #18（draft）。#18 が入るまでは、英語のリスティングを出しても対応言語は「Japanese」だけにする（4.3.2）【T】。
+- **管理画面とテーマのブロックの設定名は日本語だけ**【事実】。
+- **最初は日本語のリスティングだけで出す。英語は公開のあと**（T さんの決定 2026-11-22、#49）。このファイルは公開のあとに使う下書き。英語の画面とスキーマの PR #18 は 11/22 に閉じた（v1.1 で画面が変わったので、英語にするときに作り直す）。英語の画面ができるまでは、英語のリスティングを出しても対応言語は「Japanese」だけにする（4.3.2）。
 - 機能の根拠は [ja.md](ja.md) 7 章。
 
 ## 1. App name (≤30)
@@ -63,8 +64,10 @@ store stock / local inventory / store pickup / multi location / stock status
 
 | Plan | Monthly | Locations | Free trial |
 |---|---|---|---|
-| Lite | US$20 | up to 10 | 7 days【T】 |
-| Pro | US$20 + US$2 per location | unlimited | 14 days【T】 |
+| Lite | US$20 | up to 10 | 7 days |
+| Pro | US$20 + US$2 per location | unlimited | 14 days |
+
+- 無料体験は T さんの決定（2026-11-22、#49）: Lite 7 日・Pro 14 日。
 
 - Lite: per-location stock, thresholds and labels, which locations to show, names, order and links.
 - Pro: everything in Lite, plus area groups, nearest store, pickup button and analytics.
@@ -80,7 +83,7 @@ Pro adds US$2 per location per month to the US$20 monthly fee, on your Shopify b
 | Field | Value |
 |---|---|
 | Sales channel requirement | Requires online store |
-| Languages | Japanese（PR #18 のあとで English も） |
+| Languages | Japanese（English は公開のあと、英語の画面ができてから） |
 | Demo store URL | `{{DEMO_PRODUCT_URL}}`【T】 |
 | Support email | `{{SUPPORT_EMAIL}}`【T】 |
 | Support page | `{{SUPPORT_URL}}`【T】 |
