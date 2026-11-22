@@ -1,7 +1,8 @@
 // app/routes/app.analytics.jsx
 
 import { useState, useMemo, useCallback } from "react";
-import { useLoaderData, useOutletContext, Link } from "react-router";
+import { useLoaderData, useOutletContext } from "react-router";
+import { PickList, PrimaryLink, StatusBanner } from "../components/admin-ui";
 import { authenticate } from "../shopify.server";
 import { getAnalyticsDailyData } from "../analytics.server";
 
@@ -89,14 +90,6 @@ function getDefaultDateRange() {
   return { startStr: formatDateKey(start), endStr: formatDateKey(end) };
 }
 
-const inputBaseStyle = {
-  padding: "6px 8px",
-  fontSize: 14,
-  borderRadius: 4,
-  border: "1px solid #c9cccf",
-  boxSizing: "border-box",
-};
-
 /** CSV のセルをエスケープ（ダブルクォートは二重に） */
 function csvEscape(str) {
   const s = String(str ?? "");
@@ -112,38 +105,14 @@ export default function AppAnalytics() {
   if (!isPro && shopPlan?.distribution === "public") {
     return (
       <s-page heading="分析">
-        <div style={{ padding: "16px", maxWidth: "560px" }}>
-          <div
-            style={{
-              padding: "24px",
-              background: "#fff",
-              borderRadius: "8px",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
-              border: "1px solid #e1e3e5",
-              textAlign: "center",
-            }}
-          >
-            <div style={{ fontSize: "16px", fontWeight: 700, color: "#202223", marginBottom: "8px" }}>
-              分析は Pro プランでご利用いただけます
-            </div>
-            <div style={{ fontSize: "14px", color: "#6d7175", marginBottom: "16px", lineHeight: 1.5 }}>
+        <div className="Admin-body">
+          <div className="Admin-card" style={{ maxWidth: "560px" }}>
+            <div className="Admin-title">分析は Pro プランでご利用いただけます</div>
+            <p className="Admin-note" style={{ margin: "0 0 16px" }}>
               エリア表示回数・近隣店舗クリック・店舗受け取りボタンクリックなどの分析機能は、Pro プランにアップグレードするとご利用できます。
-            </div>
-            <Link
-              to="/app/plan"
-              style={{
-                display: "inline-block",
-                padding: "10px 20px",
-                background: "#2c6ecb",
-                color: "#fff",
-                borderRadius: "6px",
-                fontSize: "14px",
-                fontWeight: 600,
-                textDecoration: "none",
-              }}
-            >
-              料金プランを見る
-            </Link>
+            </p>
+            {/* 文字だけのリンクにせず、共通のボタンにする（UI ルール v1.1 4章） */}
+            <PrimaryLink to="/app/plan">料金プランを見る</PrimaryLink>
           </div>
         </div>
       </s-page>
@@ -160,9 +129,6 @@ export default function AppAnalytics() {
       .filter((row) => row.date >= startDate && row.date <= endDate)
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [initialDailyData, startDate, endDate]);
-
-  // 「全て」のみ選択＝空 Set のとき。個別ロケーションは選択されていない状態で表示
-  const isAllLocationsSelected = selectedLocationIds.size === 0;
 
   // 表示するロケーション（「全て」選択時は全件、それ以外は選択した ID のみ）
   const filteredLocations = useMemo(() => {
@@ -188,6 +154,15 @@ export default function AppAnalytics() {
     return t;
   }, [dailyData]);
 
+  // 1 日分の記録の上限のため、ロケーション別に足せなかった件数（黙って捨てずに画面に出す）
+  const sizeLimitSkipped = useMemo(() => {
+    const days = dailyData.filter((row) => (row.sizeLimitSkippedCount ?? 0) > 0);
+    return {
+      count: days.reduce((sum, row) => sum + row.sizeLimitSkippedCount, 0),
+      days: days.map((row) => formatDisplayDate(row.date)),
+    };
+  }, [dailyData]);
+
   // 選択ロケーションのみの合計：近隣店舗クリック数・店舗受け取りボタンクリック数（合計行用）
   const nearbyClickTotal = useMemo(() => {
     return filteredLocations.reduce((sum, loc) => sum + (totals.nearbyDisplayByLocation[loc.id] ?? 0), 0);
@@ -195,26 +170,6 @@ export default function AppAnalytics() {
   const orderPickClickTotal = useMemo(() => {
     return filteredLocations.reduce((sum, loc) => sum + (totals.orderPickByLocation[loc.id] ?? 0), 0);
   }, [filteredLocations, totals.orderPickByLocation]);
-
-  const toggleLocation = useCallback(
-    (locId) => {
-      setSelectedLocationIds((prev) => {
-        if (prev.size === 0) {
-          // 現在「全て」→ タップしたロケーションのみ選択
-          return new Set([locId]);
-        }
-        const next = new Set(prev);
-        if (next.has(locId)) next.delete(locId);
-        else next.add(locId);
-        return next.size === 0 ? new Set() : next;
-      });
-    },
-    [locations]
-  );
-
-  const selectAllLocations = useCallback(() => {
-    setSelectedLocationIds(new Set());
-  }, []);
 
   const handleDownloadCSV = useCallback(() => {
     const headers = [
@@ -271,123 +226,60 @@ export default function AppAnalytics() {
     endDate,
   ]);
 
+  const cell = { padding: "10px 12px" };
+
   return (
     <s-page heading="分析">
-      <div style={{ padding: "16px", maxWidth: "1200px", paddingBottom: "40px" }}>
+      <div className="Admin-body" style={{ paddingBottom: "40px" }}>
+        {/* お知らせ枠は画面の上に 1 つだけ（5章） */}
+        {sizeLimitSkipped.count > 0 && (
+          <StatusBanner tone="warning" heading="ロケーション別の数の一部を保存できませんでした">
+            {sizeLimitSkipped.days.join("・")} は、1 日分の記録の上限（Shopify の 128KB）に届いたため、ロケーション別の数 {sizeLimitSkipped.count} 件を足していません。エリア表示回数などの合計の数は保存しています。続くときはお問い合わせください。
+          </StatusBanner>
+        )}
         <div style={{ display: "flex", gap: "24px", alignItems: "flex-start", flexWrap: "wrap" }}>
           {/* 左: フィルター */}
           <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#202223" }}>分析</div>
-            <div style={{ fontSize: 14, color: "#6d7175", lineHeight: 1.5, marginBottom: 16 }}>
+            <div className="Admin-title">分析</div>
+            <p className="Admin-note" style={{ margin: "0 0 16px" }}>
               期間とロケーションで絞り込みます。選択したロケーションの合計が「近隣店舗クリック数」「店舗受け取りボタンクリック数」になります。
-            </div>
-            <div
-              style={{
-                background: "#ffffff",
-                borderRadius: 12,
-                boxShadow: "0 0 0 1px #e1e3e5",
-                padding: 16,
-              }}
-            >
-              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12, color: "#202223" }}>フィルター</div>
-              <div style={{ fontSize: 13, color: "#6d7175", marginBottom: 12 }}>表示期間</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+            </p>
+            <div className="Admin-card">
+              <div className="Admin-title" style={{ marginBottom: 12 }}>フィルター</div>
+              <div className="Admin-field-label" style={{ marginBottom: 8 }}>表示期間</div>
+              {/* 期間の欄は同じ幅にする（9章）。日付欄は共通の CSS で枠からはみ出さない（13章） */}
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)", alignItems: "center", gap: 8, marginBottom: 16 }}>
                 <input
                   type="date"
+                  className="Admin-input"
+                  aria-label="開始日"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  style={inputBaseStyle}
                 />
-                <span style={{ color: "#6d7175", fontSize: 14 }}>〜</span>
+                <span className="Admin-note">〜</span>
                 <input
                   type="date"
+                  className="Admin-input"
+                  aria-label="終了日"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  style={inputBaseStyle}
                 />
               </div>
-              <div style={{ fontSize: 13, color: "#6d7175", marginBottom: 8 }}>ロケーション（複数選択可）</div>
-              <div
-                style={{
-                  maxHeight: 200,
-                  overflowY: "auto",
-                  border: "1px solid #e1e3e5",
-                  borderRadius: 8,
-                  padding: 6,
-                }}
-              >
-                <div
-                  onClick={selectAllLocations}
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 6,
-                    cursor: "pointer",
-                    backgroundColor: isAllLocationsSelected ? "#eff6ff" : "transparent",
-                    border: isAllLocationsSelected ? "1px solid #2563eb" : "1px solid transparent",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={isAllLocationsSelected}
-                    readOnly
-                    style={{ width: 16, height: 16, flexShrink: 0 }}
-                  />
-                  <span style={{ fontWeight: isAllLocationsSelected ? 600 : 500 }}>全て</span>
-                </div>
-                {locations.map((loc) => {
-                  const isSelected = selectedLocationIds.has(loc.id);
-                  return (
-                    <div
-                      key={loc.id}
-                      onClick={() => toggleLocation(loc.id)}
-                      style={{
-                        padding: "10px 12px",
-                        borderRadius: 6,
-                        cursor: "pointer",
-                        backgroundColor: isSelected ? "#eff6ff" : "transparent",
-                        border: isSelected ? "1px solid #2563eb" : "1px solid transparent",
-                        marginTop: 4,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        readOnly
-                        style={{ width: 16, height: 16, flexShrink: 0 }}
-                      />
-                      <span
-                        style={{
-                          fontWeight: isSelected ? 600 : 500,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
-                        {loc.name}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
+              <div className="Admin-field-label" style={{ marginBottom: 8 }}>ロケーション（複数選択可）</div>
+              {/* 検索付きの選択リスト（6章）。空＝全て、は今までと同じ */}
+              <PickList
+                label="ロケーション"
+                allLabel="全て"
+                items={locations.map((loc) => ({ id: loc.id, name: loc.name }))}
+                value={[...selectedLocationIds]}
+                onChange={(ids) => setSelectedLocationIds(new Set(ids))}
+              />
             </div>
           </div>
 
           {/* 右: 表 + CSV */}
           <div style={{ flex: "1 1 400px", minWidth: 0, width: "100%" }}>
-            <div
-              style={{
-                background: "#ffffff",
-                borderRadius: 12,
-                boxShadow: "0 0 0 1px #e1e3e5",
-                padding: 16,
-                overflow: "hidden",
-              }}
-            >
+            <div className="Admin-card" style={{ overflow: "hidden" }}>
               <div
                 style={{
                   display: "flex",
@@ -398,118 +290,57 @@ export default function AppAnalytics() {
                   marginBottom: 12,
                 }}
               >
-                <span style={{ fontSize: 14, color: "#6d7175" }}>
+                <span className="Admin-note">
                   表示: {filteredLocations.length} ロケーション
                 </span>
-                <button
-                  type="button"
-                  onClick={handleDownloadCSV}
-                  style={{
-                    padding: "8px 14px",
-                    fontSize: 14,
-                    fontWeight: 600,
-                    borderRadius: 6,
-                    border: "1px solid #2c6ecb",
-                    background: "#2c6ecb",
-                    color: "#fff",
-                    cursor: "pointer",
-                  }}
-                >
-                  CSVダウンロード
+                {/* 書き出しは白いボタン（4章） */}
+                <button type="button" className="Admin-secondary" onClick={handleDownloadCSV}>
+                  CSV を書き出す
                 </button>
               </div>
 
               {dailyData.length === 0 ? (
-                <div
-                  style={{
-                    padding: "40px 24px",
-                    textAlign: "center",
-                    color: "#6d7175",
-                    fontSize: 14,
-                    lineHeight: 1.5,
-                  }}
-                >
+                // 絞り込みの結果が空のときは文字だけ（5章）。開発の予定の文言はストアに出さない（10章）
+                <p className="Admin-note" style={{ padding: "24px 8px", textAlign: "center", margin: 0 }}>
                   指定期間にデータがありません。
-                  <br />
-                  分析データの収集は今後実装予定です。データがたまると、ここに合計と日別の数値が表示されます。
-                </div>
+                </p>
               ) : (
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+                <div className="History-scroll">
+                  {/* スマホは 1 件 1 枚のカード、数値は右寄せ（8章） */}
+                  <table className="History-table">
                     <thead>
-                      <tr style={{ borderBottom: "2px solid #e1e3e5", background: "#f6f6f7" }}>
-                        <th style={{ padding: "10px 12px", textAlign: "left", fontWeight: 600, color: "#202223" }}>
-                          日付
-                        </th>
-                        <th style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, color: "#202223" }}>
-                          エリア表示回数
-                        </th>
-                        <th style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, color: "#202223" }}>
-                          近隣店舗クリック数
-                        </th>
+                      <tr>
+                        <th>日付</th>
+                        <th className="History-num">エリア表示回数</th>
+                        <th className="History-num">近隣店舗クリック数</th>
                         {filteredLocations.map((loc) => (
-                          <th
-                            key={loc.id}
-                            style={{
-                              padding: "10px 12px",
-                              textAlign: "right",
-                              fontWeight: 600,
-                              color: "#202223",
-                            }}
-                          >
-                            {loc.name} 表示
-                          </th>
+                          <th key={loc.id} className="History-num">{loc.name} 表示</th>
                         ))}
-                        <th
-                          style={{
-                            padding: "10px 12px",
-                            textAlign: "right",
-                            fontWeight: 600,
-                            color: "#202223",
-                          }}
-                        >
-                          店舗受け取りボタンクリック数
-                        </th>
+                        <th className="History-num">店舗受け取りボタンクリック数</th>
                         {filteredLocations.map((loc) => (
-                          <th
-                            key={loc.id}
-                            style={{
-                              padding: "10px 12px",
-                              textAlign: "right",
-                              fontWeight: 600,
-                              color: "#202223",
-                            }}
-                          >
-                            {loc.name} クリック
-                          </th>
+                          <th key={loc.id} className="History-num">{loc.name} クリック</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      <tr
-                        style={{
-                          borderBottom: "1px solid #e1e3e5",
-                          background: "#fafbfb",
-                          fontWeight: 600,
-                        }}
-                      >
-                        <td style={{ padding: "10px 12px", color: "#202223" }}>合計</td>
-                        <td style={{ padding: "10px 12px", textAlign: "right" }}>
+                      <tr style={{ background: "#fafbfb", fontWeight: 600 }}>
+                        <td data-label="日付" className="History-keep" style={cell}>合計</td>
+                        <td data-label="エリア表示回数" className="History-num" style={cell}>
                           {totals.areaDisplayCount}
                         </td>
-                        <td style={{ padding: "10px 12px", textAlign: "right" }}>
+                        <td data-label="近隣店舗クリック数" className="History-num" style={cell}>
                           {nearbyClickTotal}
                         </td>
                         {filteredLocations.map((loc) => (
-                          <td key={loc.id} style={{ padding: "10px 12px", textAlign: "right" }}>
+                          <td key={loc.id} data-label={`${loc.name} 表示`} className="History-num" style={cell}>
                             {totals.nearbyDisplayByLocation[loc.id] ?? 0}
                           </td>
                         ))}
-                        <td style={{ padding: "10px 12px", textAlign: "right" }}>
+                        <td data-label="店舗受け取りボタンクリック数" className="History-num" style={cell}>
                           {orderPickClickTotal}
                         </td>
                         {filteredLocations.map((loc) => (
-                          <td key={loc.id} style={{ padding: "10px 12px", textAlign: "right" }}>
+                          <td key={loc.id} data-label={`${loc.name} クリック`} className="History-num" style={cell}>
                             {totals.orderPickByLocation[loc.id] ?? 0}
                           </td>
                         ))}
@@ -524,24 +355,24 @@ export default function AppAnalytics() {
                           0
                         );
                         return (
-                          <tr key={row.date} style={{ borderBottom: "1px solid #e1e3e5" }}>
-                            <td style={{ padding: "10px 12px", color: "#202223" }}>
+                          <tr key={row.date}>
+                            <td data-label="日付" className="History-keep" style={cell}>
                               {formatDisplayDate(row.date)}
                             </td>
-                            <td style={{ padding: "10px 12px", textAlign: "right" }}>
+                            <td data-label="エリア表示回数" className="History-num" style={cell}>
                               {row.areaDisplayCount ?? 0}
                             </td>
-                            <td style={{ padding: "10px 12px", textAlign: "right" }}>{rowNearby}</td>
+                            <td data-label="近隣店舗クリック数" className="History-num" style={cell}>{rowNearby}</td>
                             {filteredLocations.map((loc) => (
-                              <td key={loc.id} style={{ padding: "10px 12px", textAlign: "right" }}>
+                              <td key={loc.id} data-label={`${loc.name} 表示`} className="History-num" style={cell}>
                                 {row.nearbyDisplayByLocation?.[loc.id] ?? 0}
                               </td>
                             ))}
-                            <td style={{ padding: "10px 12px", textAlign: "right" }}>
+                            <td data-label="店舗受け取りボタンクリック数" className="History-num" style={cell}>
                               {rowOrderPick}
                             </td>
                             {filteredLocations.map((loc) => (
-                              <td key={loc.id} style={{ padding: "10px 12px", textAlign: "right" }}>
+                              <td key={loc.id} data-label={`${loc.name} クリック`} className="History-num" style={cell}>
                                 {row.orderPickByLocation?.[loc.id] ?? 0}
                               </td>
                             ))}

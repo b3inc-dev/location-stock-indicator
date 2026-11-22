@@ -8,7 +8,7 @@ application_url = "https://location-stock-indicator.onrender.com"
 embedded = true
 
 [webhooks]
-api_version = "2026-01"
+api_version = "2026-07"
 
   [[webhooks.subscriptions]]
   topics = [ "app/scopes_update" ]

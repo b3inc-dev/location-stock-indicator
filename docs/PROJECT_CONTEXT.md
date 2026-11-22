@@ -18,8 +18,8 @@
 | フレームワーク | React Router v7 + `@shopify/shopify-app-react-router` | `package.json`, `app/shopify.server.js` |
 | 言語 | アプリ: JavaScript（JSX）、拡張: Liquid + インライン JS | `app/`, `extensions/` |
 | DB | Prisma + SQLite（Session のみ。refreshToken カラムあり） | `prisma/schema.prisma` |
-| Admin API | GraphQL。`ApiVersion.October25` | `app/shopify.server.js` |
-| Webhooks API version | `2026-01`（toml） | `shopify.app*.toml` |
+| Admin API | GraphQL。`2026-07`（`ADMIN_API_VERSION`） | `app/shopify.server.js` |
+| Webhooks API version | `2026-07`（toml） | `shopify.app*.toml` |
 | ホスト | Render。公開用／自社用で別サービス。Dockerfileあり、Ciaraの実build/startは運用docs参照 | `Dockerfile`, `docs/APP_AND_RENDER_CONFIG.md` |
 | 埋め込み | Theme App Extension `location-stock-theme` | `extensions/location-stock-theme/` |
 
