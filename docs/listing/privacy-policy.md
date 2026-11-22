@@ -3,6 +3,10 @@
 - 中身は `main`（`16d198e`）と PR #48/#50 のコードに合わせた。**コードが変わったら、この文も直す**（`prisma/schema.prisma`・`app/utils/complianceWebhook.js`・`app/analytics.server.js`・テーマの JS）。
 - 1 章は根拠（公開しない）。2 章（日本語）と 3 章（English）が公開する本文。`{{…}}` は T が入れる【T】。
 
+- **公開する本文の正本は commercor-site の `editorial/app_policies.py`**（b3inc-dev/commercor-site PR #14、T の決定 2026-11-23 1:35「紹介サイトに置く・連絡先はフォームだけ」）。公開の URL: プライバシーポリシー https://commercore.b3-inc.com/apps/location-stock-indicator/privacy/・サポート https://commercore.b3-inc.com/apps/location-stock-indicator/support/。この案は根拠として残す。文を変えるときは commercor-site も同じ PR の流れで直す。
+- 【アプリの直しは途中】T の決定（2026-11-23 1:50、commercor-site #1）で、shop/redact のときに `AppUsageReport` も消す（POS Stock と同じ）。今のコード（#50、未マージ）は消さないので、直しの PR が要る。
+- まだ `{{…}}` のまま: `UPDATED_DATE`（公開申請の日に入れる）、`LOG_RETENTION_DAYS`（commercor-site の公開の文には、ログの日数を書いていない）。
+
 ---
 
 ## 1. 根拠（公開しない）
@@ -55,7 +59,7 @@
 
 最終更新日: {{UPDATED_DATE}}
 
-{{COMPANY_NAME}}（以下「当社」）は、Shopify アプリ「Location Stock」（以下「本アプリ」）を提供しています。このポリシーは、本アプリをインストールした店舗（以下「店舗」）と、その店舗のオンラインストアを訪れるお客様のデータを、本アプリがどう扱うかを説明します。
+株式会社B3（以下「当社」）は、Shopify アプリ「Location Stock」（以下「本アプリ」）を提供しています。このポリシーは、本アプリをインストールした店舗（以下「店舗」）と、その店舗のオンラインストアを訪れるお客様のデータを、本アプリがどう扱うかを説明します。
 
 ## 1. 集める情報
 
@@ -80,7 +84,7 @@
 
 ## 3. 保存する場所と、渡す先
 
-- 本アプリのサーバーとデータベース（ホスティング: Render。地域: {{SERVER_REGION}}）: アクセストークンと料金の記録だけ
+- 本アプリのサーバーとデータベース（ホスティング: Render。地域: 米国（オレゴン））: アクセストークンと料金の記録だけ
 - 店舗の Shopify ストアの中（ショップのメタフィールド）: 設定と利用の数
 
 情報を渡すのは、本アプリを動かすための Shopify（API と請求）とホスティングの会社だけです。法令で求められたときを除き、ほかの第三者には渡しません。通信は HTTPS で暗号化しています。
@@ -88,8 +92,8 @@
 ## 4. 保存する期間と削除
 
 - 本アプリをアンインストールすると、すぐにアクセストークンを削除します。アンインストールの 48 時間後に Shopify から届く削除の依頼（shop/redact）でも、もう一度削除します（その前にもう一度インストールした場合は削除しません）。
-- 設定と利用の数は、店舗の Shopify ストアの中に保存しているため、アンインストールのあとも店舗のストアに残ります。アンインストールのあとは、本アプリからは削除できません。削除を希望する店舗は、アンインストールの前に {{SUPPORT_EMAIL}} にご連絡ください。
-- {{USAGE_RECORD_RETENTION}}
+- 設定と利用の数は、店舗の Shopify ストアの中に保存しているため、アンインストールのあとも店舗のストアに残ります。アンインストールのあとは、本アプリからは削除できません。削除を希望する店舗は、アンインストールの前に、お問い合わせフォーム（https://b3-inc.com/contact）からご連絡ください。
+- 使用量の報告の記録も、shop/redact のときに削除します。
 - お客様ごとのデータを持たないため、Shopify からのお客様のデータの開示・削除の依頼（customers/data_request・customers/redact）では、渡すものも削除するものもありません。
 - サーバーのログは {{LOG_RETENTION_DAYS}} 日で消えます。
 
@@ -103,12 +107,12 @@
 
 ## 7. 問い合わせ
 
-{{COMPANY_NAME}}
-{{COMPANY_ADDRESS}}
-メール: {{SUPPORT_EMAIL}}
+株式会社B3
+東京都目黒区青葉台1-15-3 AK-4ビル2F
+お問い合わせフォーム: https://b3-inc.com/contact
 ```
 
-`{{USAGE_RECORD_RETENTION}}`:
+`USAGE_RECORD_RETENTION`（**決まり: 消す**。T 2026-11-23 1:20・1:50）:
 - 消すなら: 「使用量の報告の記録も、shop/redact のときに削除します。」
 - 残すなら: 「使用量の報告の記録（プラン・ロケーション数・請求期間。個人の情報は含みません）は、請求の確認のため {{N}} か月保存します。」
 
@@ -121,7 +125,7 @@
 
 Last updated: {{UPDATED_DATE}}
 
-{{COMPANY_NAME}} ("we") provides the Shopify app "Location Stock" (the "App"). This policy explains how the App handles data of the stores that install it ("merchants") and of the shoppers who visit their online stores.
+B3, Inc. ("we") provides the Shopify app "Location Stock" (the "App"). This policy explains how the App handles data of the stores that install it ("merchants") and of the shoppers who visit their online stores.
 
 ## 1. Information we collect
 
@@ -146,7 +150,7 @@ We do not use this information for advertising or for any purpose unrelated to t
 
 ## 3. Where it is stored and who receives it
 
-- Our servers and database (hosted on Render, region: {{SERVER_REGION}}): only the access token and billing records
+- Our servers and database (hosted on Render, region: US (Oregon)): only the access token and billing records
 - The merchant's Shopify store (shop metafields): settings and usage counts
 
 We share information only with Shopify (API and billing) and our hosting provider, as needed to run the App, unless the law requires otherwise. All traffic is encrypted with HTTPS.
@@ -154,8 +158,8 @@ We share information only with Shopify (API and billing) and our hosting provide
 ## 4. Retention and deletion
 
 - When the App is uninstalled, we delete the access token right away. We delete it again when Shopify sends the shop/redact request 48 hours after uninstall (unless the App was installed again).
-- Settings and usage counts are saved in the merchant's Shopify store, so they stay in the store after uninstall. After uninstall, the App can no longer delete them. Merchants who want them deleted should contact {{SUPPORT_EMAIL}} before uninstalling.
-- {{USAGE_RECORD_RETENTION_EN}}
+- Settings and usage counts are saved in the merchant's Shopify store, so they stay in the store after uninstall. After uninstall, the App can no longer delete them. Merchants who want them deleted should contact us through our contact form (https://b3-inc.com/contact) before uninstalling.
+- Usage report records are deleted on shop/redact.
 - We hold no data per shopper, so there is nothing to provide or delete for customers/data_request or customers/redact.
 - Server logs are deleted after {{LOG_RETENTION_DAYS}} days.
 
@@ -169,11 +173,11 @@ If we change this policy, we will post the new version on this page and update t
 
 ## 7. Contact
 
-{{COMPANY_NAME}}
-{{COMPANY_ADDRESS}}
-Email: {{SUPPORT_EMAIL}}
+B3, Inc.
+AK-4 Bldg. 2F, 1-15-3 Aobadai, Meguro-ku, Tokyo, Japan
+Contact form: https://b3-inc.com/contact
 ```
 
-`{{USAGE_RECORD_RETENTION_EN}}`:
+`USAGE_RECORD_RETENTION_EN`（**決まり: 消す**）:
 - Delete: "Usage report records are deleted on shop/redact."
 - Keep: "Usage report records (plan, number of locations and billing period; no personal data) are kept for {{N}} months to check billing."

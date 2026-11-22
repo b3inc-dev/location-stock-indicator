@@ -112,6 +112,6 @@ Pro はロケーション 1 か所につき月 US$2 を、月額 US$20 に加え
 | 販売チャネルの条件 | オンラインストアが必要（4.3.1） |
 | 対応言語 | 日本語 |
 | デモストア URL | 開発ストアの商品ページ（ブロックを置いたもの）【T】。パスワード付きならパスワードも書く |
-| サポートのメール | `{{SUPPORT_EMAIL}}`【T】 |
-| サポートページ | `{{SUPPORT_URL}}`【T】 |
-| プライバシーポリシー | `{{PRIVACY_URL}}`【T】 |
+| サポートのメール | 載せない。問い合わせはフォーム https://b3-inc.com/contact だけ（T 2026-11-23 1:35）。Partner Dashboard でメールの欄が必須なら【T】 |
+| サポートページ | https://commercore.b3-inc.com/apps/location-stock-indicator/support/ |
+| プライバシーポリシー | https://commercore.b3-inc.com/apps/location-stock-indicator/privacy/ |

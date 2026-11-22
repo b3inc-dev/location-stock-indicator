@@ -29,8 +29,8 @@
 | # | 決めること | 今の案 | 使うファイル |
 |---|---|---|---|
 | 1 | 無料体験の日数 | 今の `main` のコード（Billing API の作り）の値: Lite 7 日・Pro 14 日 | ja.md / en.md / partner-dashboard-steps.md |
-| 2 | サポートのメール・サポートページとプライバシーポリシーの URL | `{{SUPPORT_EMAIL}}`・`{{SUPPORT_URL}}`・`{{PRIVACY_URL}}` | privacy-policy.md / support-faq.md |
-| 3 | 会社名・住所の表記 | `{{COMPANY_NAME}}`・`{{COMPANY_ADDRESS}}` | privacy-policy.md |
+| 2 | サポートのメール・サポートページとプライバシーポリシーの URL | **決まり（T 2026-11-23 1:35）**: サポート https://commercore.b3-inc.com/apps/location-stock-indicator/support/・プライバシーポリシー https://commercore.b3-inc.com/apps/location-stock-indicator/privacy/（commercor-site PR #14）。問い合わせはフォーム https://b3-inc.com/contact だけ（メールは載せない） | privacy-policy.md / support-faq.md |
+| 3 | 会社名・住所の表記 | **決まり（T 2026-11-22 22:15）**: 株式会社B3・東京都目黒区青葉台1-15-3 AK-4ビル2F | privacy-policy.md |
 | 4 | 設定と分析のメタフィールドをアンインストールのあと残すか（今は残る） | privacy-policy.md 1.4 | privacy-policy.md |
 | 5 | 英語のリスティングを出すか | 画面とテーマのブロックの設定名は日本語だけ（英語の画面は PR #18） | en.md |
 

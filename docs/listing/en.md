@@ -82,6 +82,6 @@ Pro adds US$2 per location per month to the US$20 monthly fee, on your Shopify b
 | Sales channel requirement | Requires online store |
 | Languages | Japanese（PR #18 のあとで English も） |
 | Demo store URL | `{{DEMO_PRODUCT_URL}}`【T】 |
-| Support email | `{{SUPPORT_EMAIL}}`【T】 |
-| Support page | `{{SUPPORT_URL}}`【T】 |
-| Privacy policy | `{{PRIVACY_URL}}`【T】 |
+| Support email | 載せない。問い合わせはフォーム https://b3-inc.com/contact だけ（T 2026-11-23 1:35）。Partner Dashboard でメールの欄が必須なら【T】 |
+| Support page | https://commercore.b3-inc.com/apps/location-stock-indicator/support/ |
+| Privacy policy | https://commercore.b3-inc.com/apps/location-stock-indicator/privacy/ |
