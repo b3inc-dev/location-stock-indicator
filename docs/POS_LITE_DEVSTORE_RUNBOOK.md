@@ -19,7 +19,7 @@
 | 動くか | 動く | **動かない**。main には `/app/pos-lite`・`/webhooks/orders/paid` が無いので、管理画面と会計のあとの処理が 404 になる。動かすには Render を #76 のブランチに向ける（本番の操作）しかない |
 | 後片づけ | `shopify app dev clean` で、開発ストアだけ今リリースしている版に戻る | 前の版をもう一度リリースする（ほかの店にも出る） |
 | 費用 | 無し | 無し（ただし本番の操作） |
-| 注意 | 確かめるあいだ、PC で `app dev` を動かしたまま・スリープさせない（`orders/paid` はトンネルに届く） | — |
+| 注意 | 確かめるあいだ、PC で `app dev` を動かしたまま・スリープさせない（`orders/paid` もトンネルに届く見込み。**推測**: dev preview で Webhook がどこへ届くかは Shopify の文書に書かれていない。3.3 のログの行で確かめる） | — |
 
 **A を勧めます。** B は本番（ほかの店）に出るうえ、サーバーが main のままなので #76 を確かめられません。
 
@@ -29,7 +29,12 @@
 
 ### 2.1 PC の準備
 1. Node は `>=20.19 <22` か `>=22.12`（`package.json` の `engines`）。`node -v` で見る。
-2. Shopify CLI を入れる（入っていれば `shopify version` で見る）。
+2. Shopify CLI を**最新**にする（dev preview・`app dev clean` は新しい版の機能。古い版だと動きが違うことがある）:
+   ```bash
+   npm install -g @shopify/cli@latest
+   shopify version
+   ```
+   出た版の番号を書き留める（結果の記録に書く）。
 3. PostgreSQL をローカルで動かす（セッションの保存に使う。SQLite は使えない）。例（Docker）:
    ```bash
    docker run -d --name lsi-pg -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16
@@ -42,6 +47,7 @@
    npm ci
    ```
 5. `.env.example` を `.env` に写し、`DATABASE_URL` だけを入れる（`SHOPIFY_API_KEY` などは CLI が入れるので空でよい。**秘密の値をコミットしない**）。
+   - **`.env` に `FORCE_PLAN_LITE=1` を入れない。** これはアプリの料金プランを Lite に固定する試し用の値で（`app/utils/shopPlan.server.js`）、入れると開発ストアでも Pro の機能が止まり、「店頭受取・配送は Pro プランで使えます」になって確かめられない。POS の「Lite」（Shopify の POS のプラン）とは別のもの。
 
 ### 2.2 保護された顧客データ（名前・住所・電話）の申請（開発ストアだけなら審査なし）
 Shopify の文書:「you can access customer data in development after Step 6」「You don't need to submit for review.」
@@ -71,6 +77,12 @@ Shopify の文書:「you can access customer data in development after Step 6」
 2. 「Ready, watching for changes in your app.」が出るまで待つ。この画面は閉じない。
 3. 記録（ログ）はこの画面に出る（Render ではない）。住所・名前が出ていないことも見る。
 
+### 3.0 初めて動かしたあとに 1 回だけ: 公開用の URL が変わっていないか
+dev preview は開発ストアだけに効くはずですが（文書）、初めて動かしたあとに確かめます。
+1. `git status` と `git diff shopify.app.public.toml` で、toml の `application_url`・`redirect_urls`・`app_proxy.url` が `https://location-stock-indicator.onrender.com` のままか見る。変わっていたら**コミットせず** `git checkout shopify.app.public.toml` で戻す。
+2. Dev Dashboard → アプリ → Location Stock（公開用）→ **Versions** → 今リリースしている版（Active）を開き、App URL が `https://location-stock-indicator.onrender.com` のままか見る（トンネルの `…trycloudflare.com` になっていないこと）。
+3. 推測: 変わっていたら、ほかの店の公開用のアプリがトンネルを向いてしまう。すぐに `Ctrl + C` → `npx shopify app dev clean --store bbbincbbb.myshopify.com` をして T さんに知らせる（版を出し直すかは T さんが決める）。
+
 ### 3.1 権限の承認のし直し
 1. ターミナルに出た Preview URL か、開発ストアの管理画面 → アプリ → Location Stock を開く。
 2. 「権限の更新」の画面が出たら、足した 4 つ（注文を読む・注文を書く・自店で管理する出荷指示を読む・書く。`read_orders`・`write_orders`・`read_merchant_managed_fulfillment_orders`・`write_merchant_managed_fulfillment_orders`）があることを見て **承認（Update / Install）**。
@@ -82,6 +94,13 @@ Shopify の文書:「you can access customer data in development after Step 6」
 2. 端末（iPad / iPhone）の POS アプリで、bbbincbbb の **店舗 A** にログインしておく。
 3. Dev Console の **Mobile** のプレビューのリンク → QR コードを端末で読み、出たリンクから POS アプリを開く。
 4. POS のホームに「店頭受取・配送」のタイルが出る（出なければ POS の設定 → スマートグリッドの編集でタイルを足す）。
+
+### 3.3 `orders/paid` が PC に届くかの確かめ（推測を確かめる）
+dev preview で `orders/paid` がトンネル（PC）に届くかは、Shopify の文書に書かれていません（**推測**）。5 章でスイッチをオンにしたあと、最初の配送のある会計のときに確かめます。
+1. 会計のあと、3 章のターミナルに次のどちらかの行が出るか見る:
+   - `[location-stock] pos-lite sale`（`phase: "done"` などの結果つき。注文の ID と結果だけで、住所・名前は出ない）
+   - 出荷指示ができる前なら、待ちの行のあとに、送り直しで `[location-stock] pos-lite sale` が出る
+2. 数分たっても出ないときは、`orders/paid` が PC に届いていない（または公開用の Render に届いている）。そのときは確かめを止め、T さんに知らせる。管理画面「要確認の注文」の「再処理」では同じ処理を手で動かせるが、`orders/paid` の確かめにはならない。
 
 ---
 
@@ -125,7 +144,7 @@ stock-transfer-pos の PR #106（`docs/POS_LITE_READINESS.md` 5.2）と同じ手
 - 会計の前に、カートの「**フルフィルメント済みにする**」を**オフ**にできるか（Lite でできるか）を必ず書き留める。できなければ、#76 の手順 14〜18（取り消して移す道）が本番の道になる。
 - 手順 10: 送料の明細に `_lsi_fee` などの印が**注文まで届いているか**（3 回目の見直しの「気になること 3」。届かないと POS Receipt・Shop Point が送料の行を見分けられない）。
 - 手順 10: 2 点が倉庫 W に未発送であること（見直しの「気になること 4」。最初から販売店舗の外に出荷指示が無いことの確かめ）。
-- 記録（ログ）は 3 章のターミナルに出る（#76 の本文の「Render の記録」はこの画面と読みかえる）。
+- 記録（ログ）は 3 章のターミナルに出る（#76 の本文の「Render の記録」はこの画面と読みかえる）。`[location-stock] pos-lite sale` の行が出ない会計があれば、3.3 のとおり止める。
 - #77 を入れた版なら、#77 の本文の「開発ストアで確かめること」1〜4 も行う。
 
 ---
@@ -139,8 +158,13 @@ stock-transfer-pos の PR #106（`docs/POS_LITE_READINESS.md` 5.2）と同じ手
    npx shopify app dev clean --store bbbincbbb.myshopify.com
    ```
    Shopify の文書:「restores the app's active version to the selected development store.」 dev で足した拡張・設定が消えると、それに結びついたデータも消える（文書）。注文・注文のメタフィールドは Shopify の注文に残る（推測）。
-4. 店舗 A を POS Pro に戻すかは T さんが決める（戻すと費用がかかる場合がある）。
-5. 結果を連絡帳 #49 と #76 に書く: 対象の版（コミット）・Lite にできたか・「フルフィルメント済みにする」をオフにできたか・手順ごとの期待と見えたこと・合否。**店の情報・トークン・お客様の値・生のログは書かない。**
+4. **自社用の設定に戻す**（`config use` で選んだ toml は次に選び直すまで残るため。そのままだと、次の `npm run dev` や `shopify app deploy` が公開用のアプリに向く）:
+   ```bash
+   npx shopify app config use shopify.app.toml
+   ```
+   `git status` で toml・`.env` 以外に変わったファイルが無いことも見る（`.env` はコミットしない）。
+5. 店舗 A を POS Pro に戻すかは T さんが決める（戻すと費用がかかる場合がある）。
+6. 結果を連絡帳 #49 と #76 に書く: 対象の版（コミット）・Shopify CLI の版・Lite にできたか・「フルフィルメント済みにする」をオフにできたか・手順ごとの期待と見えたこと・合否。**店の情報・トークン・お客様の値・生のログは書かない。**
 
 ---
 
