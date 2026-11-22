@@ -8,7 +8,7 @@
 [Shopify Admin]
   └─ 埋め込みアプリ (React Router / Polaris Web Components)
        ├─ 設定保存 → Shop metafield location_stock.config
-       └─ 分析表示 ← location_stock.analytics_YYYY_MM
+       └─ 分析表示 ← location_stock.analytics_YYYY_MM_DD（日ごと）＋前の形の analytics_YYYY_MM（月ごと・読むだけ）
 
 [Shopify Storefront 商品ページ]
   └─ Theme App Extension block
@@ -68,7 +68,8 @@
 ### 3.4 分析の流れ
 
 - スニペット → App Proxy（GET `action=analytics` または POST body）。
-- `recordAnalyticsEvent` → 月キー `analytics_YYYY_MM` のメタフィールド更新。
+- `recordAnalyticsEvent` → 日ごとのキー `analytics_YYYY_MM_DD` のメタフィールド更新（1 日分の JSON。#67 から。前は月ごとのキー `analytics_YYYY_MM`）。1 日分が 120,000 バイトに届くときは合計の数だけ足し、ロケーション別に足せなかった件数を `sizeLimitSkipped` に残す。
+- `getAnalyticsDailyData` → 期間の日ごとのキーと、前の形の月ごとのキーを、別名を付けた GraphQL でまとめて読み（50 本ずつ）、同じ日は足す。
 - 管理画面 `app.analytics.jsx` で表示（Pro／inhouse）。
 
 ## 4. 管理 UI（有無）
