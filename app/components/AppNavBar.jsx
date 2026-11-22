@@ -17,6 +17,9 @@ export function AppNavBar({ shopPlan }) {
     { path: "/app/locations", label: "ロケーション設定" },
     { path: "/app/settings", label: "在庫表示設定" },
   ];
+  if (shopPlan?.features?.storePickup) {
+    items.push({ path: "/app/pos-lite", label: "店頭受取・配送" });
+  }
   if (showAnalyticsLink) {
     items.push({ path: "/app/analytics", label: "分析" });
   }

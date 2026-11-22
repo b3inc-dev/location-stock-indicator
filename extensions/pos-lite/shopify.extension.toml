@@ -1,0 +1,17 @@
+# POS Lite で使えない標準の「店頭受取」「お客様へ配送（持ち帰りと配送）」を、アプリのタイルと Admin API で行う。
+# 書き込みは管理画面「店頭受取・配送」のスイッチ（既定オフ）で止まる。
+api_version = "2026-07"
+
+[[extensions]]
+name = "店頭受取・配送"
+handle = "location-stock-pos-lite"
+type = "ui_extension"
+description = "自店の受取待ちと、持ち帰り・配送の分け"
+
+[[extensions.targeting]]
+target = "pos.home.tile.render"
+module = "./src/tile.js"
+
+[[extensions.targeting]]
+target = "pos.home.modal.render"
+module = "./src/modal.js"
