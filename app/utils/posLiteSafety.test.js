@@ -14,6 +14,7 @@ import {
   missedPaidCandidate,
   parseConfig,
   planFeeLine,
+  unmarkedFeeLines,
   validateConfig,
 } from "../../extensions/pos-lite/src/logic.js";
 import { applyFee } from "../../extensions/pos-lite/src/modal.js";
@@ -74,7 +75,7 @@ test("planFeeLine: 何も無いカートは今までどおり 1 行足す", () =
 // (a) applyFee（POS のカートの代わりを使って、「確定」を 2 回押す流れ）
 // ---------------------------------------------------------------------------
 
-function fakeCart(lines, { failMarks = 0, returnUuid = false } = {}) {
+function fakeCart(lines, { failMarks = 0, returnUuid = false, dropAdd = false } = {}) {
   const cart = { lineItems: structuredClone(lines) };
   let next = 1;
   let fails = failMarks;
@@ -85,6 +86,7 @@ function fakeCart(lines, { failMarks = 0, returnUuid = false } = {}) {
       async addCustomSale(input) {
         calls.push("add");
         const uuid = `new-${next++}`;
+        if (dropAdd) return undefined; // 足したことになったのに、カートに行が出ない
         cart.lineItems = [...cart.lineItems, { uuid, variantId: null, title: input.title, price: Number(input.price), quantity: input.quantity, taxable: input.taxable, properties: {} }];
         return returnUuid ? uuid : undefined;
       },
@@ -154,6 +156,27 @@ test("applyFee: 送料を変えたときは、印のある前の行を消して�
   assert.equal(feeLines(cart).length, 1);
   assert.equal(feeLines(cart)[0].price, 800);
   assert.equal(feeLines(cart)[0].properties[FEE_PROPERTY], "1");
+});
+
+test("applyFee: 足したあと送料の行が見つからないときは、「確定しました」にせず理由を出して止める", async () => {
+  const { cart } = fakeCart([PRODUCT], { dropAdd: true });
+  await assert.rejects(applyFee("送料", 800, CONFIG), /「送料」の行をカートで見つけられませんでした/);
+  assert.equal(feeLines(cart).length, 0);
+});
+
+test("unmarkedFeeLines: 商品の無い同じ名前の印の無い行だけ（配送を取り消すときに残っていれば知らせる）", () => {
+  const lines = [PRODUCT, marked("m1"), unmarked("x1"), { ...unmarked("x2"), title: "ギフト包装" }, { ...PRODUCT, uuid: "p2", title: "送料" }];
+  assert.deepEqual(unmarkedFeeLines(lines, "送料").map((l) => l.uuid), ["x1"]);
+  assert.deepEqual(unmarkedFeeLines([], "送料"), []);
+});
+
+test("POS の画面: 配送を取り消したあと印の無い送料の行が残っていれば、注意の色で知らせる", async () => {
+  const { readFileSync } = await import("node:fs");
+  const source = readFileSync(new URL("../../extensions/pos-lite/src/modal.js", import.meta.url), "utf8");
+  const cancelAt = source.indexOf("await applyFee(row.shippingTitle, 0, state.config);");
+  const after = source.slice(cancelAt, cancelAt + 800);
+  assert.match(after, /unmarkedFeeLines\(/);
+  assert.match(after, /setAttribute\("tone", "warning"\)/);
 });
 
 test("POS の画面: 確定はカートに書く前に二重の確かめをする", async () => {
