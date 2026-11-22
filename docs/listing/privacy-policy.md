@@ -4,7 +4,7 @@
 - 1 章は根拠（公開しない）。2 章（日本語）と 3 章（English）が公開する本文。`{{…}}` は T が入れる【T】。
 
 - **公開する本文の正本は commercor-site の `editorial/app_policies.py`**（b3inc-dev/commercor-site PR #14、T の決定 2026-11-23 1:35「紹介サイトに置く・連絡先はフォーム」、1:54・2:00「サポートのメールは全アプリ共通の app-support@b3-inc.com」。commercor-site PR #15）。公開の URL: プライバシーポリシー https://commercore.b3-inc.com/apps/location-stock-indicator/privacy/・サポート https://commercore.b3-inc.com/apps/location-stock-indicator/support/。この案は根拠として残す。文を変えるときは commercor-site も同じ PR の流れで直す。
-- 【アプリの直しは途中】T の決定（2026-11-23 1:50、commercor-site #1）で、shop/redact のときに `AppUsageReport` も消す（POS Stock と同じ）。今のコード（#50、未マージ）は消さないので、直しの PR が要る。
+- 【#71 で直した（#50 のブランチ）】T の決定（2026-11-23 1:50、commercor-site #1）で、shop/redact のときに `AppUsageReport` も消す（POS Stock と同じ）。#71 で直し、#50 のブランチ（`claude/loc-pro-usage-app-events`）に入った。main に入るのは #50 と一緒。
 - まだ `{{…}}` のまま: `UPDATED_DATE`（公開申請の日に入れる）、`LOG_RETENTION_DAYS`（commercor-site の公開の文には、ログの日数を書いていない）。
 
 ---
@@ -16,7 +16,7 @@
 | テーブル | 中身 | 消える時 |
 |---|---|---|
 | `Session` | 店のドメイン、アクセストークン・リフレッシュトークン、スコープ、期限（スタッフの氏名・メールの欄もあるが、【推測】オフラインのトークンだけなのでふつうは空） | `app/uninstalled`（`webhooks.app.uninstalled.jsx`）と `shop/redact` |
-| `AppUsageReport`（PR #50 で増える） | 請求期間・プラン・ロケーション数・送った単位・結果 | **今は消さない**【T】 |
+| `AppUsageReport`（PR #50 で増える） | 請求期間・プラン・ロケーション数・送った単位・結果 | `shop/redact`（#71 で直した（#50 のブランチ）。48 時間のうちに入れ直した店では消さない） |
 
 - 在庫・ロケーション・配送の設定は DB に入れない。App Proxy が配送の設定と店の設定を、サーバーのメモリに少しのあいだだけ覚える（`app/utils/shortCache.js`「プロセス内の短命キャッシュ」）【事実】。
 
@@ -41,12 +41,12 @@
 |---|---|
 | `customers/data_request` | 顧客ごとのデータが無いので渡すものはない（記録して 200） |
 | `customers/redact` | 消すものはない（200） |
-| `shop/redact` | その店の `Session` を消す。48 時間のうちに入れ直した店では消さない |
+| `shop/redact` | その店の `Session` を消す。#50 のブランチでは `AppUsageReport` も消す（#71）。48 時間のうちに入れ直した店では消さない |
 
 ### 1.5 決まっていない・合っていないこと【T】
 
 - 設定と分析のメタフィールドがアンインストールのあと残ること。本文ではそのまま書いた（店が Shopify の管理画面やアプリを入れ直して消せる、とは書いていない。消し方を用意するなら別の PR）。
-- `AppUsageReport` を `shop/redact` で消すか（POS Stock と同じ論点）。
+- （決まった）`AppUsageReport` は `shop/redact` で消す（T 2026-11-23 1:50）。#71 で直した（#50 のブランチ）。
 - サーバーの地域とログの保存日数。
 - POS Lite（PR #21〜#23）を入れると注文・顧客に触れる。そのときはこの文を作り直す。
 
