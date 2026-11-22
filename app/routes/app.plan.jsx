@@ -7,7 +7,7 @@ import { getShopPlan } from "../utils/shopPlan.server.js";
 import { LITE_MAX_LOCATIONS, buildManagedPricingPlansUrl } from "../utils/billing.js";
 
 import { NOTICE_STYLES, buildPlanPageNotice } from "../utils/planNotice.js";
-import { describeUsageReportForMerchant, usagePeriodKey } from "../utils/appEventsUsage.server.js";
+import { describeUsageReportForMerchant, findUsageReportForPeriod, usagePeriodKey } from "../utils/appEventsUsage.server.js";
 import prisma from "../db.server.js";
 
 export async function loader({ request }) {
@@ -25,11 +25,9 @@ export async function loader({ request }) {
     try {
       const periodKey = usagePeriodKey(usage.periodEnd);
       const row = periodKey
-        ? await prisma.appUsageReport.findUnique({
-            where: { shop_periodEnd: { shop: session.shop.trim().toLowerCase(), periodEnd: periodKey } },
-            select: { status: true },
-          })
-        : null;
+        ? await findUsageReportForPeriod(prisma.appUsageReport, session.shop.trim().toLowerCase(), periodKey)
+        : // 請求期間が分からないときは送っていない（missing_period で残している）
+          { status: "missing_period" };
       usageReportNote = describeUsageReportForMerchant(row);
     } catch (e) {
       console.warn("[app.plan] usage report read failed:", e instanceof Error ? e.message : String(e));
