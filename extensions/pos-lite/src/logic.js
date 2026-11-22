@@ -64,6 +64,8 @@ const MESSAGES = {
   already_done: "配送の処理は済んでいます（済んだ注文はもう動かしません）。",
   waiting_exhausted: "Shopify の出荷指示が長い時間できませんでした（送り直しが尽きる前に止めました）。出荷指示ができてから再処理してください。",
   pagination: "明細を最後まで読めませんでした。再処理してください。",
+  missed_paid:
+    "会計のあとの配送の処理が、済んだ印も要確認の印も残さずに終わっていました（拾い直しで見つけました）。注文を確かめてから再処理してください。",
 };
 
 export function messageFor(reason) {
@@ -111,6 +113,8 @@ export function defaultConfig() {
     // 送料の行を売上に含めるか・ポイントの対象にするか（行の印に書く。読むのは POS Receipt・Shop Point。T が確かめる）
     feeCountsAsSales: true,
     feeEarnsPoints: false,
+    // rescanEnabled: 印の無いまま終わった注文を拾い直して「要確認」に出す（注文にタグと理由を書く。既定オフ）
+    rescanEnabled: false,
     locations: [],
   };
 }
@@ -134,6 +138,7 @@ export function parseConfig(raw) {
     shippingTaxable: data.shippingTaxable !== false,
     feeCountsAsSales: data.feeCountsAsSales !== false,
     feeEarnsPoints: data.feeEarnsPoints === true,
+    rescanEnabled: data.rescanEnabled === true,
     locations: (Array.isArray(data.locations) ? data.locations : [])
       .map((row) => ({
         locationId: numericId(row?.locationId),
@@ -187,6 +192,7 @@ export function validateConfig(input, knownLocations) {
     shippingTaxable: input?.shippingTaxable === true,
     feeCountsAsSales: input?.feeCountsAsSales === true,
     feeEarnsPoints: input?.feeEarnsPoints === true,
+    rescanEnabled: input?.rescanEnabled === true,
     locations,
   };
   return { errors: [...new Set(errors)], config };
@@ -363,6 +369,51 @@ export function feeSync(cartLines, title, fee, taxable = true) {
     remove: feeLines.filter((line) => line !== keep).map((line) => line.uuid),
     add: keep ? null : { title, price, quantity: 1, taxable: wantTaxable },
   };
+}
+
+/**
+ * 送料の行をどうするかを決める（feeSync に、印付けに失敗した行の扱いを足したもの。見直し 7084505690 の 2）。
+ * 送料の行を足したあと印を付ける所で失敗すると、印の無い送料の行がカートに残る。そのまま「配送を確定」を
+ * もう一度押すと、印のある行がもう 1 つ増えて送料が二重になる。それを防ぐ:
+ *   - ownUnmarked（この端末でアプリが足して、まだ印を付けられていない行の uuid）にある行は、アプリの行として扱う。
+ *     値が合えば足さずにその行に印を付ける（adopt）。合わなければ消して入れ直す。
+ *   - アプリが足したと分からない、商品の無い同じ名前の印の無い行があるときは、新しい行を足さずに止める（conflict）。
+ *     店員が手で入れた行かもしれないので、消さない・印も付けない（見直し 11/23 の 4 のまま）。
+ * @returns {{remove: string[], add: object|null, adopt: string|null, conflict: string[]}}
+ */
+export function planFeeLine(cartLines, title, fee, taxable = true, { ownUnmarked } = {}) {
+  const own = ownUnmarked instanceof Set ? ownUnmarked : new Set(ownUnmarked || []);
+  const lines = cartLines || [];
+  const mine = lines.filter((line) => line?.uuid && own.has(line.uuid) && !numericId(line.variantId) && !isFeeLine(line));
+  const base = feeSync(lines, title, fee, taxable);
+  const result = { remove: [...base.remove], add: base.add, adopt: null, conflict: [] };
+  // 送料が 0（配送を取り消した・0 点）なら、アプリが足した印の無い行も消す
+  if (!(Number(fee) > 0)) {
+    result.remove.push(...mine.map((line) => line.uuid));
+    return result;
+  }
+  if (!base.add) {
+    // 印のある行が残る。アプリが足した印の無い行は二重なので消す
+    result.remove.push(...mine.map((line) => line.uuid));
+    return result;
+  }
+  const price = Number(fee || 0).toFixed(2);
+  const wantTaxable = taxable !== false;
+  const reuse = mine.find(
+    (line) =>
+      line.title === title &&
+      Number(line.price).toFixed(2) === price &&
+      Number(line.quantity) === 1 &&
+      (typeof line.taxable !== "boolean" || line.taxable === wantTaxable),
+  );
+  result.remove.push(...mine.filter((line) => line !== reuse).map((line) => line.uuid));
+  if (reuse) return { ...result, add: null, adopt: reuse.uuid };
+  // アプリの行と分からない、商品の無い同じ名前の印の無い行がある → 足さずに止める
+  result.conflict = lines
+    .filter((line) => line?.uuid && !own.has(line.uuid) && !numericId(line.variantId) && !isFeeLine(line) && line.title === title)
+    .map((line) => line.uuid);
+  if (result.conflict.length) return { ...result, remove: [], add: null };
+  return result;
 }
 
 /** カートの今の配送の点数（タイルの表示用）。 */
@@ -675,6 +726,42 @@ export function planSale(order, config) {
   }
   if (!fulfills.length) return { ...emptyStep("done", null), ...side };
   return { ...emptyStep("fulfill", null), ...side, fulfills, storeQuantity };
+}
+
+// ---------------------------------------------------------------------------
+// 拾い直し（orders/paid の処理が印を残さずに終わった注文。見直し 7084505690 の 1）
+// ---------------------------------------------------------------------------
+
+/**
+ * Shopify の送り直しが終わったと見なすまでの時間。Shopify の文書は「4 時間で 8 回まで」とだけ書いている（推測で 5 時間）。
+ * これより新しい注文は、まだ送り直しで処理される途中かもしれないので拾わない。
+ */
+export const RESCAN_MIN_AGE_MS = 5 * 60 * 60 * 1000;
+/** 拾い直しで見る期間（作られてからこの日数まで）。 */
+export const RESCAN_DAYS = 7;
+
+/**
+ * 拾い直しの対象か（一覧の 1 件。注文を全部読まなくても決められる値だけで見る）。
+ * 対象: POS の注文で、配送の指定（_lsi_delivery）があり、済んだ印（delivery_handoff.completedAt）も
+ * 要確認の印（タグ）も無く、キャンセルされておらず、作られてから RESCAN_MIN_AGE_MS を過ぎたもの。
+ * @param {{sourceName?: string, createdAt?: string, cancelledAt?: string|null, tags?: string[], customAttributes?: any[], handoff?: string|null}} order
+ */
+export function missedPaidCandidate(order, now = Date.now()) {
+  if (!order) return false;
+  if (String(order.sourceName || "").toLowerCase() !== "pos") return false;
+  if (order.cancelledAt) return false;
+  if ((order.tags || []).includes(REVIEW_TAG)) return false;
+  if (hasSettlementMarker(order)) return false;
+  if (!attribute(order.customAttributes, DELIVERY_ATTRIBUTE)) return false;
+  const created = Date.parse(String(order.createdAt || ""));
+  if (!Number.isFinite(created) || now - created < RESCAN_MIN_AGE_MS) return false;
+  try {
+    const handoff = JSON.parse(String(order.handoff || ""));
+    if (typeof handoff?.completedAt === "string" && handoff.completedAt) return false;
+  } catch {
+    // 記録が無い・読めない → 済んだ印は無い
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------------

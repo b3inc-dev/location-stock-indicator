@@ -20,8 +20,8 @@ import {
 } from "../components/admin-ui";
 import { authenticate } from "../shopify.server";
 import { getShopPlan } from "../utils/shopPlan.server.js";
-import { listReviewOrders, loadConfig, processSale, requestFromAdmin, withOrderLock } from "../utils/posLiteSale.js";
-import { CONFIG_KEY, CONFIG_NAMESPACE, numericId, validateConfig } from "../../extensions/pos-lite/src/logic.js";
+import { listReviewOrders, loadConfig, processSale, requestFromAdmin, rescanMissedOrders, withOrderLock } from "../utils/posLiteSale.js";
+import { CONFIG_KEY, CONFIG_NAMESPACE, RESCAN_DAYS, numericId, validateConfig } from "../../extensions/pos-lite/src/logic.js";
 
 const LOCATIONS_QUERY = `#graphql
   query PosLiteLocations {
@@ -84,6 +84,25 @@ export const action = async ({ request }) => {
     return { ok: false, error: `${result.orderName || "注文"}: ${result.message || "再処理できませんでした。"}` };
   }
 
+  if (intent === "rescan") {
+    // 拾い直し: 印の無いまま終わった注文を探す。書く（要確認のタグと理由）のはスイッチがオンのときだけ
+    const { config } = await loadConfig(run);
+    let scan;
+    try {
+      scan = await rescanMissedOrders(run, { config });
+    } catch (error) {
+      console.error("[location-stock]", { route: "app.pos-lite", shop: session?.shop }, error instanceof Error ? error.message : "rescan failed");
+      return { ok: false, error: "注文を読めませんでした。注文を読む権限が承認されているか確かめて、もう一度押してください。" };
+    }
+    // 記録（ログ）には件数だけ（注文の中身・お客様の値は出さない）
+    console.log("[location-stock] pos-lite rescan", { shop: session?.shop, found: scan.found.length, marked: scan.marked, failed: scan.failed, wrote: scan.wrote });
+    const more = scan.truncated ? "（読む上限に届いたので、古い注文は見ていません）" : "";
+    if (!scan.found.length) return { ok: true, message: `印の無いまま終わった注文はありませんでした${more}`, at: Date.now() };
+    if (!scan.wrote) return { ok: true, message: `${scan.found.length} 件見つかりました（スイッチがオフなので、注文には何も書いていません）${more}`, at: Date.now(), rescan: scan };
+    if (scan.failed) return { ok: false, error: `${scan.found.length} 件のうち ${scan.failed} 件に要確認の印を付けられませんでした。もう一度押してください。`, rescan: scan };
+    return { ok: true, message: `${scan.marked} 件を「要確認の注文」に出しました${more}`, at: Date.now() };
+  }
+
   if (intent !== "save") return { ok: false, error: "操作を確かめてください。" };
   const locations = await loadLocations(run);
   const rows = locations.map((location) => ({
@@ -102,6 +121,7 @@ export const action = async ({ request }) => {
       shippingTaxable: form.get("shippingTaxable") === "on",
       feeCountsAsSales: form.get("feeCountsAsSales") === "on",
       feeEarnsPoints: form.get("feeEarnsPoints") === "on",
+      rescanEnabled: form.get("rescanEnabled") === "on",
       locations: rows,
     },
     locations,
@@ -206,6 +226,11 @@ export default function PosLitePage() {
                 <span>店頭で履行済みになった配送分を取り消して出荷元へ移す</span>
               </label>
               <p className="Admin-note">「フルフィルメント済みにする」をオフにできない店舗用です。店舗での履行を取り消してから出荷元へ移し、持ち帰り分はもう一度通知なしで履行します。在庫の戻り方を開発ストアで確かめてからオンにします。</p>
+              <label>
+                <input type="checkbox" name="rescanEnabled" defaultChecked={config.rescanEnabled} />
+                <span>印の無いまま終わった注文を拾い直して「要確認の注文」に出す</span>
+              </label>
+              <p className="Admin-note">会計のあとの処理が、済んだ印も要確認の印も残さずに終わった注文を探し、注文に要確認のタグと理由を書きます。配送・履行には触れません。オフのときは探して件数を出すだけで、注文には何も書きません。</p>
             </AdminBlock>
             <AdminBlock wide title="店舗ごとの配送" description="配送を受け付ける店舗に印を付け、送料を決めます。出荷元は会計ごとに POS で必ず選びます（ここで決めるのは最初に選んでおく値）。送料は配送が 1 点以上のとき 1 回だけ足します。">
               <EditTable
@@ -260,7 +285,38 @@ export default function PosLitePage() {
           </Form>
         ) : null}
         {Array.isArray(reviews) ? (
-          <AdminBlock wide title="要確認の注文" description="会計のあとに配送・持ち帰りの処理が止まった注文です。理由を直してから再処理します。">
+          <AdminBlock
+            wide
+            title="要確認の注文"
+            description={`会計のあとに配送・持ち帰りの処理が止まった注文です。理由を直してから再処理します。「拾い直す」は、直近 ${RESCAN_DAYS} 日の POS の注文のうち、印の無いまま終わったもの（作られてから 5 時間を過ぎたもの）を探します。`}
+            action={
+              <Form method="post">
+                <input type="hidden" name="intent" value="rescan" />
+                <button type="submit" className="Admin-secondary" disabled={busyIntent === "rescan"}>
+                  {busyIntent === "rescan" ? "探しています…" : "拾い直す"}
+                </button>
+              </Form>
+            }
+          >
+            {result?.rescan && !result.rescan.wrote && result.rescan.found.length ? (
+              <div className="History-scroll" data-pos-lite-rescan>
+                <p className="Admin-note">見つかった注文（スイッチ「印の無いまま終わった注文を拾い直して「要確認の注文」に出す」がオフなので、注文には何も書いていません）</p>
+                <table className="History-table">
+                  <thead>
+                    <tr><th>注文</th><th>日時</th><th>店舗</th></tr>
+                  </thead>
+                  <tbody>
+                    {result.rescan.found.map((order) => (
+                      <tr key={order.id}>
+                        <td data-label="注文" className="History-keep">{order.name}</td>
+                        <td data-label="日時" className="History-keep">{formatDate(order.createdAt)}</td>
+                        <td data-label="店舗">{order.locationName || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
             {reviews.length === 0 ? (
               <EmptyState heading="要確認の注文はありません">止まった注文があると、ここに出ます。</EmptyState>
             ) : (
