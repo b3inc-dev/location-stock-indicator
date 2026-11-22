@@ -78,7 +78,7 @@ Admin GraphQL API バージョン（アプリコード）: `ApiVersion.October25
 | `PARTNER_API_APP_ID` | 公開用アプリの ID（数字か `gid://shopify/App/…`） | `partnerSubscription.server.js` |
 | `PARTNER_API_VERSION` | 省略可。既定 `2026-10` | `partnerSubscription.server.js` |
 | `APP_EVENTS_USAGE_ENABLED` | `1` で Pro の従量を Shopify へ送る（既定オフ・公開用だけ。#50）。オフでも数は `AppUsageReport` に `disabled` で残る | `appEventsUsage.server.js` |
-| `APP_EVENTS_CLIENT_ID` / `APP_EVENTS_CLIENT_SECRET` | App Events API のトークン用。**公開用アプリ自身の client ID と secret**（`SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET` と同じ値。秘密） | `appEventsUsage.server.js` |
+| `APP_EVENTS_CLIENT_ID` / `APP_EVENTS_CLIENT_SECRET` | App Events API のトークン用（client_credentials）。**公開用アプリ自身の client ID と secret**（`SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET` と同じ値。秘密）。別に API キーを作らない。**未設定なら `SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET` を使う**ので入れなくてよい（入れるなら両方）。自社用のサーバーでは使わない（送らない） | `appEventsUsage.server.js` |
 | `APP_EVENTS_HANDLE_PRO` | 省略可。Pro のメーターの handle（既定 `pro_location`） | `appEventsUsage.server.js` |
 | `APP_EVENTS_USAGE_MAX_UNITS` | 省略可。アプリ側の上限（1 期間に送るロケーション数。既定 100）。超えたら送らず `over_limit` | `appEventsUsage.server.js` |
 | `APP_EVENTS_API_VERSION` | 省略可。既定 `2026-10` | `appEventsUsage.server.js` |

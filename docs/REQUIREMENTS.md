@@ -600,7 +600,7 @@
 - 外へ送るのは `APP_EVENTS_USAGE_ENABLED=1` のときだけ（既定オフ）。オフでも数は DB の `AppUsageReport` に `disabled` で残す。
 - 1 店・1 請求期間に 1 行（`AppUsageReport` の一意）＋ Shopify の `idempotency_key` で 2 回送らない。失敗は `failed`（HTTP の番号・理由・回数）で残して同じキーで送り直す。
 - Shopify の App Pricing に上限（cap）は無いので、アプリ側の上限 `APP_EVENTS_USAGE_MAX_UNITS`（既定 100）を超えたら送らず `over_limit` で残す。
-- トークンはアプリ自身の client ID と secret（`APP_EVENTS_CLIENT_ID` / `APP_EVENTS_CLIENT_SECRET`。公開用の `SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET` と同じ値）で `POST https://api.shopify.com/auth/access_token`（client_credentials）から取る（https://shopify.dev/docs/apps/build/app-events/send-events）。
+- トークンは**公開用アプリ自身の client ID と client secret**で `POST https://api.shopify.com/auth/access_token`（client_credentials）から取る（https://shopify.dev/docs/apps/build/app-events/send-events。別に作る API キーではない）。`APP_EVENTS_CLIENT_ID` / `APP_EVENTS_CLIENT_SECRET` があればそれ、無ければ公開用の `SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET`（同じ値なので入れなくてよい。片方だけはエラー）。サーバーが自社用（`resolvePlanDistribution` が inhouse）なら鍵を使わず送らない（`resolveAppEventsCredentials`）。
 - 202 は「受け取った」だけ。請求に載ったかは Dev Dashboard の Logs（Type: App billing event）で見る。
 - 料金プランの画面に、ロケーション数と使用量を出す。
 - 決まっていないこと: `AppUsageReport` を `shop/redact` で消すか（個人情報は無い）。アンインストールの 24 時間後に期間が閉じ、それより後は送れない（`PERIOD_CLOSED`）。
