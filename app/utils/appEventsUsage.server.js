@@ -11,6 +11,9 @@
  * - 外へ送るのは APP_EVENTS_USAGE_ENABLED=1 のときだけ（既定オフ）。オフでも数は DB に「disabled」で残す。
  * - 失敗は黙って捨てない。DB に status=failed・HTTP の番号・理由を残し、時間をおいて同じキーで送り直す（同じキーなので二重請求にならない）。
  * - 上限を超えた分は送らず status=over_limit で残す（上限を見直すと次の確認で送る）。
+ * - 請求期間が分からないときは送らず status=missing_period で残す（periodEnd は MISSING_PERIOD_END の 1 店 1 行。期間が分かれば別の行で送る）。
+ * - DB の periodEnd とキーは期間の終わりの UTC の日付（usagePeriodKey）。同じ日付の行が無くても前後 1 日の行があれば同じ期間とみる
+ *   （Partner と Admin で期間の終わりが 0 時をまたいでずれたとき）。
  * - 自社用（Ciara）はここに来ない（呼ぶ側で distribution === "public" を確かめる）。
  *
  * Shopify の仕様（2026-11-21 shopify.dev で確認）:
@@ -46,6 +49,8 @@ export const STALE_SENDING_MS = 5 * 60_000;
 export const PERIOD_END_MARGIN_MS = 10 * 60_000;
 /** 同じ店・同じ期間の DB 確認の間隔（管理画面を開くたびに DB を読まない） */
 export const RECHECK_MS = 10 * 60_000;
+/** 請求期間が分からないときに記録する行の periodEnd（日付として読めない値。送る行とは混ざらない） */
+export const MISSING_PERIOD_END = "unknown";
 export function isUsageReportingEnabled(env = process.env) {
   return String(env.APP_EVENTS_USAGE_ENABLED ?? "").trim() === "1";
 }
@@ -72,17 +77,79 @@ export function numericShopId(shopGid) {
   const m = String(shopGid ?? "").match(/(\d+)\s*$/);
   return m ? m[1] : null;
 }
+/** 請求期間の終わりを ISO 8601（UTC）にそろえる。読めなければ null */
+export function normalizePeriodEnd(value) {
+  if (typeof value !== "string" || !value.trim())
+    return null;
+  const t = Date.parse(value);
+  return Number.isFinite(t) ? new Date(t).toISOString() : null;
+}
 /**
- * 1 店・1 期間で変わらないキー（64 文字まで）。
- * 例: lsi-loc-12345678-20261221T000000Z
+ * 期間を表すキー: 期間の終わりの UTC の日付（"2026-12-21"）。読めなければ null。
+ * Partner の currentBillingCycle.endTime と Admin の currentPeriodEnd が秒の単位でずれても同じ値にする
+ * （DB の (shop, periodEnd) と idempotency_key に使う。期間の終わり 10 分前の止めは正確な時刻で見る）。
+ * @param {string|null|undefined} periodEnd
+ */
+export function usagePeriodKey(periodEnd) {
+  const t = Date.parse(String(periodEnd ?? ""));
+  return Number.isFinite(t) ? new Date(t).toISOString().slice(0, 10) : null;
+}
+/**
+ * 従量を数える請求期間を選ぶ（純粋な関数）。
+ * プランを Partner API の契約で決めたとき（planSource === "partner"）は、その契約の期間を先に使う
+ * （Admin API に契約が出ない店でも送れるように）。無ければ Admin API の ACTIVE な契約の currentPeriodEnd。どちらも無ければ null。
+ * @param {{ planSource: "partner"|"admin"; partnerPeriodEnd?: string|null; adminSubscriptions?: Array<{ status?: string|null; currentPeriodEnd?: string|null }>|null }} args
+ * @returns {{ periodEnd: string|null; periodSource: "partner"|"admin"|null }}
+ */
+export function pickUsagePeriodEnd(args) {
+  if (args.planSource === "partner") {
+    const p = normalizePeriodEnd(args.partnerPeriodEnd);
+    if (p)
+      return { periodEnd: p, periodSource: "partner" };
+  }
+  for (const s of args.adminSubscriptions ?? []) {
+    if (String(s?.status ?? "").toUpperCase() !== "ACTIVE")
+      continue;
+    const a = normalizePeriodEnd(s?.currentPeriodEnd);
+    if (a)
+      return { periodEnd: a, periodSource: "admin" };
+  }
+  return { periodEnd: null, periodSource: null };
+}
+/**
+ * "2026-12-21" を days 日ずらす（UTC）
+ * @param {string} periodKey
+ * @param {number} days
+ */
+export function shiftPeriodKey(periodKey, days) {
+  return new Date(Date.parse(`${periodKey}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+}
+/**
+ * この期間の行を探す。同じ日付が無ければ前後 1 日の行も同じ期間として返す
+ * （Partner と Admin で期間の終わりが UTC の 0 時をまたいでずれたとき。例 23:59:58 と 00:00:01）。
+ * 請求期間は 30 日・1 年なので、終わりが 1 日以内の別の期間は無い。missing_period の行は日付でないので混ざらない。
+ * @param {{ findUnique: Function }} store
+ * @param {string} shop
+ * @param {string} periodKey
+ */
+export async function findUsageReportForPeriod(store, shop, periodKey) {
+  for (const key of [periodKey, shiftPeriodKey(periodKey, -1), shiftPeriodKey(periodKey, 1)]) {
+    const row = await store.findUnique({ where: { shop_periodEnd: { shop, periodEnd: key } } });
+    if (row)
+      return row;
+  }
+  return null;
+}
+/**
+ * 1 店・1 期間で変わらないキー（64 文字まで）。期間は usagePeriodKey（UTC の日付）。
+ * 例: lsi-loc-12345678-20261221
  */
 export function buildIdempotencyKey(shopGid, periodEnd) {
   const id = numericShopId(shopGid);
-  const t = Date.parse(periodEnd);
-  if (!id || !Number.isFinite(t))
+  const day = usagePeriodKey(periodEnd);
+  if (!id || !day)
     return null;
-  const stamp = new Date(t).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
-  const key = `lsi-loc-${id}-${stamp}`;
+  const key = `lsi-loc-${id}-${day.replace(/-/g, "")}`;
   return key.length <= 64 ? key : null;
 }
 /** 失敗をもう一度送ってよいか（同じキーなので二重請求にはならない） */
@@ -201,10 +268,10 @@ export function __resetUsageRecheckForTest() {
  * Pro なら、この期間の分（ロケーション数）を 1 回だけ報告する。何度呼んでも安全（同じ期間は 1 件だけ）。
  * 呼ぶ側は await しなくてよい（失敗は DB と console に残る。投げない）。
  * @param {{ shop: string; shopGid: string|null; plan: "lite"|"pro"|null; locationsCount: number; periodEnd: string|null }} input
- *   periodEnd は Shopify の activeSubscriptions[].currentPeriodEnd
+ *   periodEnd は pickUsagePeriodEnd で選んだ請求期間の終わり（Partner で決めたら Partner の期間、そうでなければ Admin の currentPeriodEnd）
  * @param {{ store: object; env?: Record<string, string|undefined>; fetchImpl?: Function; now?: () => number; force?: boolean }} deps
  *   store は prisma.appUsageReport（findUnique / create / updateMany / update）
- * @returns {Promise<{ outcome: "skipped"; reason: string } | { outcome: "already_sent"|"disabled"|"over_limit"|"sent"|"failed"; row: object }>}
+ * @returns {Promise<{ outcome: "skipped"; reason: string } | { outcome: "already_sent"|"disabled"|"over_limit"|"sent"|"failed"|"missing_period"; row: object }>}
  */
 export async function reportProLocationUsage(input, deps) {
   const env = deps.env ?? process.env;
@@ -213,8 +280,9 @@ export async function reportProLocationUsage(input, deps) {
   if (usage.units <= 0)
     return { outcome: "skipped", reason: "no_usage" };
   if (!input.periodEnd || !Number.isFinite(Date.parse(input.periodEnd))) {
-    console.warn(`[app-events-usage] no currentPeriodEnd; cannot report. shop=${input.shop}`);
-    return { outcome: "skipped", reason: "missing_period" };
+    // 期間が分からないと 1 期間 1 回のキーを作れないので送らない。黙って捨てずに数と理由を残す
+    console.warn(`[app-events-usage] no billing period; not sent (recorded as missing_period). shop=${input.shop}`);
+    return recordMissingPeriod(input, usage, deps);
   }
   if (nowFn() >= Date.parse(input.periodEnd) - PERIOD_END_MARGIN_MS) {
     // 期間が終わった（終わりそう）。今送ると次の期間の請求に入って 2 重になるので送らない（記録も変えない）
@@ -226,7 +294,9 @@ export async function reportProLocationUsage(input, deps) {
     console.warn(`[app-events-usage] no shop id; cannot report. shop=${input.shop}`);
     return { outcome: "skipped", reason: "missing_shop_id" };
   }
-  const memoKey = `${input.shop}|${input.periodEnd}`;
+  // DB の行とキーは期間の日付（正確な時刻は上の「期間の終わり 10 分前」の止めだけに使う）
+  const periodKey = usagePeriodKey(input.periodEnd);
+  const memoKey = `${input.shop}|${periodKey}`;
   const now = nowFn();
   if (!deps.force) {
     const last = recentChecks.get(memoKey);
@@ -235,11 +305,13 @@ export async function reportProLocationUsage(input, deps) {
   }
   recentChecks.set(memoKey, now);
   const store = deps.store;
-  const where = { shop_periodEnd: { shop: input.shop, periodEnd: input.periodEnd } };
+  const where = { shop_periodEnd: { shop: input.shop, periodEnd: periodKey } };
   const enabled = isUsageReportingEnabled(env);
   const maxUnits = getMaxUnits(env);
   const eventHandle = getEventHandle(env);
-  let row = await store.findUnique({ where });
+  // 同じ日付の行が無ければ前後 1 日の行（送った・送りかけ・止めた、どれでも）を同じ期間として使う。
+  // その行のキーで続ける（新しいキーで 2 回目を送らない）
+  let row = await findUsageReportForPeriod(store, input.shop, periodKey);
   if (row?.status === "sent")
     return { outcome: "already_sent", row };
   // 一度でも送ろうとした行は、数を変えない（Shopify 側に届いているかもしれない値と DB を揃える）
@@ -260,7 +332,7 @@ export async function reportProLocationUsage(input, deps) {
     if (!row) {
       try {
         row = await store.create({
-          data: { shop: input.shop, periodEnd: input.periodEnd, idempotencyKey, status: holdStatus, lastError, attempts: 0, ...fields },
+          data: { shop: input.shop, periodEnd: periodKey, idempotencyKey, status: holdStatus, lastError, attempts: 0, ...fields },
         });
       }
       catch {
@@ -278,7 +350,7 @@ export async function reportProLocationUsage(input, deps) {
   if (!row) {
     try {
       row = await store.create({
-        data: { shop: input.shop, periodEnd: input.periodEnd, idempotencyKey, status: "sending", attempts: 1, ...fields },
+        data: { shop: input.shop, periodEnd: periodKey, idempotencyKey, status: "sending", attempts: 1, ...fields },
       });
     }
     catch {
@@ -325,6 +397,52 @@ export async function reportProLocationUsage(input, deps) {
   }
 }
 /** 店に見せる「報告の状態」（料金プラン画面） */
+/**
+ * 期間が分からない店の行のキー（Shopify には送らない。idempotencyKey の一意を守るためだけ）
+ * @param {{ shop: string; shopGid: string|null }} input
+ */
+function missingPeriodKey(input) {
+  const id = input.shopGid ? numericShopId(input.shopGid) : null;
+  return `lsi-loc-${id ?? input.shop}-noperiod`.slice(0, 64);
+}
+/**
+ * 請求期間が分からないとき: 送らずに (shop, MISSING_PERIOD_END) の 1 行へ数と理由を残す
+ */
+async function recordMissingPeriod(input, usage, deps) {
+  const env = deps.env ?? process.env;
+  const now = (deps.now ?? Date.now)();
+  const memoKey = `${input.shop}|${MISSING_PERIOD_END}`;
+  if (!deps.force) {
+    const last = recentChecks.get(memoKey);
+    if (last != null && now - last < RECHECK_MS)
+      return { outcome: "skipped", reason: "recently_checked" };
+  }
+  recentChecks.set(memoKey, now);
+  const where = { shop_periodEnd: { shop: input.shop, periodEnd: MISSING_PERIOD_END } };
+  const fields = {
+    plan: String(input.plan ?? ""),
+    eventHandle: getEventHandle(env),
+    locationsCount: usage.locationsCount,
+    units: usage.units,
+    status: "missing_period",
+    lastError: "請求期間（currentPeriodEnd / currentBillingCycle）を Partner API・Admin API のどちらからも読めないため送っていない",
+  };
+  let row = await deps.store.findUnique({ where });
+  if (!row) {
+    try {
+      row = await deps.store.create({
+        data: { shop: input.shop, periodEnd: MISSING_PERIOD_END, idempotencyKey: missingPeriodKey(input), attempts: 0, ...fields },
+      });
+    } catch {
+      row = await deps.store.findUnique({ where });
+      if (!row)
+        return { outcome: "skipped", reason: "lost_race" };
+    }
+  } else {
+    row = await deps.store.update({ where: { id: row.id }, data: fields });
+  }
+  return { outcome: "missing_period", row };
+}
 export function describeUsageReportForMerchant(row) {
   switch (row?.status) {
     case "sent":
@@ -335,6 +453,8 @@ export function describeUsageReportForMerchant(row) {
       return "ロケーション数がアプリの上限を超えているため、まだ報告していません。サポートが確認します。";
     case "sending":
       return "Shopify に報告しています。";
+    case "missing_period":
+      return "Shopify から請求期間を読めないため、まだ報告していません。読めるようになったら自動で報告します。";
     default:
       return "今の請求期間の分は、まだ Shopify に報告していません。";
   }

@@ -70,6 +70,11 @@ Admin GraphQL API バージョン（アプリコード）: `ApiVersion.October25
 | `CUSTOM_APP_STORE_IDS` | カンマ区切りで inhouse 扱いショップ | `shopPlan.server.js` |
 | `FORCE_PLAN_LITE` | `1` で Lite 強制 | `shopPlan.server.js` |
 | `SHOPIFY_APP_HANDLE` | プラン画面等（デフォルト `app`） | `app.plan.jsx` |
+| `PARTNER_API_SUBSCRIPTION_ENABLED` | `1` で契約を Partner API でも読む（既定オフ・公開用だけ） | `partnerSubscription.server.js` |
+| `PARTNER_API_TOKEN` | Partner API client のトークン（秘密。権限 Manage apps） | `partnerSubscription.server.js` |
+| `PARTNER_API_ORG_ID` | Partner Dashboard の URL の数字 | `partnerSubscription.server.js` |
+| `PARTNER_API_APP_ID` | 公開用アプリの ID（数字か `gid://shopify/App/…`） | `partnerSubscription.server.js` |
+| `PARTNER_API_VERSION` | 省略可。既定 `2026-10` | `partnerSubscription.server.js` |
 | `DATABASE_URL` | docs 上 Prisma 用（スキーマ既定は `file:dev.sqlite`） | `DEPLOY_AND_SCOPES.md` |
 | `NODE_ENV` | production 等 | `db.server.js`, Dockerfile |
 | `PORT` / `FRONTEND_PORT` | サーバ／Vite | `vite.config.js` |

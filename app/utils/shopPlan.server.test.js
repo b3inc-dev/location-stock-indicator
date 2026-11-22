@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { adminWritePlanBlock, getShopPlan } from "./shopPlan.server.js";
+import { __clearPartnerSubscriptionCacheForTest } from "./partnerSubscription.server.js";
 import { INHOUSE_CLIENT_ID, PUBLIC_CLIENT_ID } from "./planDistribution.js";
 
 const KEYS = ["APP_DISTRIBUTION", "CUSTOM_APP_STORE_IDS", "SHOPIFY_API_KEY"];
@@ -67,9 +68,57 @@ describe("getShopPlan (public, managed pricing)", () => {
   it("Pro → proLocationUsage（$2 × ロケーション数・請求期間）。Lite には無い", async () => {
     const sub = { name: "Pro", status: "ACTIVE", currentPeriodEnd: "2026-12-21T00:00:00Z" };
     const p = await getShopPlan(adminReturning(data({ subs: [sub], locations: 7 })), "s.myshopify.com");
-    assert.deepEqual(p.proLocationUsage, { units: 7, unitPriceUsd: 2, amountUsd: 14, periodEnd: "2026-12-21T00:00:00Z" });
+    assert.deepEqual(p.proLocationUsage, { units: 7, unitPriceUsd: 2, amountUsd: 14, periodEnd: "2026-12-21T00:00:00.000Z", periodSource: "admin" });
     const lite = await getShopPlan(adminReturning(data({ subs: [{ name: "Lite", status: "ACTIVE" }], locations: 7 })), "s.myshopify.com");
     assert.equal(lite.proLocationUsage, undefined);
+  });
+
+  it("Partner で Pro と分かったとき → 従量の期間は Partner の期間（Admin に契約が無くても）。Partner に期間が無ければ Admin", async () => {
+    const PARTNER_KEYS = ["PARTNER_API_SUBSCRIPTION_ENABLED", "PARTNER_API_TOKEN", "PARTNER_API_ORG_ID", "PARTNER_API_APP_ID"];
+    const savedPartner = Object.fromEntries(PARTNER_KEYS.map((k) => [k, process.env[k]]));
+    const origFetch = globalThis.fetch;
+    Object.assign(process.env, {
+      PARTNER_API_SUBSCRIPTION_ENABLED: "1",
+      PARTNER_API_TOKEN: "prtapi_test",
+      PARTNER_API_ORG_ID: "1234567",
+      PARTNER_API_APP_ID: "987654",
+    });
+    const partnerBody = (cycle) => ({
+      data: {
+        activeSubscription: {
+          billingPeriod: "EVERY_30_DAYS",
+          cancelAtEndOfCycle: false,
+          trialEndsAt: null,
+          legacySubscriptionId: null,
+          currentBillingCycle: cycle,
+          items: [{ handle: "pro" }],
+        },
+      },
+    });
+    try {
+      const withShopId = (body) => ({ ...body, data: { ...body.data, shop: { ...body.data.shop, id: "gid://shopify/Shop/555" } } });
+      __clearPartnerSubscriptionCacheForTest();
+      globalThis.fetch = async () => ({ status: 200, text: async () => JSON.stringify(partnerBody({ startTime: "2026-11-21T00:00:00Z", endTime: "2026-12-21T00:00:00Z" })) });
+      const p = await getShopPlan(adminReturning(withShopId(data({ subs: [], locations: 4 }))), "s.myshopify.com");
+      assert.equal(p.plan, "pro");
+      assert.equal(p.planSource, "partner");
+      assert.deepEqual(p.proLocationUsage, { units: 4, unitPriceUsd: 2, amountUsd: 8, periodEnd: "2026-12-21T00:00:00.000Z", periodSource: "partner" });
+
+      __clearPartnerSubscriptionCacheForTest();
+      globalThis.fetch = async () => ({ status: 200, text: async () => JSON.stringify(partnerBody(null)) });
+      const adminSub = { name: "Pro", status: "ACTIVE", currentPeriodEnd: "2026-12-21T00:00:03Z" };
+      const q = await getShopPlan(adminReturning(withShopId(data({ subs: [adminSub], locations: 4 }))), "s.myshopify.com");
+      assert.equal(q.planSource, "partner");
+      assert.deepEqual(q.proLocationUsage.periodSource, "admin");
+      assert.equal(q.proLocationUsage.periodEnd, "2026-12-21T00:00:03.000Z");
+    } finally {
+      globalThis.fetch = origFetch;
+      __clearPartnerSubscriptionCacheForTest();
+      for (const k of PARTNER_KEYS) {
+        if (savedPartner[k] === undefined) delete process.env[k];
+        else process.env[k] = savedPartner[k];
+      }
+    }
   });
 
   it("Lite with more than 10 locations → locationPlanMismatch", async () => {
