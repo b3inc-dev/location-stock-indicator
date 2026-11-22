@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback } from "react";
 import { useLoaderData, useOutletContext } from "react-router";
-import { PickList, PrimaryLink } from "../components/admin-ui";
+import { PickList, PrimaryLink, StatusBanner } from "../components/admin-ui";
 import { authenticate } from "../shopify.server";
 import { getAnalyticsDailyData } from "../analytics.server";
 
@@ -154,6 +154,15 @@ export default function AppAnalytics() {
     return t;
   }, [dailyData]);
 
+  // 1 日分の記録の上限のため、ロケーション別に足せなかった件数（黙って捨てずに画面に出す）
+  const sizeLimitSkipped = useMemo(() => {
+    const days = dailyData.filter((row) => (row.sizeLimitSkippedCount ?? 0) > 0);
+    return {
+      count: days.reduce((sum, row) => sum + row.sizeLimitSkippedCount, 0),
+      days: days.map((row) => formatDisplayDate(row.date)),
+    };
+  }, [dailyData]);
+
   // 選択ロケーションのみの合計：近隣店舗クリック数・店舗受け取りボタンクリック数（合計行用）
   const nearbyClickTotal = useMemo(() => {
     return filteredLocations.reduce((sum, loc) => sum + (totals.nearbyDisplayByLocation[loc.id] ?? 0), 0);
@@ -284,6 +293,11 @@ export default function AppAnalytics() {
                 </button>
               </div>
 
+              {sizeLimitSkipped.count > 0 && (
+                <StatusBanner tone="warning" heading="ロケーション別の数の一部を保存できませんでした">
+                  {sizeLimitSkipped.days.join("・")} は 1 日分の記録の上限（Shopify のメタフィールドの 128KB）に届いたため、ロケーション別の数 {sizeLimitSkipped.count} 件を足していません。エリア表示回数などの合計の数は保存しています。
+                </StatusBanner>
+              )}
               {dailyData.length === 0 ? (
                 // 絞り込みの結果が空のときは文字だけ（5章）。開発の予定の文言はストアに出さない（10章）
                 <p className="Admin-note" style={{ padding: "24px 8px", textAlign: "center", margin: 0 }}>
