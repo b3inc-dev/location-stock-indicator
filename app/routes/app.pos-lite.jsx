@@ -79,7 +79,7 @@ export const action = async ({ request }) => {
     const { config } = await loadConfig(run);
     if (!config.deliveryEnabled) return { ok: false, error: "「持ち帰りと配送の履行」がオフなので再処理できません。" };
     const result = await withOrderLock(`${session.shop}:${orderId}`, () => processSale(run, orderId, { config }));
-    if (result.phase === "done") return { ok: true, message: `${result.orderName || "注文"}: ${result.message}`, at: Date.now() };
+    if (result.phase === "done" || result.reason === "already_done") return { ok: true, message: `${result.orderName || "注文"}: ${result.message}`, at: Date.now() };
     // retry: 出荷指示がまだ無い（印は付けない）。理由をそのまま出す
     return { ok: false, error: `${result.orderName || "注文"}: ${result.message || "再処理できませんでした。"}` };
   }

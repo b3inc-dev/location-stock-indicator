@@ -24,7 +24,7 @@ import {
   shipFromChoices,
   validateConfig,
 } from "../../extensions/pos-lite/src/logic.js";
-import { precheckPaid, processPaidInBackground, processSale, redactPosLiteOrders, withOrderLock } from "./posLiteSale.js";
+import { WAIT_LIMIT_MS, precheckPaid, processPaidInBackground, processSale, redactPosLiteOrders, retriesNearlyExhausted, withOrderLock } from "./posLiteSale.js";
 
 const STORE = "gid://shopify/Location/101";
 const WAREHOUSE = "gid://shopify/Location/202";
@@ -132,15 +132,22 @@ test("配送の確定: 明細の配送数量・配送先・出荷元・送料を
 });
 
 test("送料の行はカートに 1 つだけ。配送 0 なら消す", () => {
-  const lines = [{ uuid: "f1", variantId: null, title: "送料", price: 800, quantity: 1 }, { uuid: "f2", variantId: null, title: "送料", price: 500, quantity: 1 }];
+  const mark = { properties: { [FEE_PROPERTY]: "1" } };
+  const lines = [{ uuid: "f1", variantId: null, title: "送料", price: 800, quantity: 1, ...mark }, { uuid: "f2", variantId: null, title: "送料", price: 500, quantity: 1, ...mark }];
   assert.deepEqual(feeSync(lines, "送料", 800), { remove: ["f2"], add: null });
   assert.deepEqual(feeSync([], "送料", 800).add, { title: "送料", price: "800.00", quantity: 1, taxable: true }, "既定は税あり");
   assert.equal(feeSync([], "送料", 800, false).add.taxable, false);
   // 税のあり・なしを変えたら、前の行を消して入れ直す
-  const taxed = [{ uuid: "t", variantId: null, title: "送料", price: 800, quantity: 1, taxable: true }];
+  const taxed = [{ uuid: "t", variantId: null, title: "送料", price: 800, quantity: 1, taxable: true, ...mark }];
   assert.deepEqual(feeSync(taxed, "送料", 800, true), { remove: [], add: null });
   assert.deepEqual(feeSync(taxed, "送料", 800, false), { remove: ["t"], add: { title: "送料", price: "800.00", quantity: 1, taxable: false } });
   assert.deepEqual(feeSync(lines, "送料", 0), { remove: ["f1", "f2"], add: null });
+  // 印の無い行（店員が手で入れた「送料」）は送料の行と見なさない。消さず、新しく印のある行を足す（見直し 11/23 の 4）
+  const manual = [{ uuid: "m", variantId: null, title: "送料", price: 800, quantity: 1 }];
+  assert.equal(isFeeLine(manual[0]), false);
+  assert.deepEqual(feeSync(manual, "送料", 800).remove, []);
+  assert.ok(feeSync(manual, "送料", 800).add);
+  assert.deepEqual(feeSync(manual, "送料", 0), { remove: [], add: null });
 });
 
 test("出荷元の候補は販売する店舗を除き、既定の出荷元は候補にあるときだけ先に選ぶ", () => {
@@ -295,6 +302,7 @@ function fakeShopify(order) {
         order: {
           ...state,
           retailLocation: { id: state.salesLocationId },
+          handoff: state.metafields?.delivery_handoff ? { value: state.metafields.delivery_handoff } : null,
           refunds: Array.from({ length: state.refundCount }, () => ({ id: "r" })),
           lineItems: { pageInfo: { hasNextPage: false }, nodes: state.lines.map((l) => ({ id: l.id, sku: l.sku, title: l.title, currentQuantity: l.quantity, customAttributes: l.customAttributes, originalUnitPriceSet: { shopMoney: { amount: String(l.unitPrice) } }, variant: l.variantId ? { id: l.variantId } : null })) },
           fulfillments: state.fulfillments.map((f) => ({ id: f.id, status: f.status || "SUCCESS", location: { id: f.locationId }, fulfillmentLineItems: { pageInfo: { hasNextPage: false }, nodes: f.lines.map((x) => ({ quantity: x.quantity, lineItem: { id: x.lineItemId } })) } })),
@@ -383,8 +391,10 @@ test("processSale: 3 点のうち 1 点を履行、2 点は出荷元に未発送
   assert.doesNotMatch(shop.state.metafields.delivery_handoff, /山田|目黒|0300000000/);
 
   shop.calls.length = 0;
+  assert.ok(JSON.parse(shop.state.metafields.delivery_handoff).completedAt, "済んだ印を残す");
   const second = await processSale(shop.request, "gid://shopify/Order/1");
-  assert.equal(second.phase, "done");
+  assert.equal(second.phase, "skip");
+  assert.equal(second.reason, "already_done");
   assert.ok(!shop.calls.includes("PosLiteMove") && !shop.calls.includes("PosLiteFulfill"), "2 回目に移動・履行をしない");
 });
 
@@ -394,8 +404,10 @@ test("processSale: 後日 1 点を返品した注文はもう動かさない（�
   shop.state.refundCount = 1;
   shop.calls.length = 0;
   const again = await processSale(shop.request, "gid://shopify/Order/1");
-  assert.equal(again.phase, "review");
-  assert.equal(again.reason, "refund");
+  // 済んだ注文は、あとで返金があっても動かさない（済んだ印が先。要確認も付けない）
+  assert.equal(again.phase, "skip");
+  assert.equal(again.reason, "already_done");
+  assert.ok(!shop.state.tags.includes(REVIEW_TAG));
   assert.ok(!shop.calls.includes("PosLiteMove") && !shop.calls.includes("PosLiteFulfill"));
 });
 
@@ -471,7 +483,7 @@ test("代わりの道: 店頭で全部履行済み → 取り消す → 配送 2
   assert.equal(warehouse.reduce((sum, fo) => sum + fo.lines.reduce((s, l) => s + l.remaining, 0), 0), 2);
   shop.calls.length = 0;
   const second = await processSale(shop.request, "gid://shopify/Order/1", { config });
-  assert.equal(second.phase, "done");
+  assert.equal(second.reason, "already_done");
   assert.ok(!["PosLiteCancelFulfillment", "PosLiteMove", "PosLiteFulfill"].some((c) => shop.calls.includes(c)), "2 回目に取り消し・移動・履行をしない");
 });
 
@@ -658,7 +670,7 @@ test("processSale（商品ごと）: W へ 2 点・W2 へ 2 点を移し、持�
 
   shop.calls.length = 0;
   const second = await processSale(shop.request, "gid://shopify/Order/1");
-  assert.equal(second.phase, "done");
+  assert.equal(second.reason, "already_done");
   assert.ok(!["PosLiteMove", "PosLiteFulfill", "PosLiteCancelFulfillment"].some((c) => shop.calls.includes(c)));
 });
 
@@ -696,4 +708,107 @@ test("代わりの道（商品ごと）: 店頭で全部履行済みでも、取
   assert.equal(shop.calls.filter((c) => c === "PosLiteCancelFulfillment").length, 1);
   assert.equal(shop.calls.filter((c) => c === "PosLiteMove").length, 2);
   assert.equal(result.storeQuantity, 1);
+});
+
+// ---------------------------------------------------------------------------
+// 見直し 11/23（7084306421）の直し
+// ---------------------------------------------------------------------------
+
+/** 済んだ注文の倉庫の出荷指示を、倉庫の人が W から W2 へ付け替える（Shopify の画面で出荷元を変えたのと同じ） */
+function reassignWarehouse(state, from, to) {
+  for (const fo of state.fulfillmentOrders) if (sameLoc(fo.locationId, from) && fo.status === "OPEN") fo.locationId = to;
+}
+
+test("見直し 1: 済んだあとに倉庫が W→W2 に付け替えても、取り消しのスイッチがオンで何度来ても持ち帰りの履行を取り消さない", async () => {
+  const config = { ...ON, cancelStoreFulfillment: true };
+  const shop = fakeShopify(order3());
+  assert.equal((await processSale(shop.request, "gid://shopify/Order/1", { config })).phase, "done");
+  reassignWarehouse(shop.state, WAREHOUSE, W2);
+  // (a) 済んだ印があれば何もしない
+  shop.calls.length = 0;
+  const again = await processSale(shop.request, "gid://shopify/Order/1", { config });
+  assert.equal(again.reason, "already_done");
+  assert.ok(!["PosLiteCancelFulfillment", "PosLiteMove", "PosLiteFulfill"].some((c) => shop.calls.includes(c)));
+  // (b) 済んだ印が無くても（前の版で済んだ注文など）、販売店舗の外にある分を「もう移した分」と数えるので取り消さない
+  const loaded = { ...structuredClone(shop.state), handoffCompletedAt: null };
+  const step = planSale(loaded, config);
+  assert.equal(step.phase, "done");
+  assert.deepEqual(step.cancels, []);
+  // (c) W2 から発送（履行）されたあとも同じ
+  const shipped = structuredClone(loaded);
+  for (const fo of shipped.fulfillmentOrders) if (sameLoc(fo.locationId, W2)) fo.status = "CLOSED";
+  shipped.fulfillments.push({ id: "gid://shopify/Fulfillment/95", locationId: W2, lines: [{ lineItemId: "gid://shopify/LineItem/11", quantity: 2 }] });
+  const afterShip = planSale(shipped, config);
+  assert.equal(afterShip.phase, "done");
+  assert.deepEqual(afterShip.cancels, []);
+  const store = shop.state.fulfillments.filter((f) => f.status !== "CANCELLED" && sameLoc(f.locationId, STORE)).flatMap((f) => f.lines);
+  assert.deepEqual(store, [{ lineItemId: "gid://shopify/LineItem/11", quantity: 1 }], "持ち帰りの履行はそのまま");
+});
+
+test("見直し 2: 早く止まる注文（返金・店舗の設定オフ・配送する商品なし）でも、住所を書いて属性のコピーを外す", async () => {
+  const cases = [
+    ["refund", order3({ refundCount: 1 }), ON],
+    ["unpaid", order3({ displayFinancialStatus: "PENDING" }), ON],
+    ["location_off", order3(), { ...ON, locations: [{ ...ON.locations[0], enabled: false }] }],
+    ["no_ship_lines", order3({ lines: [{ ...order3().lines[0], customAttributes: [] }, order3().lines[1]] }), ON],
+  ];
+  for (const [reason, order, config] of cases) {
+    const step = planSale(order, config);
+    assert.equal(step.reason, reason);
+    assert.ok(step.addressInput?.shippingAddress, `${reason}: 住所を書く`);
+    const shop = fakeShopify(order);
+    const result = await processSale(shop.request, "gid://shopify/Order/1", { config });
+    assert.equal(result.phase, "review", reason);
+    assert.equal(JSON.parse(shop.state.customAttributes.find((a) => a.key === DELIVERY_ATTRIBUTE).value).to, undefined, `${reason}: コピーが残らない`);
+    assert.equal(shop.state.shippingAddress.city, "目黒区", reason);
+    assert.ok(shop.state.tags.includes(REVIEW_TAG), reason);
+  }
+});
+
+test("見直し 2: キャンセルの注文は住所を書かず、属性のコピーだけを外す。読めない指定・スイッチがオフは何も書かない", async () => {
+  const cancelled = fakeShopify(order3({ cancelledAt: "2026-11-23T00:00:00Z" }));
+  const result = await processSale(cancelled.request, "gid://shopify/Order/1");
+  assert.equal(result.reason, "cancelled");
+  assert.equal(JSON.parse(cancelled.state.customAttributes.find((a) => a.key === DELIVERY_ATTRIBUTE).value).to, undefined);
+  assert.equal(cancelled.state.shippingAddress, null, "キャンセルの注文に住所は書かない");
+  assert.ok(!cancelled.state.tags.includes(REVIEW_TAG));
+  // 2 回目は書くものが無い
+  cancelled.calls.length = 0;
+  await processSale(cancelled.request, "gid://shopify/Order/1");
+  assert.ok(!cancelled.calls.includes("PosLiteShippingAddress"));
+
+  const bad = order3({ customAttributes: [{ key: DELIVERY_ATTRIBUTE, value: "{壊れた" }] });
+  assert.equal(planSale(bad, ON).reason, "bad_delivery");
+  assert.equal(planSale(bad, ON).addressInput, null);
+  assert.equal(planSale(order3(), parseConfig(null)).addressInput, null, "スイッチがオフなら書かない");
+});
+
+test("見直し 2・3: 出荷指示の待ちは何も書かない。後ろの処理・送り直しが尽きる前に要確認にするときは、コピーを外して理由を残す", async () => {
+  const waiting = order3({ fulfillmentOrders: [], fulfillments: [] });
+  const shop = fakeShopify(waiting);
+  const manual = await processSale(shop.request, "gid://shopify/Order/1", { config: ON });
+  assert.equal(manual.phase, "retry");
+  assert.ok(!shop.calls.includes("PosLiteShippingAddress"), "待つときは書かない");
+  const background = await processPaidInBackground({ request: shop.request, orderId: "gid://shopify/Order/1", config: ON, lockKey: "k-ex", allowed: async () => true, log: () => {}, retryReason: "waiting_exhausted" });
+  assert.equal(background.phase, "review");
+  assert.equal(background.reason, "waiting_exhausted");
+  assert.match(shop.state.metafields.review_reason, /長い時間できませんでした/);
+  assert.equal(JSON.parse(shop.state.customAttributes.find((a) => a.key === DELIVERY_ATTRIBUTE).value).to, undefined);
+  // 最初の送信から 3 時間で「尽きる前」とみなす。読めない時刻は待ち続ける
+  const now = Date.parse("2026-11-23T12:00:00Z");
+  assert.equal(retriesNearlyExhausted(new Date(now - WAIT_LIMIT_MS).toISOString(), now), true);
+  assert.equal(retriesNearlyExhausted(new Date(now - WAIT_LIMIT_MS + 60000).toISOString(), now), false);
+  assert.equal(retriesNearlyExhausted(null, now), false);
+  assert.equal(retriesNearlyExhausted("壊れた", now), false);
+  const route = readFileSync(new URL("../routes/webhooks.orders.paid.jsx", import.meta.url), "utf8");
+  assert.match(route, /x-shopify-triggered-at/);
+  assert.match(route, /waiting_exhausted/);
+});
+
+test("見直し 4: サーバーの送料の行も印だけで見分ける（名前が同じでも印の無い行は送料の行ではない）", () => {
+  const order = order3();
+  order.lines.push({ id: "gid://shopify/LineItem/14", sku: "", title: "送料", quantity: 1, unitPrice: 300, variantId: null, customAttributes: [] });
+  const step = planSale(order, ON);
+  assert.deepEqual(step.handoff.feeLineItemIds, ["12"]);
+  assert.equal(step.handoff.shippingFeeCharged, 800);
 });

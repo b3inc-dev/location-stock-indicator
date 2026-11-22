@@ -61,6 +61,8 @@ const MESSAGES = {
   cancel_incomplete: "店頭の履行を取り消したあとも、配送する分が店頭で引渡済みのままです。",
   move_incomplete: "出荷元へ移したあとも、移す分が残っています。",
   network: "通信に失敗しました。再処理してください。",
+  already_done: "配送の処理は済んでいます（済んだ注文はもう動かしません）。",
+  waiting_exhausted: "Shopify の出荷指示が長い時間できませんでした（送り直しが尽きる前に止めました）。出荷指示ができてから再処理してください。",
   pagination: "明細を最後まで読めませんでした。再処理してください。",
 };
 
@@ -322,12 +324,14 @@ export function buildDeliveryCart(input, row) {
   return { cartProperties: { [DELIVERY_ATTRIBUTE]: JSON.stringify(delivery) }, lineProperties, clearLines, fee, title, shipCount, mode };
 }
 
-/** 送料の行か（印があるか、印の前の版の行なら同じ名前のカスタム売上）。 */
-export function isFeeLine(line, title) {
+/**
+ * 送料の行か。印（明細の属性 _lsi_fee="1"）のあるカスタム売上だけ（見直し 11/23: 名前では見分けない。
+ * 店員が手で入れた同じ名前の行を消したり、印を付けたりしない）。
+ */
+export function isFeeLine(line) {
   if (numericId(line?.variantId)) return false;
   const props = line?.properties || {};
-  if (props[FEE_PROPERTY] === "1") return true;
-  return Boolean(title) && line?.title === title;
+  return props[FEE_PROPERTY] === "1";
 }
 
 /** 送料の行に付ける印（会計のときの設定をそのまま写す）。 */
@@ -340,11 +344,11 @@ export function feeProperties(config) {
 }
 
 /**
- * 送料のカスタム売上をカートに合わせる（同じ名前の行は 1 つだけ）。
+ * 送料のカスタム売上をカートに合わせる（印 _lsi_fee のある行は 1 つだけ。印の無い行は触らない）。
  * taxable: 送料に消費税をかけるか（設定の shippingTaxable。既定は税あり）。
  */
 export function feeSync(cartLines, title, fee, taxable = true) {
-  const feeLines = (cartLines || []).filter((line) => isFeeLine(line, title));
+  const feeLines = (cartLines || []).filter((line) => isFeeLine(line));
   const price = Number(fee || 0).toFixed(2);
   const wantTaxable = taxable !== false;
   if (!(Number(fee) > 0)) return { remove: feeLines.map((line) => line.uuid), add: null };
@@ -483,19 +487,21 @@ export function shipFromByLine(order, delivery, ship) {
   return map;
 }
 
-function remainingAt(order, lineItemId, locationId) {
+/** 販売店舗の外（ほかのロケーション）にある、この明細の出荷指示の残り。 */
+function remainingOutside(order, lineItemId) {
   let total = 0;
   for (const fo of activeFulfillmentOrders(order)) {
-    if (!sameId(fo.locationId, locationId)) continue;
+    if (sameId(fo.locationId, order.salesLocationId)) continue;
     for (const line of fo.lines || []) if (line.lineItemId === lineItemId) total += line.remaining;
   }
   return total;
 }
 
-function fulfilledAt(order, lineItemId, locationId) {
+/** 販売店舗の外（ほかのロケーション）での、この明細の履行。 */
+function fulfilledOutside(order, lineItemId) {
   let total = 0;
   for (const shipment of order.fulfillments || []) {
-    if (!sameId(shipment.locationId, locationId)) continue;
+    if (sameId(shipment.locationId, order.salesLocationId)) continue;
     for (const line of shipment.lines || []) if (line.lineItemId === lineItemId) total += line.quantity;
   }
   return total;
@@ -544,36 +550,43 @@ export function planSale(order, config) {
   if (!raw) return emptyStep("skip", "no_delivery");
   if (!config?.deliveryEnabled) return emptyStep("skip", "switch_off");
   if (String(order.sourceName || "").toLowerCase() !== "pos") return emptyStep("skip", "not_pos");
-  if (!order.salesLocationId) return emptyStep("review", "no_location");
-  if (order.cancelledAt) return emptyStep("skip", "cancelled");
-  if (order.displayFinancialStatus !== "PAID") return emptyStep("review", "unpaid");
-  if ((order.refundCount || 0) > 0) return emptyStep("review", "refund");
-  if (order.returnStatus && order.returnStatus !== "NO_RETURN") return emptyStep("review", "return");
   if (hasSettlementMarker(order)) return emptyStep("skip", "no_delivery");
-
-  const row = locationRow(config, order.salesLocationId);
-  if (!row?.enabled) return emptyStep("review", "location_off");
+  // 配送の指定が読めたら、どこで止まっても配送先を注文に書き、属性のコピーを外す（見直し 11/23 の 2）。
+  // 読めない（bad_delivery）ときだけ外さない。キャンセル・済んだ注文は住所を書かず、属性のコピーだけを外す
   const delivery = parseDelivery(raw);
+  const scrubOnly = delivery ? orderInput(order, null) : null;
+  const stop = (phase, reason, addressInput) => ({ ...emptyStep(phase, reason), addressInput: addressInput ?? null });
+  // 済んだ印（配送の記録の completedAt）のある注文は、もう動かさない（取り消し・移動をしない。見直し 11/23 の 1）
+  if (order.handoffCompletedAt) return stop("skip", "already_done", scrubOnly);
+  if (order.cancelledAt) return stop("skip", "cancelled", scrubOnly);
   if (!delivery) return emptyStep("review", "bad_delivery");
   // 配送先を属性から外したあとは、注文の配送先住所が正。どちらも無ければ読めない
   if (!delivery.to && !order.shippingAddress) return emptyStep("review", "bad_delivery");
+  const early = orderInput(order, delivery.to);
+  if (!order.salesLocationId) return stop("review", "no_location", early);
+  if (order.displayFinancialStatus !== "PAID") return stop("review", "unpaid", early);
+  if ((order.refundCount || 0) > 0) return stop("review", "refund", early);
+  if (order.returnStatus && order.returnStatus !== "NO_RETURN") return stop("review", "return", early);
+
+  const row = locationRow(config, order.salesLocationId);
+  if (!row?.enabled) return stop("review", "location_off", early);
   const ship = shipByLine(order);
-  if (!ship.size) return emptyStep("review", "no_ship_lines");
+  if (!ship.size) return stop("review", "no_ship_lines", early);
   const targets = shipFromByLine(order, delivery, ship);
-  if ([...targets.values()].some((id) => !id)) return emptyStep("review", "bad_delivery");
-  if ([...targets.values()].some((id) => sameId(id, order.salesLocationId))) return emptyStep("review", "same_location");
+  if ([...targets.values()].some((id) => !id)) return stop("review", "bad_delivery", early);
+  if ([...targets.values()].some((id) => sameId(id, order.salesLocationId))) return stop("review", "same_location", early);
 
   const active = activeFulfillmentOrders(order);
-  if (active.some((fo) => fo.method === "PICK_UP")) return emptyStep("review", "pickup_mixed");
-  if (active.some((fo) => BLOCKED_REQUESTS.has(fo.requestStatus))) return emptyStep("review", "fulfillment_request");
-  if (active.some((fo) => fo.status === "ON_HOLD")) return emptyStep("review", "on_hold");
-  if (active.some((fo) => fo.status === "SCHEDULED")) return emptyStep("review", "scheduled");
-  // Shopify は出荷指示を注文のすぐあとに作る。まだ 1 つも無く、履行も無いときは待つ（印を付けず、送り直してもらう）
-  if (!active.length && !(order.fulfillments || []).length) return emptyStep("retry", "waiting_fulfillment_orders");
+  if (active.some((fo) => fo.method === "PICK_UP")) return stop("review", "pickup_mixed", early);
+  if (active.some((fo) => BLOCKED_REQUESTS.has(fo.requestStatus))) return stop("review", "fulfillment_request", early);
+  if (active.some((fo) => fo.status === "ON_HOLD")) return stop("review", "on_hold", early);
+  if (active.some((fo) => fo.status === "SCHEDULED")) return stop("review", "scheduled", early);
+  // Shopify は出荷指示を注文のすぐあとに作る。まだ 1 つも無く、履行も無いときは待つ（印を付けず、送り直してもらう）。
+  // 待つときは何も書かない。待ちを要確認に変えるとき（後ろの処理・送り直しが尽きる前）だけ、この住所の書き込みを使う
+  if (!active.length && !(order.fulfillments || []).length) return stop("retry", "waiting_fulfillment_orders", early);
 
-  const feeLines = (order.lines || []).filter(
-    (line) => !line.variantId && (attribute(line.customAttributes, FEE_PROPERTY) === "1" || line.title === delivery.title),
-  );
+  // 送料の行は印だけで見分ける（名前では見分けない。見直し 11/23）
+  const feeLines = (order.lines || []).filter((line) => !line.variantId && attribute(line.customAttributes, FEE_PROPERTY) === "1");
   const feeCharged = feeLines.reduce((sum, line) => sum + Number(line.unitPrice || 0) * Number(line.quantity || 0), 0);
   const handoff = {
     salesLocationId: numericId(order.salesLocationId),
@@ -592,11 +605,12 @@ export function planSale(order, config) {
   };
   const side = { handoff, addressInput: orderInput(order, delivery.to) };
 
-  // 1) 配送する分のうち、まだその明細の出荷元に無い分を、販売店舗の出荷指示から出荷元へ移す
+  // 1) 配送する分のうち、まだ販売店舗の外に無い分を、販売店舗の出荷指示から出荷元へ移す。
+  // 「もう移した分」は販売店舗の外すべて（ほかのロケーションの出荷指示の残り＋ほかのロケーションでの履行）で数える。
+  // 済んだあとに倉庫の人が出荷指示を W から W2 へ付け替えても、まだ移していないと数えない（見直し 11/23 の 1）
   const need = new Map();
   for (const [lineItemId, quantity] of ship) {
-    const target = targets.get(lineItemId);
-    const there = remainingAt(order, lineItemId, target) + fulfilledAt(order, lineItemId, target);
+    const there = remainingOutside(order, lineItemId) + fulfilledOutside(order, lineItemId);
     need.set(lineItemId, Math.max(0, quantity - there));
   }
   // 1 回に移すのは 1 つの出荷元の分だけ（出荷元が分かれると、1 つの出荷指示が出荷元ごとに分かれる。

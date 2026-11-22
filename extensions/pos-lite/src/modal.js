@@ -221,11 +221,16 @@ async function runPickup(id, locationId, intent, config) {
 async function applyFee(action, title, config, mark) {
   for (const uuid of action.remove) if (uuid) await shopify.cart.removeLineItem(uuid);
   let added = null;
+  const before = new Set((shopify.cart.current.value.lineItems || []).map((line) => line.uuid));
   if (action.add) added = await shopify.cart.addCustomSale(action.add);
   if (!mark) return;
-  // 足した行の uuid が返らない版もあるので、カートを読み直して送料の行を探す
+  // 足した行の uuid が返らない版もあるので、カートを読み直して探す。送料の行は印だけで見分けるので、
+  // 印の無い行は「いま足した行（前に無かった、商品の無い同じ名前の行）」だけを選ぶ（店員が手で入れた行に印を付けない）
   const lines = shopify.cart.current.value.lineItems || [];
-  const fee = (typeof added === "string" && lines.find((line) => line.uuid === added)) || lines.find((line) => isFeeLine(line, title));
+  const fee =
+    (typeof added === "string" && lines.find((line) => line.uuid === added)) ||
+    (action.add && lines.find((line) => !before.has(line.uuid) && !line.variantId && line.title === action.add.title)) ||
+    lines.find((line) => isFeeLine(line));
   if (!fee) return;
   const want = feeProperties(config);
   if (Object.entries(want).some(([key, value]) => fee.properties?.[key] !== value)) {

@@ -5,11 +5,12 @@
 // Shopify は 5 秒の内に応答が無いと失敗として送り直すので、ここでは短い確かめ（1 回の問い合わせ）だけをして返し、
 // 重い処理（10 回ほどの API）は応答のあとに行う（processPaidInBackground）。
 // - 出荷指示がまだできていない注文は、印を付けずに 500 を返し、Shopify に送り直してもらう（見直し 11/23）。
+//   最初の送信から 3 時間を過ぎたら（送り直しが尽きる前）、待ちをやめて「要確認」の印を付ける。
 // - 処理は何度来ても安全（注文の今の状態を読み直して、済んだ分を除く）。止まったら注文に「要確認」の印を付ける。
 
 import { authenticate } from "../shopify.server";
 import { getShopPlan } from "../utils/shopPlan.server.js";
-import { precheckPaid, processPaidInBackground, requestFromAdmin } from "../utils/posLiteSale.js";
+import { precheckPaid, processPaidInBackground, requestFromAdmin, retriesNearlyExhausted } from "../utils/posLiteSale.js";
 import { DELIVERY_ATTRIBUTE } from "../../extensions/pos-lite/src/logic.js";
 
 export const action = async ({ request }) => {
@@ -28,7 +29,9 @@ export const action = async ({ request }) => {
     return new Response("retry", { status: 500 });
   }
   if (check.action === "ignore") return new Response();
-  if (check.action === "retry") {
+  // 送り直しが尽きる前（最初の送信から 3 時間）は、待ちをやめて後ろの処理で要確認の印を付ける（見直し 11/23 の 3）
+  const exhausted = check.action === "retry" && retriesNearlyExhausted(request.headers.get("x-shopify-triggered-at"));
+  if (check.action === "retry" && !exhausted) {
     console.log("[location-stock] pos-lite sale waiting for fulfillment orders", { shop, orderId });
     return new Response("retry", { status: 500 });
   }
@@ -40,6 +43,7 @@ export const action = async ({ request }) => {
     lockKey: `${shop}:${orderId}`,
     allowed: async () => Boolean((await getShopPlan(admin, shop, { reportUsage: false }))?.features?.storePickup),
     log: (...args) => console.log(...args, { shop }),
+    retryReason: exhausted ? "waiting_exhausted" : undefined,
   });
   return new Response();
 };

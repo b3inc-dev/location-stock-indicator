@@ -25,6 +25,7 @@ const ORDER_QUERY = `query PosLiteOrder($id: ID!, $linesAfter: String) {
     id name sourceName createdAt cancelledAt displayFinancialStatus returnStatus tags
     retailLocation { id }
     customAttributes { key value }
+    handoff: metafield(namespace: "${CONFIG_NAMESPACE}", key: "${HANDOFF_KEY}") { value }
     refunds { id }
     shippingAddress { lastName firstName zip provinceCode city address1 address2 phone }
     lineItems(first: 100, after: $linesAfter) {
@@ -165,6 +166,8 @@ export async function loadSaleOrder(request, orderId) {
     salesLocationId: order.retailLocation?.id || null,
     customAttributes: order.customAttributes || [],
     refundCount: order.refunds?.length || 0,
+    // 済んだ印（配送の記録の completedAt）。ある注文はもう動かさない
+    handoffCompletedAt: completedAtOf(order.handoff?.value),
     shippingAddress: order.shippingAddress || null,
     lines: lineNodes.map((line) => ({
       id: line.id,
@@ -178,6 +181,27 @@ export async function loadSaleOrder(request, orderId) {
     fulfillmentOrders,
     fulfillments,
   };
+}
+
+function completedAtOf(raw) {
+  try {
+    const data = JSON.parse(String(raw || ""));
+    return typeof data?.completedAt === "string" && data.completedAt ? data.completedAt : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 済んだ印を配送の記録に書く（記録の中身はそのまま、completedAt を足す）。 */
+async function markCompleted(request, order, handoff) {
+  if (!handoff) return null;
+  const value = JSON.stringify({ ...handoff, completedAt: new Date().toISOString() });
+  return firstUserError(
+    request,
+    METAFIELDS_SET,
+    { metafields: [{ ownerId: order.id, namespace: CONFIG_NAMESPACE, key: HANDOFF_KEY, type: "json", value }] },
+    "metafieldsSet",
+  );
 }
 
 async function firstUserError(request, query, variables, key) {
@@ -211,8 +235,9 @@ async function applySideEffects(request, order, step) {
  * どの 1 歩のあとも注文を読み直して次を決めるので、途中で止まっても再処理で続きから進む。
  * @param {(query: string, variables?: object) => Promise<any>} request
  * @param {string} orderId
- * @param {{config?: object, retryAsReview?: boolean}} [options]
+ * @param {{config?: object, retryAsReview?: boolean, retryReason?: string}} [options]
  *   retryAsReview: 出荷指示を待つときも要確認の印を付ける（Shopify に送り直してもらえない、後ろで処理するとき）。
+ *   retryReason: そのときの理由（既定は waiting_fulfillment_orders。送り直しが尽きる前は waiting_exhausted）。
  */
 export async function processSale(request, orderId, options = {}) {
   const config = options.config || (await loadConfig(request)).config;
@@ -222,11 +247,38 @@ export async function processSale(request, orderId, options = {}) {
   } catch (error) {
     return { phase: "review", reason: "network", message: error instanceof Error ? error.message : messageFor("network"), orderId };
   }
-  const waiting = (step) =>
-    options.retryAsReview ? finish(request, order, { ...step, phase: "review" }) : { ...step, orderId, orderName: order.name };
   let step = planSale(order, config);
-  if (step.phase === "skip") return { ...step, orderId };
-  if (step.phase === "retry") return waiting(step);
+  if (step.phase === "skip") {
+    // キャンセル・済んだ注文でも、属性に配送先のコピーが残っていれば外す（住所は書かない。外せなくても止めない）
+    if (step.addressInput) {
+      try {
+        await firstUserError(request, ORDER_UPDATE, { input: step.addressInput }, "orderUpdate");
+      } catch {
+        // 次に来たとき・customers/redact で外す
+      }
+    }
+    // 済んだ注文に要確認の印が残っていれば外す
+    if (step.reason === "already_done" && (order.tags || []).includes(REVIEW_TAG)) {
+      try {
+        await request(TAGS_REMOVE, { id: order.id, tags: [REVIEW_TAG] });
+      } catch {
+        // 次の再処理で外す
+      }
+    }
+    return { ...step, addressInput: null, orderId, orderName: order.name };
+  }
+  if (step.phase === "retry") {
+    // 待つときは何も書かない（送り直してもらう）。要確認に変えるときは、先に住所を書いて属性のコピーを外す
+    if (!options.retryAsReview) return { ...step, orderId, orderName: order.name };
+    const review = { ...step, phase: "review", reason: options.retryReason || step.reason, message: messageFor(options.retryReason || step.reason) };
+    try {
+      const sideError = await applySideEffects(request, order, { ...review, handoff: null });
+      if (sideError) return finish(request, order, { phase: "review", reason: "network", message: sideError });
+    } catch (error) {
+      return finish(request, order, { phase: "review", reason: "network", message: error instanceof Error ? error.message : messageFor("network") });
+    }
+    return finish(request, order, review);
+  }
   try {
     // 配送先の住所は、要確認で止まるときも先に注文へ書き、属性のコピーを外す
     const sideError = await applySideEffects(request, order, step);
@@ -270,6 +322,9 @@ export async function processSale(request, orderId, options = {}) {
       if (error) return finish(request, order, { phase: "review", reason: "fulfill", message: `持ち帰り分を履行できませんでした（${error}）` });
     }
     const message = step.storeQuantity ? `持ち帰り ${step.storeQuantity} 点を履行しました。配送分は出荷元に未発送で残しています。` : "配送分を出荷元に移しました。持ち帰りはありません。";
+    // 済んだ印を残す（何度来ても、済んだ注文の履行を取り消さない。見直し 11/23 の 1）
+    const markError = await markCompleted(request, order, step.handoff);
+    if (markError) return finish(request, order, { phase: "review", reason: "network", message: `済んだ印を注文に書けませんでした（${markError}）。再処理してください。` });
     return finish(request, order, { ...step, phase: "done", message });
   } catch (error) {
     return finish(request, order, { phase: "review", reason: "network", message: error instanceof Error ? error.message : messageFor("network") });
@@ -349,13 +404,24 @@ export async function precheckPaid(request, orderId) {
 }
 
 /**
+ * Shopify の送り直し（8 回・約 4 時間）が尽きる前か。最初に送られた時刻（X-Shopify-Triggered-At）から 3 時間を過ぎたら true。
+ * 尽きる前に「待ち」をやめて要確認の印を付ける（印も記録も無いまま消えないように。見直し 11/23 の 3）。読めない時刻は false。
+ */
+export const WAIT_LIMIT_MS = 3 * 60 * 60 * 1000;
+export function retriesNearlyExhausted(triggeredAt, now = Date.now()) {
+  const at = Date.parse(String(triggeredAt || ""));
+  if (!Number.isFinite(at)) return false;
+  return now - at >= WAIT_LIMIT_MS;
+}
+
+/**
  * 後ろで処理する（応答を返したあと）。失敗しても投げない。結果は注文の印と記録に残す。
  * @param {{request: Function, orderId: string, config: object, allowed: () => Promise<boolean>, lockKey: string, log?: Function}} args
  */
-export async function processPaidInBackground({ request, orderId, config, allowed, lockKey, log = console.log }) {
+export async function processPaidInBackground({ request, orderId, config, allowed, lockKey, log = console.log, retryReason }) {
   try {
     if (!(await allowed())) return { phase: "skip", reason: "plan", orderId };
-    const result = await withOrderLock(lockKey, () => processSale(request, orderId, { config, retryAsReview: true }));
+    const result = await withOrderLock(lockKey, () => processSale(request, orderId, { config, retryAsReview: true, retryReason }));
     // 顧客の値（住所など）は記録に出さない。注文の ID と結果だけ
     log("[location-stock] pos-lite sale", { orderId, phase: result.phase, reason: result.reason || null });
     return result;
