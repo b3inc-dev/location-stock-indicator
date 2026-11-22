@@ -96,7 +96,7 @@
 - Admin: `authenticate.admin`（埋め込み）。
 - App Proxy: `authenticate.public.appProxy`。
 - セッション: Prisma `Session`（accessToken + refreshToken）。
-- `shopifyApp` の `future.expiringOfflineAccessTokens: true`。
+- `shopifyApp` の `future.expiringOfflineAccessTokens: true`。このフラグが効くのは `@shopify/shopify-app-react-router` 1.1 以上（1.0.3 では効かず、期限の無いトークンのままだった）。移し方は `docs/EXPIRING_OFFLINE_TOKENS.md`。
 - distribution 設定値: コード上 `AppDistribution.AppStore`（`shopify.server.js`）。自社判定は実行時 `APP_DISTRIBUTION=inhouse` 等（`shopPlan.server.js`）。
 
 ## 7. デプロイ構成（要約）
