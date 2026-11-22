@@ -15,10 +15,16 @@ import {
   requiresPlanSelection,
 } from "./planGate.js";
 import { resolvePlanDistribution } from "./planDistribution.js";
+import {
+  getPartnerActiveSubscription,
+  partnerSubscriptionToAdminShape,
+  readPartnerApiConfig,
+} from "./partnerSubscription.server.js";
 
 const SHOP_PLAN_QUERY = `#graphql
   query ShopPlanAndLocations($first: Int!) {
     shop {
+      id
       plan {
         partnerDevelopment
       }
@@ -63,6 +69,7 @@ export function getPlanDistribution(shop) {
  *   planCheckFailed?: boolean;
  *   locationPlanMismatch?: boolean;
  *   maxLocationsForPlan?: number;
+ *   planSource?: "partner"|"admin";
  * }>}
  */
 // eslint-disable-next-line no-unused-vars
@@ -74,6 +81,7 @@ export async function getShopPlan(admin, currentShop, _options = {}) {
   let planFromBilling = null;
   /** Shopify から契約の一覧を読めたか（読めない＝未契約とは言えない） */
   let subscriptionsRead = false;
+  let shopGid = null;
 
   try {
     const resp = await admin.graphql(SHOP_PLAN_QUERY, { variables: { first: 250 } });
@@ -81,6 +89,7 @@ export async function getShopPlan(admin, currentShop, _options = {}) {
     const d = data?.data;
     locationsCount = d?.locations?.nodes?.length ?? 0;
     isDevelopmentStore = d?.shop?.plan?.partnerDevelopment === true;
+    shopGid = typeof d?.shop?.id === "string" ? d.shop.id : null;
     const subs = d?.currentAppInstallation?.activeSubscriptions;
     if (Array.isArray(subs)) {
       subscriptionsRead = true;
@@ -91,6 +100,29 @@ export async function getShopPlan(admin, currentShop, _options = {}) {
     }
   } catch (e) {
     console.warn("[getShopPlan] plan query failed:", e instanceof Error ? e.message : String(e));
+  }
+
+  // Partner API（既定オフ。PARTNER_API_SUBSCRIPTION_ENABLED=1 と設定がそろったときだけ。docs/PLAN_SETTINGS_DESIGN.md）。
+  // 契約が見つかればそれを正にする。契約なしと答えたら Admin API の結果を使う（Admin に有効な契約があれば止めない）。
+  // 失敗（429・timeout など）のときは今まで通り Admin API の結果だけで決める（読めなければ planCheckFailed）。
+  let planSource = "admin";
+  if (distribution === "public") {
+    const partnerConfig = readPartnerApiConfig();
+    if (!partnerConfig.enabled) {
+      if (partnerConfig.reason === "missing_config") {
+        console.warn("[getShopPlan] PARTNER_API_SUBSCRIPTION_ENABLED=1 but missing:", (partnerConfig.missing ?? []).join(","));
+      }
+    } else if (shopGid) {
+      const partner = await getPartnerActiveSubscription({ config: partnerConfig.config, shopGid, shop: currentShop });
+      if (partner.ok && partner.subscription) {
+        planSource = "partner";
+        subscriptionsRead = true;
+        planFromBilling = getPlanFromActiveSubscriptions([partnerSubscriptionToAdminShape(partner.subscription, shopGid)]);
+      } else if (partner.ok) {
+        // Partner は「契約なし」と答えた。Admin を読めなかったときも「未契約」と分かったので案内する
+        subscriptionsRead = true;
+      }
+    }
   }
 
   let plan = null;
@@ -134,6 +166,7 @@ export async function getShopPlan(admin, currentShop, _options = {}) {
     features,
     locationsCount,
     isDevelopmentStore,
+    ...(planSource === "partner" ? { planSource } : {}),
     ...(planRequired ? { planRequired: true } : {}),
     ...(planCheckFailed ? { planCheckFailed: true } : {}),
     ...(locationPlanMismatch ? { locationPlanMismatch: true, maxLocationsForPlan } : {}),
