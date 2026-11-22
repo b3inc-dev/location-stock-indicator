@@ -576,8 +576,10 @@ test("管理画面: 再処理は確認の窓、理由に要確認のバッジ、
   const page = readFileSync("app/routes/app.pos-lite.jsx", "utf8");
   assert.match(page, /<ConfirmAction\s+trigger="secondary"/);
   assert.match(page, /<StateBadge label="要確認" \/>/);
-  assert.match(page, /name="cancelStoreFulfillment" defaultChecked=\{config\.cancelStoreFulfillment\}/);
-  assert.match(page, /name="shippingTaxable" defaultChecked=\{config\.shippingTaxable\}/);
+  // 設定の入力は区分ごとの編集の画面にある（T 11/23 5:10 の案 A）
+  const section = readFileSync("app/routes/app.pos-lite_.$section.jsx", "utf8");
+  assert.match(section, /name="cancelStoreFulfillment" checked=\{config\.cancelStoreFulfillment\}/);
+  assert.match(section, /name="shippingTaxable" checked=\{config\.shippingTaxable\}/);
   const hook = readFileSync("app/routes/webhooks.orders.paid.jsx", "utf8");
   assert.match(hook, /void processPaidInBackground/);
   assert.match(hook, /check\.action === "retry"[\s\S]*status: 500/);

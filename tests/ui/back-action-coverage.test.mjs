@@ -4,8 +4,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-// 2026/11/22 の時点で、このアプリに下の階層の画面はない（メニューの4画面とホームだけ）。足したらここに書く。
-const SUB_PAGES = {};
+// 足したらここに書く。2026/11/23: 「店頭受取・配送」の区分の編集の画面（T 11/23 5:10 の案 A）。
+const SUB_PAGES = {
+  "app/routes/app.pos-lite_.$section.jsx": "店頭受取・配送の区分の編集",
+};
 
 test("下の階層の画面は、どの s-page にも「←」がある", () => {
   for (const [file, name] of Object.entries(SUB_PAGES)) {
