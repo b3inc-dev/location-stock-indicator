@@ -231,6 +231,12 @@ export default function AppAnalytics() {
   return (
     <s-page heading="分析">
       <div className="Admin-body" style={{ paddingBottom: "40px" }}>
+        {/* お知らせ枠は画面の上に 1 つだけ（5章） */}
+        {sizeLimitSkipped.count > 0 && (
+          <StatusBanner tone="warning" heading="ロケーション別の数の一部を保存できませんでした">
+            {sizeLimitSkipped.days.join("・")} は、1 日分の記録の上限（Shopify の 128KB）に届いたため、ロケーション別の数 {sizeLimitSkipped.count} 件を足していません。エリア表示回数などの合計の数は保存しています。続くときはお問い合わせください。
+          </StatusBanner>
+        )}
         <div style={{ display: "flex", gap: "24px", alignItems: "flex-start", flexWrap: "wrap" }}>
           {/* 左: フィルター */}
           <div style={{ flex: "1 1 260px", minWidth: 0 }}>
@@ -293,11 +299,6 @@ export default function AppAnalytics() {
                 </button>
               </div>
 
-              {sizeLimitSkipped.count > 0 && (
-                <StatusBanner tone="warning" heading="ロケーション別の数の一部を保存できませんでした">
-                  {sizeLimitSkipped.days.join("・")} は 1 日分の記録の上限（Shopify のメタフィールドの 128KB）に届いたため、ロケーション別の数 {sizeLimitSkipped.count} 件を足していません。エリア表示回数などの合計の数は保存しています。
-                </StatusBanner>
-              )}
               {dailyData.length === 0 ? (
                 // 絞り込みの結果が空のときは文字だけ（5章）。開発の予定の文言はストアに出さない（10章）
                 <p className="Admin-note" style={{ padding: "24px 8px", textAlign: "center", margin: 0 }}>
