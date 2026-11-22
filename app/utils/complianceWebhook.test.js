@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { handleComplianceWebhook, normalizeWebhookTopic } from "./complianceWebhook.js";
+import { handleComplianceWebhook, normalizeWebhookTopic, planPosLiteRedact } from "./complianceWebhook.js";
 import { isNotInstalledError, probeShopStillInstalled } from "./shopInstallProbe.js";
 
 function fakeDb() {
@@ -205,5 +205,40 @@ describe("probeShopStillInstalled", () => {
       }),
       /Bad gateway/,
     );
+  });
+});
+
+describe("planPosLiteRedact（customers/redact の配送先のコピー）", () => {
+  const payload = { orders_to_redact: [101, 102] };
+
+  it("admin があれば、注文のコピーを消す", () => {
+    assert.deepEqual(planPosLiteRedact({ topic: "CUSTOMERS_REDACT", payload, admin: {} }), {
+      action: "scrub",
+      orders: [101, 102],
+    });
+  });
+
+  it("トークンの更新に失敗して admin が無く、消す注文があれば、送り直してもらう（500）", () => {
+    assert.equal(
+      planPosLiteRedact({ topic: "customers/redact", payload, admin: undefined, sessionRefreshFailed: true }).action,
+      "retry",
+    );
+  });
+
+  it("更新に失敗しても、消す注文が無ければ送り直さない", () => {
+    assert.equal(
+      planPosLiteRedact({ topic: "CUSTOMERS_REDACT", payload: { orders_to_redact: [] }, sessionRefreshFailed: true }).action,
+      "skip",
+    );
+    assert.equal(planPosLiteRedact({ topic: "CUSTOMERS_REDACT", payload: {}, sessionRefreshFailed: true }).action, "skip");
+  });
+
+  it("セッションが無い店（外した店）は、送り直さずに受ける", () => {
+    assert.equal(planPosLiteRedact({ topic: "CUSTOMERS_REDACT", payload, admin: undefined }).action, "skip");
+  });
+
+  it("customers/redact でなければ何もしない（更新に失敗していても）", () => {
+    assert.equal(planPosLiteRedact({ topic: "SHOP_REDACT", payload, sessionRefreshFailed: true }).action, "skip");
+    assert.equal(planPosLiteRedact({ topic: "CUSTOMERS_DATA_REQUEST", payload, admin: {} }).action, "skip");
   });
 });

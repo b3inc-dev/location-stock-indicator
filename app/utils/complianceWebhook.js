@@ -73,3 +73,25 @@ export async function handleComplianceWebhook({ topic, shop, payload, db, isShop
     }
   }
 }
+
+/**
+ * customers/redact で、POS Lite の配送先のコピー（注文の属性・配送の記録）をどうするか決める。
+ *
+ * - "scrub": admin がある。orders の注文からコピーを消す。
+ * - "retry": トークンの更新に失敗して admin が無い（sessionRefreshFailed）のに、消す注文がある。
+ *   入っている店で一時的に更新が失敗しただけかもしれないので、500 を返して Shopify に送り直してもらう。
+ *   外した店なら、app/uninstalled がセッションを消したあとの送り直しでは更新をしない（admin も
+ *   sessionRefreshFailed も無い）ので "skip" になり、送り直しは止まる。
+ * - "skip": customers/redact ではない・消す注文が無い・セッションが無い店（アプリから注文を触れない）。
+ *
+ * @param {{ topic: unknown, payload?: any, admin?: unknown, sessionRefreshFailed?: boolean }} args
+ * @returns {{ action: "scrub" | "retry" | "skip", orders: unknown[] }}
+ */
+export function planPosLiteRedact({ topic, payload, admin, sessionRefreshFailed }) {
+  if (normalizeWebhookTopic(topic) !== COMPLIANCE_TOPICS.CUSTOMERS_REDACT) return { action: "skip", orders: [] };
+  const orders = Array.isArray(payload?.orders_to_redact) ? payload.orders_to_redact : [];
+  if (!orders.length) return { action: "skip", orders };
+  if (admin) return { action: "scrub", orders };
+  if (sessionRefreshFailed) return { action: "retry", orders };
+  return { action: "skip", orders };
+}
