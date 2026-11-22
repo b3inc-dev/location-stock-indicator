@@ -3,7 +3,7 @@
 - 中身は `main`（`16d198e`）と PR #48/#50 のコードに合わせた。**コードが変わったら、この文も直す**（`prisma/schema.prisma`・`app/utils/complianceWebhook.js`・`app/analytics.server.js`・テーマの JS）。
 - 1 章は根拠（公開しない）。2 章（日本語）と 3 章（English）が公開する本文。`{{…}}` は T が入れる【T】。
 
-- **公開する本文の正本は commercor-site の `editorial/app_policies.py`**（b3inc-dev/commercor-site PR #14、T の決定 2026-11-23 1:35「紹介サイトに置く・連絡先はフォームだけ」）。公開の URL: プライバシーポリシー https://commercore.b3-inc.com/apps/location-stock-indicator/privacy/・サポート https://commercore.b3-inc.com/apps/location-stock-indicator/support/。この案は根拠として残す。文を変えるときは commercor-site も同じ PR の流れで直す。
+- **公開する本文の正本は commercor-site の `editorial/app_policies.py`**（b3inc-dev/commercor-site PR #14、T の決定 2026-11-23 1:35「紹介サイトに置く・連絡先はフォーム」、1:54・2:00「サポートのメールは全アプリ共通の app-support@b3-inc.com」。commercor-site PR #15）。公開の URL: プライバシーポリシー https://commercore.b3-inc.com/apps/location-stock-indicator/privacy/・サポート https://commercore.b3-inc.com/apps/location-stock-indicator/support/。この案は根拠として残す。文を変えるときは commercor-site も同じ PR の流れで直す。
 - 【アプリの直しは途中】T の決定（2026-11-23 1:50、commercor-site #1）で、shop/redact のときに `AppUsageReport` も消す（POS Stock と同じ）。今のコード（#50、未マージ）は消さないので、直しの PR が要る。
 - まだ `{{…}}` のまま: `UPDATED_DATE`（公開申請の日に入れる）、`LOG_RETENTION_DAYS`（commercor-site の公開の文には、ログの日数を書いていない）。
 
@@ -110,6 +110,7 @@
 株式会社B3
 東京都目黒区青葉台1-15-3 AK-4ビル2F
 お問い合わせフォーム: https://b3-inc.com/contact
+メール: app-support@b3-inc.com（自動の返事でお問い合わせフォームをご案内します）
 ```
 
 `USAGE_RECORD_RETENTION`（**決まり: 消す**。T 2026-11-23 1:20・1:50）:
@@ -176,6 +177,7 @@ If we change this policy, we will post the new version on this page and update t
 B3, Inc.
 AK-4 Bldg. 2F, 1-15-3 Aobadai, Meguro-ku, Tokyo, Japan
 Contact form: https://b3-inc.com/contact
+Email: app-support@b3-inc.com (an automatic reply will guide you to the contact form)
 ```
 
 `USAGE_RECORD_RETENTION_EN`（**決まり: 消す**）:

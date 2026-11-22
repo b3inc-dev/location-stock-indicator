@@ -1,7 +1,7 @@
 # サポートページと FAQ の案 — Location Stock
 
 - サポートページは Shopify 向けの専用ページにする【事実: Best practices】。置き場所は T（PR #25 の利用者ヘルプと同じサイトが自然）。
-- **公開する本文の正本は commercor-site の `editorial/app_policies.py`**（b3inc-dev/commercor-site PR #14、T の決定 2026-11-23 1:35「紹介サイトに置く・連絡先はフォームだけ」）。公開の URL: プライバシーポリシー https://commercore.b3-inc.com/apps/location-stock-indicator/privacy/・サポート https://commercore.b3-inc.com/apps/location-stock-indicator/support/。この案は根拠として残す。文を変えるときは commercor-site も同じ PR の流れで直す。
+- **公開する本文の正本は commercor-site の `editorial/app_policies.py`**（b3inc-dev/commercor-site PR #14、T の決定 2026-11-23 1:35「紹介サイトに置く・連絡先はフォーム」、1:54・2:00「サポートのメールは全アプリ共通の app-support@b3-inc.com」。commercor-site PR #15）。公開の URL: プライバシーポリシー https://commercore.b3-inc.com/apps/location-stock-indicator/privacy/・サポート https://commercore.b3-inc.com/apps/location-stock-indicator/support/。この案は根拠として残す。文を変えるときは commercor-site も同じ PR の流れで直す。
 - 答えはコードで確かめたことだけ。根拠は最後の `<!-- -->`。
 
 ---
@@ -11,7 +11,7 @@
 ```
 # Location Stock サポート
 
-お問い合わせ: お問い合わせフォーム https://b3-inc.com/contact（フォームだけ）
+お問い合わせ: お問い合わせフォーム https://b3-inc.com/contact。メール app-support@b3-inc.com にいただいたときは、自動の返事でフォームをご案内します
 受付: 平日 10時〜18時（日本時間）。3 営業日以内にお返事します。日本語と英語のお問い合わせを受け付けます。
 ストアのドメイン（xxx.myshopify.com）と、困っている商品ページの URL を書いてください。
 
@@ -76,7 +76,7 @@ A. 管理画面とブロックの設定は日本語です。
 ```
 # Location Stock Support
 
-Contact: our contact form https://b3-inc.com/contact (form only)
+Contact: our contact form https://b3-inc.com/contact. If you email app-support@b3-inc.com, an automatic reply will guide you to the form
 Hours: weekdays 10:00-18:00 (Japan time). We reply within 3 business days, in Japanese or English.
 Please include your store domain (xxx.myshopify.com) and the product page URL.
 The admin screens are in Japanese.
