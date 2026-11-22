@@ -3,14 +3,23 @@ import { describe, it } from "node:test";
 import { handleComplianceWebhook, normalizeWebhookTopic } from "./complianceWebhook.js";
 import { isNotInstalledError, probeShopStillInstalled } from "./shopInstallProbe.js";
 
-function fakeDb() {
+function fakeDb({ failUsage = false } = {}) {
   const calls = [];
+  const usageCalls = [];
   return {
     calls,
+    usageCalls,
     session: {
       deleteMany: async (args) => {
         calls.push(args);
         return { count: 2 };
+      },
+    },
+    appUsageReport: {
+      deleteMany: async (args) => {
+        usageCalls.push(args);
+        if (failUsage) throw new Error("db down");
+        return { count: 3 };
       },
     },
   };
@@ -38,13 +47,37 @@ describe("handleComplianceWebhook", () => {
       assert.equal(res.status, 200);
       assert.equal(res.handled, "SHOP_REDACT");
       assert.deepEqual(db.calls, [{ where: { shop: "a.myshopify.com" } }]);
+      assert.deepEqual(db.usageCalls, [{ where: { shop: "a.myshopify.com" } }]);
     });
   }
+
+  it("throws (route answers 500) when deleting usage reports fails, and keeps sessions for the retry", async () => {
+    const db = fakeDb({ failUsage: true });
+    await assert.rejects(
+      handleComplianceWebhook({ topic: "SHOP_REDACT", shop: "a.myshopify.com", db, isShopStillInstalled: notInstalled, log: quiet }),
+      /db down/,
+    );
+    assert.deepEqual(db.calls, []);
+  });
+
+  it("logs only counts for shop/redact", async () => {
+    const db = fakeDb();
+    const lines = [];
+    await handleComplianceWebhook({
+      topic: "SHOP_REDACT",
+      shop: "a.myshopify.com",
+      db,
+      isShopStillInstalled: notInstalled,
+      log: (...a) => lines.push(a.join(" ")),
+    });
+    assert.deepEqual(lines, ["[compliance] shop/redact for a.myshopify.com: sessions deleted 2, usage reports deleted 3"]);
+  });
 
   it("falls back to payload.shop_domain for shop/redact", async () => {
     const db = fakeDb();
     await handleComplianceWebhook({ topic: "SHOP_REDACT", shop: "", payload: { shop_domain: "b.myshopify.com" }, db, isShopStillInstalled: notInstalled, log: quiet });
     assert.deepEqual(db.calls, [{ where: { shop: "b.myshopify.com" } }]);
+    assert.deepEqual(db.usageCalls, [{ where: { shop: "b.myshopify.com" } }]);
   });
 
   it("does not delete anything without a shop domain", async () => {
@@ -61,6 +94,7 @@ describe("handleComplianceWebhook", () => {
       assert.equal(res.status, 200);
       assert.ok(res.handled);
       assert.deepEqual(db.calls, []);
+      assert.deepEqual(db.usageCalls, []);
     });
   }
 
@@ -89,6 +123,7 @@ describe("handleComplianceWebhook", () => {
     assert.equal(res.status, 200);
     assert.equal(res.skipped, "reinstalled");
     assert.deepEqual(db.calls, []);
+    assert.deepEqual(db.usageCalls, []);
   });
 
   it("throws (route answers 500) when the install check cannot decide", async () => {
