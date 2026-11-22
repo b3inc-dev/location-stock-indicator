@@ -15,7 +15,7 @@ import {
   requiresPlanSelection,
 } from "./planGate.js";
 import { resolvePlanDistribution } from "./planDistribution.js";
-import { computeProLocationUsage, reportProLocationUsage } from "./appEventsUsage.server.js";
+import { computeProLocationUsage, pickUsagePeriodEnd, reportProLocationUsage } from "./appEventsUsage.server.js";
 import {
   getPartnerActiveSubscription,
   partnerSubscriptionToAdminShape,
@@ -72,7 +72,7 @@ export function getPlanDistribution(shop) {
  *   planCheckFailed?: boolean;
  *   locationPlanMismatch?: boolean;
  *   maxLocationsForPlan?: number;
- *   proLocationUsage?: { units: number; unitPriceUsd: number; amountUsd: number; periodEnd: string|null };
+ *   proLocationUsage?: { units: number; unitPriceUsd: number; amountUsd: number; periodEnd: string|null; periodSource: "partner"|"admin"|null };
  *   planSource?: "partner"|"admin";
  * }>}
  */
@@ -112,6 +112,8 @@ export async function getShopPlan(admin, currentShop, options = {}) {
   // 契約が見つかればそれを正にする。契約なしと答えたら Admin API の結果を使う（Admin に有効な契約があれば止めない）。
   // 失敗（429・timeout など）のときは今まで通り Admin API の結果だけで決める（読めなければ planCheckFailed）。
   let planSource = "admin";
+  /** Partner で契約が見つかったときの、その契約の今の請求期間の終わり（従量の報告に使う） */
+  let partnerPeriodEnd = null;
   if (distribution === "public") {
     const partnerConfig = readPartnerApiConfig();
     if (!partnerConfig.enabled) {
@@ -122,6 +124,7 @@ export async function getShopPlan(admin, currentShop, options = {}) {
       const partner = await getPartnerActiveSubscription({ config: partnerConfig.config, shopGid, shop: currentShop });
       if (partner.ok && partner.subscription) {
         planSource = "partner";
+        partnerPeriodEnd = partner.subscription.currentPeriodEnd ?? null;
         subscriptionsRead = true;
         planFromBilling = getPlanFromActiveSubscriptions([partnerSubscriptionToAdminShape(partner.subscription, shopGid)]);
       } else if (partner.ok) {
@@ -172,9 +175,9 @@ export async function getShopPlan(admin, currentShop, options = {}) {
   if (distribution === "public" && !forceInhouse && plan === "pro") {
     const usage = computeProLocationUsage(plan, locationsCount);
     if (usage.units > 0) {
-      const periodEnd =
-        activeSubs.find((s) => String(s?.status || "").toUpperCase() === "ACTIVE" && s?.currentPeriodEnd)?.currentPeriodEnd ?? null;
-      proLocationUsage = { units: usage.units, unitPriceUsd: usage.unitPriceUsd, amountUsd: usage.amountUsd, periodEnd };
+      // プランを決めた契約の期間を使う（Partner で決めたのに Admin の期間を見ると、Admin に契約が出ない店で送れない）
+      const { periodEnd, periodSource } = pickUsagePeriodEnd({ planSource, partnerPeriodEnd, adminSubscriptions: activeSubs });
+      proLocationUsage = { units: usage.units, unitPriceUsd: usage.unitPriceUsd, amountUsd: usage.amountUsd, periodEnd, periodSource };
       const shopForReport = String(currentShop ?? "").trim().toLowerCase();
       if (options?.reportUsage === true && shopForReport) {
         void import("../db.server.js")

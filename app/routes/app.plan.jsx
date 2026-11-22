@@ -7,7 +7,7 @@ import { getShopPlan } from "../utils/shopPlan.server.js";
 import { LITE_MAX_LOCATIONS, buildManagedPricingPlansUrl } from "../utils/billing.js";
 
 import { NOTICE_STYLES, buildPlanPageNotice } from "../utils/planNotice.js";
-import { describeUsageReportForMerchant } from "../utils/appEventsUsage.server.js";
+import { describeUsageReportForMerchant, usagePeriodKey } from "../utils/appEventsUsage.server.js";
 import prisma from "../db.server.js";
 
 export async function loader({ request }) {
@@ -23,9 +23,10 @@ export async function loader({ request }) {
   const usage = shopPlan.proLocationUsage;
   if (usage && session?.shop) {
     try {
-      const row = usage.periodEnd
+      const periodKey = usagePeriodKey(usage.periodEnd);
+      const row = periodKey
         ? await prisma.appUsageReport.findUnique({
-            where: { shop_periodEnd: { shop: session.shop.trim().toLowerCase(), periodEnd: usage.periodEnd } },
+            where: { shop_periodEnd: { shop: session.shop.trim().toLowerCase(), periodEnd: periodKey } },
             select: { status: true },
           })
         : null;

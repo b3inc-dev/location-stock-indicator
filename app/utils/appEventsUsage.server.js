@@ -69,17 +69,55 @@ export function numericShopId(shopGid) {
   const m = String(shopGid ?? "").match(/(\d+)\s*$/);
   return m ? m[1] : null;
 }
+/** 請求期間の終わりを ISO 8601（UTC）にそろえる。読めなければ null */
+export function normalizePeriodEnd(value) {
+  if (typeof value !== "string" || !value.trim())
+    return null;
+  const t = Date.parse(value);
+  return Number.isFinite(t) ? new Date(t).toISOString() : null;
+}
 /**
- * 1 店・1 期間で変わらないキー（64 文字まで）。
- * 例: lsi-loc-12345678-20261221T000000Z
+ * 期間を表すキー: 期間の終わりの UTC の日付（"2026-12-21"）。読めなければ null。
+ * Partner の currentBillingCycle.endTime と Admin の currentPeriodEnd が秒の単位でずれても同じ値にする
+ * （DB の (shop, periodEnd) と idempotency_key に使う。期間の終わり 10 分前の止めは正確な時刻で見る）。
+ * @param {string|null|undefined} periodEnd
+ */
+export function usagePeriodKey(periodEnd) {
+  const t = Date.parse(String(periodEnd ?? ""));
+  return Number.isFinite(t) ? new Date(t).toISOString().slice(0, 10) : null;
+}
+/**
+ * 従量を数える請求期間を選ぶ（純粋な関数）。
+ * プランを Partner API の契約で決めたとき（planSource === "partner"）は、その契約の期間を先に使う
+ * （Admin API に契約が出ない店でも送れるように）。無ければ Admin API の ACTIVE な契約の currentPeriodEnd。どちらも無ければ null。
+ * @param {{ planSource: "partner"|"admin"; partnerPeriodEnd?: string|null; adminSubscriptions?: Array<{ status?: string|null; currentPeriodEnd?: string|null }>|null }} args
+ * @returns {{ periodEnd: string|null; periodSource: "partner"|"admin"|null }}
+ */
+export function pickUsagePeriodEnd(args) {
+  if (args.planSource === "partner") {
+    const p = normalizePeriodEnd(args.partnerPeriodEnd);
+    if (p)
+      return { periodEnd: p, periodSource: "partner" };
+  }
+  for (const s of args.adminSubscriptions ?? []) {
+    if (String(s?.status ?? "").toUpperCase() !== "ACTIVE")
+      continue;
+    const a = normalizePeriodEnd(s?.currentPeriodEnd);
+    if (a)
+      return { periodEnd: a, periodSource: "admin" };
+  }
+  return { periodEnd: null, periodSource: null };
+}
+/**
+ * 1 店・1 期間で変わらないキー（64 文字まで）。期間は usagePeriodKey（UTC の日付）。
+ * 例: lsi-loc-12345678-20261221
  */
 export function buildIdempotencyKey(shopGid, periodEnd) {
   const id = numericShopId(shopGid);
-  const t = Date.parse(periodEnd);
-  if (!id || !Number.isFinite(t))
+  const day = usagePeriodKey(periodEnd);
+  if (!id || !day)
     return null;
-  const stamp = new Date(t).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
-  const key = `lsi-loc-${id}-${stamp}`;
+  const key = `lsi-loc-${id}-${day.replace(/-/g, "")}`;
   return key.length <= 64 ? key : null;
 }
 /** 失敗をもう一度送ってよいか（同じキーなので二重請求にはならない） */
@@ -174,7 +212,7 @@ export function __resetUsageRecheckForTest() {
  * Pro なら、この期間の分（ロケーション数）を 1 回だけ報告する。何度呼んでも安全（同じ期間は 1 件だけ）。
  * 呼ぶ側は await しなくてよい（失敗は DB と console に残る。投げない）。
  * @param {{ shop: string; shopGid: string|null; plan: "lite"|"pro"|null; locationsCount: number; periodEnd: string|null }} input
- *   periodEnd は Shopify の activeSubscriptions[].currentPeriodEnd
+ *   periodEnd は pickUsagePeriodEnd で選んだ請求期間の終わり（Partner で決めたら Partner の期間、そうでなければ Admin の currentPeriodEnd）
  * @param {{ store: object; env?: Record<string, string|undefined>; fetchImpl?: Function; now?: () => number; force?: boolean }} deps
  *   store は prisma.appUsageReport（findUnique / create / updateMany / update）
  * @returns {Promise<{ outcome: "skipped"; reason: string } | { outcome: "already_sent"|"disabled"|"over_limit"|"sent"|"failed"; row: object }>}
@@ -199,7 +237,9 @@ export async function reportProLocationUsage(input, deps) {
     console.warn(`[app-events-usage] no shop id; cannot report. shop=${input.shop}`);
     return { outcome: "skipped", reason: "missing_shop_id" };
   }
-  const memoKey = `${input.shop}|${input.periodEnd}`;
+  // DB の行とキーは期間の日付（正確な時刻は上の「期間の終わり 10 分前」の止めだけに使う）
+  const periodKey = usagePeriodKey(input.periodEnd);
+  const memoKey = `${input.shop}|${periodKey}`;
   const now = nowFn();
   if (!deps.force) {
     const last = recentChecks.get(memoKey);
@@ -208,7 +248,7 @@ export async function reportProLocationUsage(input, deps) {
   }
   recentChecks.set(memoKey, now);
   const store = deps.store;
-  const where = { shop_periodEnd: { shop: input.shop, periodEnd: input.periodEnd } };
+  const where = { shop_periodEnd: { shop: input.shop, periodEnd: periodKey } };
   const enabled = isUsageReportingEnabled(env);
   const maxUnits = getMaxUnits(env);
   const eventHandle = getEventHandle(env);
@@ -233,7 +273,7 @@ export async function reportProLocationUsage(input, deps) {
     if (!row) {
       try {
         row = await store.create({
-          data: { shop: input.shop, periodEnd: input.periodEnd, idempotencyKey, status: holdStatus, lastError, attempts: 0, ...fields },
+          data: { shop: input.shop, periodEnd: periodKey, idempotencyKey, status: holdStatus, lastError, attempts: 0, ...fields },
         });
       }
       catch {
@@ -251,7 +291,7 @@ export async function reportProLocationUsage(input, deps) {
   if (!row) {
     try {
       row = await store.create({
-        data: { shop: input.shop, periodEnd: input.periodEnd, idempotencyKey, status: "sending", attempts: 1, ...fields },
+        data: { shop: input.shop, periodEnd: periodKey, idempotencyKey, status: "sending", attempts: 1, ...fields },
       });
     }
     catch {
