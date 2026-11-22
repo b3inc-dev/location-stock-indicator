@@ -14,12 +14,15 @@
  * - 自社用（Ciara）はここに来ない（呼ぶ側で distribution === "public" を確かめる）。
  *
  * Shopify の仕様（2026-11-21 shopify.dev で確認）:
- * - トークン: POST https://api.shopify.com/auth/access_token（client_credentials。60 分有効）
+ * - トークン: POST https://api.shopify.com/auth/access_token（client_credentials。60 分有効）。鍵は公開用アプリ自身の
+ *   client ID / client secret（resolveAppEventsCredentials。APP_EVENTS_CLIENT_* が無ければ SHOPIFY_API_KEY / SHOPIFY_API_SECRET）
  * - 送信: POST https://api.shopify.com/app/{version}/events（1 件ずつ。202 は「受け取った」だけで、請求の成否は Dev Dashboard の Logs）
  * - body: shop_id / event_handle（Partner Dashboard のメーターの handle）/ timestamp（今の請求期間の中）/ idempotency_key（64 文字まで）/ attributes.value（0 以外）
  *
  * POS Stock（b3inc-dev/stock-transfer-pos の app/utils/app-events-usage.server.ts）と同じ作り。違いは数え方（全ロケーション）とキーの頭だけ。
  */
+
+import { resolvePlanDistribution } from "./planDistribution.js";
 
 /** Pro の 1 ロケーションあたりの従量（USD/月）。基本料 $20 は Partner Dashboard のプラン */
 export const PRO_PRICE_PER_LOCATION_USD = 2;
@@ -93,13 +96,37 @@ let tokenCache = null;
 export function __resetAppEventsTokenForTest() {
   tokenCache = null;
 }
+/**
+ * App Events API のトークンを取る鍵。shopify.dev（send-events）のとおり、**公開用アプリ自身の client ID と client secret**
+ * （client_credentials）。別に作る「Dev Dashboard の API キー」ではない。
+ * 1. APP_EVENTS_CLIENT_ID / APP_EVENTS_CLIENT_SECRET があればそれ（両方そろったときだけ）
+ * 2. 無ければ SHOPIFY_API_KEY / SHOPIFY_API_SECRET（公開用の Render では同じ値なので二重に入れなくてよい）
+ * サーバーが自社用（resolvePlanDistribution が inhouse。自社用の client_id・APP_DISTRIBUTION=inhouse など）なら鍵を返さない
+ * （自社用は送らない。呼ぶ側の distribution === "public" と 2 重の守り）。
+ * @param {Record<string, string|undefined>} env
+ * @returns {{ clientId: string, clientSecret: string, source: "app_events_env"|"shopify_api_key" } | { error: string }}
+ */
+export function resolveAppEventsCredentials(env) {
+  const dist = resolvePlanDistribution(env, null);
+  if (dist.distribution === "inhouse") {
+    return { error: `自社用のサーバー（${dist.reason}）なので App Events API へ送らない` };
+  }
+  const id = String(env.APP_EVENTS_CLIENT_ID ?? "").trim();
+  const secret = String(env.APP_EVENTS_CLIENT_SECRET ?? "").trim();
+  if (id && secret) return { clientId: id, clientSecret: secret, source: "app_events_env" };
+  if (id || secret) return { error: "APP_EVENTS_CLIENT_ID と APP_EVENTS_CLIENT_SECRET は両方入れる（片方だけ）" };
+  const apiKey = String(env.SHOPIFY_API_KEY ?? "").trim();
+  const apiSecret = String(env.SHOPIFY_API_SECRET ?? "").trim();
+  if (apiKey && apiSecret) return { clientId: apiKey, clientSecret: apiSecret, source: "shopify_api_key" };
+  return { error: "APP_EVENTS_CLIENT_ID / APP_EVENTS_CLIENT_SECRET も SHOPIFY_API_KEY / SHOPIFY_API_SECRET も未設定" };
+}
 async function getAccessToken(env, fetchImpl, now) {
   if (tokenCache && tokenCache.expiresAt > now)
     return tokenCache.token;
-  const clientId = String(env.APP_EVENTS_CLIENT_ID ?? "").trim();
-  const clientSecret = String(env.APP_EVENTS_CLIENT_SECRET ?? "").trim();
-  if (!clientId || !clientSecret)
-    throw new UsageSendError("APP_EVENTS_CLIENT_ID / APP_EVENTS_CLIENT_SECRET が未設定", null);
+  const creds = resolveAppEventsCredentials(env);
+  if ("error" in creds)
+    throw new UsageSendError(creds.error, null);
+  const { clientId, clientSecret } = creds;
   const res = await fetchImpl("https://api.shopify.com/auth/access_token", {
     method: "POST",
     headers: { "Content-Type": "application/json", "User-Agent": "location-stock-app" },

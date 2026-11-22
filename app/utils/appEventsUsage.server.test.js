@@ -9,9 +9,11 @@ import {
   describeUsageReportForMerchant,
   getEventHandle,
   reportProLocationUsage,
+  resolveAppEventsCredentials,
   PERIOD_END_MARGIN_MS,
   RETRY_AFTER_MS,
 } from "./appEventsUsage.server.js";
+import { INHOUSE_CLIENT_ID, PUBLIC_CLIENT_ID } from "./planDistribution.js";
 
 const SHOP = "demo.myshopify.com";
 const GID = "gid://shopify/Shop/12345678";
@@ -265,5 +267,38 @@ describe("つなぎ方（ソースの確認）", () => {
     const plan = read("app/utils/shopPlan.server.js");
     assert.match(plan, /distribution === "public" && !forceInhouse && plan === "pro"/);
     assert.match(plan, /options\?\.reportUsage === true/);
+  });
+});
+
+describe("App Events API の鍵（公開用アプリ自身の client ID / secret）", () => {
+  test("APP_EVENTS_CLIENT_* があればそれを使う", () => {
+    assert.deepEqual(
+      resolveAppEventsCredentials({ APP_EVENTS_CLIENT_ID: "a", APP_EVENTS_CLIENT_SECRET: "b", SHOPIFY_API_KEY: PUBLIC_CLIENT_ID, SHOPIFY_API_SECRET: "s" }),
+      { clientId: "a", clientSecret: "b", source: "app_events_env" }
+    );
+  });
+  test("無ければ公開用の SHOPIFY_API_KEY / SHOPIFY_API_SECRET を使う", () => {
+    assert.deepEqual(resolveAppEventsCredentials({ SHOPIFY_API_KEY: PUBLIC_CLIENT_ID, SHOPIFY_API_SECRET: "s" }), {
+      clientId: PUBLIC_CLIENT_ID,
+      clientSecret: "s",
+      source: "shopify_api_key",
+    });
+  });
+  test("片方だけはエラー", () => {
+    assert.ok("error" in resolveAppEventsCredentials({ APP_EVENTS_CLIENT_SECRET: "b", SHOPIFY_API_KEY: PUBLIC_CLIENT_ID, SHOPIFY_API_SECRET: "s" }));
+  });
+  test("自社用のサーバーは鍵を返さない（自社用の client_id・APP_DISTRIBUTION=inhouse）", () => {
+    assert.match(resolveAppEventsCredentials({ SHOPIFY_API_KEY: INHOUSE_CLIENT_ID, SHOPIFY_API_SECRET: "s" }).error, /自社用/);
+    assert.match(
+      resolveAppEventsCredentials({ APP_DISTRIBUTION: "inhouse", APP_EVENTS_CLIENT_ID: "a", APP_EVENTS_CLIENT_SECRET: "b" }).error,
+      /自社用/
+    );
+  });
+  test("SHOPIFY_API_KEY の鍵でトークンを取って送る", async () => {
+    __resetAppEventsTokenForTest();
+    const store = fakeStore();
+    const env = { APP_EVENTS_USAGE_ENABLED: "1", SHOPIFY_API_KEY: PUBLIC_CLIENT_ID, SHOPIFY_API_SECRET: "pub-sec" };
+    const r = await reportProLocationUsage(input(), { store, env, fetchImpl: fakeFetch([202]) });
+    assert.equal(r.outcome, "sent");
   });
 });
