@@ -64,7 +64,7 @@ T が上から順に押すための手順。**オンにする（外へ送る）�
 |---|---|
 | `APP_DISTRIBUTION` | 空（または `public`） |
 | `CUSTOM_APP_STORE_IDS` | 空 |
-| `FORCE_PLAN_LITE` | 空 |
+| `FORCE_PLAN_LITE` | 空（#48 から使わない。残っていれば消す） |
 | `SCOPES` | 公開用 toml の `scopes` と同じ（`read_inventory,read_locations,read_products,read_shipping,read_markets,write_app_proxy`） |
 | `SHOPIFY_APP_HANDLE` | 3 章の handle（#48 が入る前に入れておく） |
 
