@@ -15,7 +15,7 @@ export const POS_LITE_SECTIONS = {
   delivery: {
     title: "持ち帰りと配送の履行",
     description: "会計の前に、商品と数量ごとに配送する分・配送先・送料を POS で決めます。会計のあと、持ち帰り分だけを履行し、配送分は出荷元に未発送で残します。",
-    keys: ["deliveryEnabled", "cancelStoreFulfillment"],
+    keys: ["deliveryEnabled", "cancelStoreFulfillment", "rescanEnabled"],
   },
   fee: {
     title: "送料の行",
@@ -48,9 +48,11 @@ export function sectionSummary(section, config, locations = []) {
   }
   if (section === "delivery") {
     if (!c.deliveryEnabled) return "オフ（会計のあとは何もしない）";
-    return c.cancelStoreFulfillment
+    const base = c.cancelStoreFulfillment
       ? "オン・店頭で履行済みの配送分は取り消して出荷元へ移す"
       : "オン・店頭で履行済みの配送分は取り消さない（要確認で止める）";
+    // 拾い直しの書き込みは「持ち帰りと配送の履行」がオンのときだけ効くので、オンのときだけ足す
+    return c.rescanEnabled ? `${base}・印の無いまま終わった注文を拾い直す` : base;
   }
   if (section === "fee") {
     return [
@@ -74,7 +76,9 @@ export function sectionSummary(section, config, locations = []) {
 export function sectionInputFromForm(section, form, locations = []) {
   const on = (name) => form.get(name) === "on";
   if (section === "pickup") return { pickupEnabled: on("pickupEnabled"), pickupNotifyOnHandover: on("pickupNotifyOnHandover") };
-  if (section === "delivery") return { deliveryEnabled: on("deliveryEnabled"), cancelStoreFulfillment: on("cancelStoreFulfillment") };
+  if (section === "delivery") {
+    return { deliveryEnabled: on("deliveryEnabled"), cancelStoreFulfillment: on("cancelStoreFulfillment"), rescanEnabled: on("rescanEnabled") };
+  }
   if (section === "fee") return { shippingTaxable: on("shippingTaxable"), feeCountsAsSales: on("feeCountsAsSales"), feeEarnsPoints: on("feeEarnsPoints") };
   if (section === "locations") {
     return {

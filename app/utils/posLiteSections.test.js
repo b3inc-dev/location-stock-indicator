@@ -62,7 +62,7 @@ for (const section of ["pickup", "delivery", "fee"]) {
   test(`区分「${POS_LITE_SECTIONS[section].title}」の保存は、ほかの区分の値を変えない`, () => {
     const before = current();
     // 全部をひっくり返した入力（その区分のキーだけが効くこと）
-    const input = { pickupEnabled: false, pickupNotifyOnHandover: true, deliveryEnabled: false, cancelStoreFulfillment: true, shippingTaxable: false, feeCountsAsSales: false, feeEarnsPoints: true, locations: [] };
+    const input = { pickupEnabled: false, pickupNotifyOnHandover: true, deliveryEnabled: false, cancelStoreFulfillment: true, rescanEnabled: true, shippingTaxable: false, feeCountsAsSales: false, feeEarnsPoints: true, locations: [] };
     const { errors, config } = mergeSection(before, section, input, LOCATIONS);
     assert.deepEqual(errors, []);
     assert.deepEqual(others(config, section), others(before, section));
@@ -102,7 +102,8 @@ test("消えたロケーションの行が残っていても、ほかの区分�
 
 test("フォームからはその区分のチェックだけを読む（無いチェックはオフ）", () => {
   assert.deepEqual(sectionInputFromForm("pickup", form({ pickupEnabled: "on" })), { pickupEnabled: true, pickupNotifyOnHandover: false });
-  assert.deepEqual(sectionInputFromForm("delivery", form({ cancelStoreFulfillment: "on", pickupEnabled: "on" })), { deliveryEnabled: false, cancelStoreFulfillment: true });
+  assert.deepEqual(sectionInputFromForm("delivery", form({ cancelStoreFulfillment: "on", pickupEnabled: "on" })), { deliveryEnabled: false, cancelStoreFulfillment: true, rescanEnabled: false });
+  assert.equal(sectionInputFromForm("delivery", form({ rescanEnabled: "on" })).rescanEnabled, true);
   assert.deepEqual(sectionInputFromForm("fee", form({ shippingTaxable: "on" })), { shippingTaxable: true, feeCountsAsSales: false, feeEarnsPoints: false });
 });
 
@@ -120,6 +121,8 @@ test("要約の文はオン・オフと値で変わる", () => {
   assert.equal(sectionSummary("pickup", { ...config, pickupNotifyOnHandover: true }), "オン・引渡しのときお客様に知らせる");
   assert.equal(sectionSummary("delivery", config), "オン・店頭で履行済みの配送分は取り消さない（要確認で止める）");
   assert.equal(sectionSummary("delivery", { ...config, cancelStoreFulfillment: true }), "オン・店頭で履行済みの配送分は取り消して出荷元へ移す");
+  assert.equal(sectionSummary("delivery", { ...config, rescanEnabled: true }), "オン・店頭で履行済みの配送分は取り消さない（要確認で止める）・印の無いまま終わった注文を拾い直す");
+  assert.equal(sectionSummary("delivery", { ...config, deliveryEnabled: false, rescanEnabled: true }), "オフ（会計のあとは何もしない）", "履行がオフなら拾い直しも書かない");
   assert.equal(sectionSummary("fee", { ...config, shippingTaxable: false, feeCountsAsSales: false, feeEarnsPoints: true }), "税なし・売上に含めない・ポイントの対象にする");
   assert.equal(sectionSummary("locations", config, LOCATIONS), "配送を受け付ける店舗 1 / 3・送料 800 円");
   const two = { ...config, locations: [...config.locations.filter((r) => r.locationId !== "303"), { locationId: "303", enabled: true, warehouseLocationId: "202", shippingFee: 500, shippingTitle: "送料" }] };
@@ -143,4 +146,15 @@ test("編集の画面は区分ごとに 1 つのフォーム・保存の帯 1 �
   assert.match(source, /<BackAction to="\/app\/pos-lite" label="店頭受取・配送へ戻る" \/>/);
   assert.match(source, /mergeSection\(current, section/, "保存の直前に今の設定を読み、その区分だけを置きかえる");
   assert.match(source, /status: 404/, "知らない区分は 404");
+});
+
+test("拾い直しのスイッチ（#77）は「持ち帰りと配送の履行」の区分にあり、ほかの区分の保存で消えない", () => {
+  assert.ok(POS_LITE_SECTIONS.delivery.keys.includes("rescanEnabled"));
+  const before = { ...current(), rescanEnabled: true };
+  const { config } = mergeSection(before, "fee", { shippingTaxable: true, feeCountsAsSales: true, feeEarnsPoints: false }, LOCATIONS);
+  assert.equal(config.rescanEnabled, true);
+  const off = mergeSection(before, "delivery", sectionInputFromForm("delivery", form({ deliveryEnabled: "on" })), LOCATIONS).config;
+  assert.equal(off.rescanEnabled, false, "チェックを外して保存するとオフ");
+  const page = readFileSync(new URL("../routes/app.pos-lite_.$section.jsx", import.meta.url), "utf8");
+  assert.match(page, /name="rescanEnabled" checked=\{config\.rescanEnabled\}/);
 });

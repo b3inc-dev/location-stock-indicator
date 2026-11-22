@@ -6,10 +6,12 @@ import {
   CONFIG_KEY,
   CONFIG_NAMESPACE,
   HANDOFF_KEY,
+  RESCAN_DAYS,
   REVIEW_KEY,
   REVIEW_TAG,
   collectPages,
   messageFor,
+  missedPaidCandidate,
   parseConfig,
   planSale,
   scrubHandoff,
@@ -359,6 +361,82 @@ export async function listReviewOrders(request) {
     locationName: node.retailLocation?.name || "",
     reason: node.metafield?.value || messageFor(""),
   }));
+}
+
+// ---------------------------------------------------------------------------
+// 拾い直し: orders/paid の処理が、済んだ印も要確認の印も残さずに終わった注文を探す（見直し 7084505690 の 1）
+// ---------------------------------------------------------------------------
+
+/**
+ * 最近の POS の注文を新しい順に読む。source_name・created_at・tag_not は Shopify の orders の検索の条件の一覧にある
+ * （POS の注文の source_name が "pos" で絞れるかは開発ストアで確かめる）。配送の指定はカートの属性なので検索では絞れず、
+ * 読んでから missedPaidCandidate で絞る。
+ */
+export const RESCAN_ORDERS_QUERY = `query PosLiteRescanOrders($after: String, $query: String!) {
+  orders(first: 50, after: $after, query: $query, sortKey: CREATED_AT, reverse: true) {
+    pageInfo { hasNextPage endCursor }
+    nodes {
+      id name createdAt cancelledAt sourceName tags
+      retailLocation { id name }
+      customAttributes { key value }
+      handoff: metafield(namespace: "${CONFIG_NAMESPACE}", key: "${HANDOFF_KEY}") { value }
+    }
+  }
+}`;
+/** 1 回の拾い直しで読む注文の上限（50 件 × 5 ページ）。超えた分は次の回に回さず、truncated で知らせる。 */
+export const RESCAN_MAX_PAGES = 5;
+
+/**
+ * 拾い直し。何度呼んでも同じ結果になる（印を付けた注文は次から対象にならない）。cron から呼んでも安全なように、
+ * 読む件数に上限があり、注文の配送・履行には一切触れない（書くのは要確認のタグと理由だけ）。
+ * @param {(query: string, variables?: object) => Promise<any>} request
+ * @param {{config: object, now?: number, days?: number}} options
+ *   書くのは config.rescanEnabled と config.deliveryEnabled がどちらもオンのときだけ。オフなら探して返すだけ。
+ * @returns {Promise<{found: {id: string, name: string, createdAt: string, locationName: string}[], marked: number, failed: number, wrote: boolean, truncated: boolean}>}
+ */
+export async function rescanMissedOrders(request, { config, now = Date.now(), days = RESCAN_DAYS } = {}) {
+  const since = new Date(now - days * 24 * 60 * 60 * 1000).toISOString();
+  const query = `source_name:pos created_at:>='${since}' tag_not:'${REVIEW_TAG}'`;
+  const found = [];
+  let after = null;
+  let truncated = false;
+  for (let page = 0; ; page += 1) {
+    if (page >= RESCAN_MAX_PAGES) {
+      truncated = true;
+      break;
+    }
+    const conn = (await request(RESCAN_ORDERS_QUERY, { after, query }))?.orders;
+    for (const node of conn?.nodes || []) {
+      const order = { ...node, handoff: node.handoff?.value ?? null };
+      if (missedPaidCandidate(order, now)) {
+        found.push({ id: node.id, name: node.name, createdAt: node.createdAt, locationName: node.retailLocation?.name || "" });
+      }
+    }
+    if (!conn?.pageInfo?.hasNextPage || !conn.pageInfo.endCursor) break;
+    after = conn.pageInfo.endCursor;
+  }
+  const wrote = config?.rescanEnabled === true && config?.deliveryEnabled === true;
+  let marked = 0;
+  let failed = 0;
+  if (wrote) {
+    for (const order of found) {
+      try {
+        // 理由を先に書き、タグはあと（タグが付けば一覧に出る。タグを付けられなければ次の拾い直しでもう一度試す）
+        const reasonError = await firstUserError(
+          request,
+          METAFIELDS_SET,
+          { metafields: [{ ownerId: order.id, namespace: CONFIG_NAMESPACE, key: REVIEW_KEY, type: "single_line_text_field", value: messageFor("missed_paid").slice(0, 250) }] },
+          "metafieldsSet",
+        );
+        const tagError = reasonError ? null : await firstUserError(request, TAGS_ADD, { id: order.id, tags: [REVIEW_TAG] }, "tagsAdd");
+        if (reasonError || tagError) failed += 1;
+        else marked += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+  }
+  return { found, marked, failed, wrote, truncated };
 }
 
 /** 同じ注文を同時に 2 つ処理しない（このサーバーの中だけ。2 台目のサーバーとは planSale の読み直しで重ならないようにしている）。 */

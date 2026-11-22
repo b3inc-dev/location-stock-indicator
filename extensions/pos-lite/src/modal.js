@@ -10,12 +10,12 @@ import {
   collectPages,
   deliveryUsable,
   feeProperties,
-  feeSync,
   isFeeLine,
   locationRow,
   parseDelivery,
   pickupAction,
   pickupLabel,
+  planFeeLine,
   shipFromChoices,
 } from "./logic.js";
 
@@ -215,27 +215,64 @@ async function runPickup(id, locationId, intent, config) {
 // ---------------------------------------------------------------------------
 
 /**
+ * この端末でアプリが足して、まだ印を付けられていない送料の行の uuid（見直し 7084505690 の 2）。
+ * 印付けに失敗したあと「配送を確定」をもう一度押したとき、この行を使い直して送料を二重にしない。
+ * 画面を閉じても POS が動いているあいだは残る見込み（推測）。消えたときは planFeeLine の conflict で止まる。
+ */
+const ownUnmarkedFees = new Set();
+
+function feeConflictError(title) {
+  return new Error(
+    `カートに印の無い「${title}」の行があります。送料が二重にならないように止めました。カートでその行を消してから、もう一度「配送を確定」を押してください。`,
+  );
+}
+
+function assertNoFeeConflict(title, fee, config) {
+  const action = planFeeLine(shopify.cart.current.value.lineItems || [], title, fee, config.shippingTaxable, { ownUnmarked: ownUnmarkedFees });
+  if (action.conflict.length) throw feeConflictError(title);
+}
+
+/**
  * 送料の行をカートに合わせ、残った行に印（_lsi_fee など）を付ける。
  * 印で POS Receipt・Shop Point が送料の行を見分け、売上・ポイントの対象にするかを読む（T 11/23 3:40）。
  */
-async function applyFee(action, title, config, mark) {
-  for (const uuid of action.remove) if (uuid) await shopify.cart.removeLineItem(uuid);
-  let added = null;
-  const before = new Set((shopify.cart.current.value.lineItems || []).map((line) => line.uuid));
-  if (action.add) added = await shopify.cart.addCustomSale(action.add);
-  if (!mark) return;
-  // 足した行の uuid が返らない版もあるので、カートを読み直して探す。送料の行は印だけで見分けるので、
-  // 印の無い行は「いま足した行（前に無かった、商品の無い同じ名前の行）」だけを選ぶ（店員が手で入れた行に印を付けない）
-  const lines = shopify.cart.current.value.lineItems || [];
-  const fee =
-    (typeof added === "string" && lines.find((line) => line.uuid === added)) ||
-    (action.add && lines.find((line) => !before.has(line.uuid) && !line.variantId && line.title === action.add.title)) ||
-    lines.find((line) => isFeeLine(line));
-  if (!fee) return;
-  const want = feeProperties(config);
-  if (Object.entries(want).some(([key, value]) => fee.properties?.[key] !== value)) {
-    await shopify.cart.addLineItemProperties(fee.uuid, want);
+export async function applyFee(title, fee, config) {
+  const current = () => shopify.cart.current.value.lineItems || [];
+  const action = planFeeLine(current(), title, fee, config.shippingTaxable, { ownUnmarked: ownUnmarkedFees });
+  if (action.conflict.length) throw feeConflictError(title);
+  for (const uuid of action.remove) {
+    if (!uuid) continue;
+    await shopify.cart.removeLineItem(uuid);
+    ownUnmarkedFees.delete(uuid);
   }
+  if (!(Number(fee) > 0)) return;
+  let feeLine = action.adopt ? current().find((line) => line.uuid === action.adopt) : null;
+  if (action.add) {
+    const before = new Set(current().map((line) => line.uuid));
+    const added = await shopify.cart.addCustomSale(action.add);
+    // 足した行の uuid が返らない版もあるので、カートを読み直して探す。印の無い行は「いま足した行（前に無かった、
+    // 商品の無い同じ名前の行）」だけを選ぶ（店員が手で入れた行に印を付けない）
+    const lines = current();
+    feeLine =
+      (typeof added === "string" && lines.find((line) => line.uuid === added)) ||
+      lines.find((line) => !before.has(line.uuid) && !line.variantId && line.title === action.add.title) ||
+      null;
+    // 印を付ける前に覚えておく（印付けに失敗しても、次の確定でこの行を使い直す）
+    if (feeLine && !isFeeLine(feeLine)) ownUnmarkedFees.add(feeLine.uuid);
+  }
+  if (!feeLine) feeLine = current().find((line) => isFeeLine(line)) || null;
+  if (!feeLine) return;
+  const want = feeProperties(config);
+  if (Object.entries(want).some(([key, value]) => feeLine.properties?.[key] !== value)) {
+    try {
+      await shopify.cart.addLineItemProperties(feeLine.uuid, want);
+    } catch (error) {
+      throw new Error(
+        `送料の行に印を付けられませんでした（${error?.message || "通信"}）。もう一度「配送を確定」を押してください（送料の行は増えません）。`,
+      );
+    }
+  }
+  ownUnmarkedFees.delete(feeLine.uuid);
 }
 
 function renderDelivery(state) {
@@ -383,6 +420,8 @@ function renderDelivery(state) {
           row,
         );
         if (built.error) throw new Error(built.error);
+        // 送料が二重になりそうなら、カートに何も書く前に止める（見直し 7084505690 の 2）
+        assertNoFeeConflict(built.title, built.fee, state.config);
         for (const item of built.lineProperties) {
           const props = { [SHIP_QTY_PROPERTY]: String(item.quantity) };
           if (item.from) props[SHIP_FROM_PROPERTY] = item.from;
@@ -397,7 +436,7 @@ function renderDelivery(state) {
           if (stale.length) await shopify.cart.removeLineItemProperties(uuid, stale);
         }
         await shopify.cart.addCartProperties(built.cartProperties);
-        await applyFee(feeSync(shopify.cart.current.value.lineItems, built.title, built.fee, state.config.shippingTaxable), built.title, state.config, built.fee > 0);
+        await applyFee(built.title, built.fee, state.config);
         result.setAttribute("tone", "success");
         result.textContent = state.config.cancelStoreFulfillment
           ? `配送 ${built.shipCount} 点を確定しました。会計の前に、カートの「フルフィルメント済みにする」をオフにしてください（オフにできないときも、会計のあとアプリが配送分を出荷元へ移します）。`
@@ -418,7 +457,7 @@ function renderDelivery(state) {
           if (stale.length) await shopify.cart.removeLineItemProperties(line.uuid, stale);
         }
         if (latest.properties?.[DELIVERY_ATTRIBUTE]) await shopify.cart.removeCartProperties([DELIVERY_ATTRIBUTE]);
-        await applyFee(feeSync(shopify.cart.current.value.lineItems, row.shippingTitle, 0, state.config.shippingTaxable), row.shippingTitle, state.config, false);
+        await applyFee(row.shippingTitle, 0, state.config);
         result.setAttribute("tone", "success");
         result.textContent = "配送を取り消しました。全部持ち帰りです。";
       } catch (error) {

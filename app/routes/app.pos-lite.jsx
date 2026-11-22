@@ -3,7 +3,7 @@
 // 設定は 4 つの区分に分け、入力は区分ごとの編集の画面（app.pos-lite_.$section.jsx）で行う（T 11/23 5:10 の案 A）。
 // 書き込みのスイッチはすべて既定オフ。オンにするのは T（店の担当者）。
 
-import { useActionData, useLoaderData, useNavigation, useOutletContext } from "react-router";
+import { Form, useActionData, useLoaderData, useNavigation, useOutletContext } from "react-router";
 import {
   AdminBlock,
   AdminIntro,
@@ -17,9 +17,10 @@ import {
 } from "../components/admin-ui";
 import { authenticate } from "../shopify.server";
 import { getShopPlan } from "../utils/shopPlan.server.js";
-import { listReviewOrders, loadConfig, processSale, requestFromAdmin, withOrderLock } from "../utils/posLiteSale.js";
+import { listReviewOrders, loadConfig, processSale, requestFromAdmin, rescanMissedOrders, withOrderLock } from "../utils/posLiteSale.js";
 import { loadPosLiteLocations } from "../utils/posLiteLocations.js";
 import { POS_LITE_SECTIONS, POS_LITE_SECTION_KEYS, sectionPath, sectionSummary } from "../utils/posLiteSections.js";
+import { RESCAN_DAYS } from "../../extensions/pos-lite/src/logic.js";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
@@ -63,6 +64,25 @@ export const action = async ({ request }) => {
     if (result.phase === "done" || result.reason === "already_done") return { ok: true, message: `${result.orderName || "注文"}: ${result.message}`, at: Date.now() };
     // retry: 出荷指示がまだ無い（印は付けない）。理由をそのまま出す
     return { ok: false, error: `${result.orderName || "注文"}: ${result.message || "再処理できませんでした。"}` };
+  }
+
+  if (intent === "rescan") {
+    // 拾い直し: 印の無いまま終わった注文を探す。書く（要確認のタグと理由）のはスイッチがオンのときだけ
+    const { config } = await loadConfig(run);
+    let scan;
+    try {
+      scan = await rescanMissedOrders(run, { config });
+    } catch (error) {
+      console.error("[location-stock]", { route: "app.pos-lite", shop: session?.shop }, error instanceof Error ? error.message : "rescan failed");
+      return { ok: false, error: "注文を読めませんでした。注文を読む権限が承認されているか確かめて、もう一度押してください。" };
+    }
+    // 記録（ログ）には件数だけ（注文の中身・お客様の値は出さない）
+    console.log("[location-stock] pos-lite rescan", { shop: session?.shop, found: scan.found.length, marked: scan.marked, failed: scan.failed, wrote: scan.wrote });
+    const more = scan.truncated ? "（読む上限に届いたので、古い注文は見ていません）" : "";
+    if (!scan.found.length) return { ok: true, message: `印の無いまま終わった注文はありませんでした${more}`, at: Date.now() };
+    if (!scan.wrote) return { ok: true, message: `${scan.found.length} 件見つかりました（スイッチがオフなので、注文には何も書いていません）${more}`, at: Date.now(), rescan: scan };
+    if (scan.failed) return { ok: false, error: `${scan.found.length} 件のうち ${scan.failed} 件に要確認の印を付けられませんでした。もう一度押してください。`, rescan: scan };
+    return { ok: true, message: `${scan.marked} 件を「要確認の注文」に出しました${more}`, at: Date.now() };
   }
 
   return { ok: false, error: "操作を確かめてください。" };
@@ -139,7 +159,38 @@ export default function PosLitePage() {
           </AdminBlock>
         ) : null}
         {Array.isArray(reviews) ? (
-          <AdminBlock wide title="要確認の注文" description="会計のあとに配送・持ち帰りの処理が止まった注文です。理由を直してから再処理します。">
+          <AdminBlock
+            wide
+            title="要確認の注文"
+            description={`会計のあとに配送・持ち帰りの処理が止まった注文です。理由を直してから再処理します。「拾い直す」は、直近 ${RESCAN_DAYS} 日の POS の注文のうち、印の無いまま終わったもの（作られてから 5 時間を過ぎたもの）を探します。`}
+            action={
+              <Form method="post">
+                <input type="hidden" name="intent" value="rescan" />
+                <button type="submit" className="Admin-secondary" disabled={busyIntent === "rescan"}>
+                  {busyIntent === "rescan" ? "探しています…" : "拾い直す"}
+                </button>
+              </Form>
+            }
+          >
+            {result?.rescan && !result.rescan.wrote && result.rescan.found.length ? (
+              <div className="History-scroll" data-pos-lite-rescan>
+                <p className="Admin-note">見つかった注文（スイッチ「印の無いまま終わった注文を拾い直して「要確認の注文」に出す」がオフなので、注文には何も書いていません）</p>
+                <table className="History-table">
+                  <thead>
+                    <tr><th>注文</th><th>日時</th><th>店舗</th></tr>
+                  </thead>
+                  <tbody>
+                    {result.rescan.found.map((order) => (
+                      <tr key={order.id}>
+                        <td data-label="注文" className="History-keep">{order.name}</td>
+                        <td data-label="日時" className="History-keep">{formatDate(order.createdAt)}</td>
+                        <td data-label="店舗">{order.locationName || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
             {reviews.length === 0 ? (
               <EmptyState heading="要確認の注文はありません">止まった注文があると、ここに出ます。</EmptyState>
             ) : (

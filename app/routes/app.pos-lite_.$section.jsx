@@ -100,6 +100,8 @@ function DeliveryFields({ config }) {
       <p className="Admin-note">配送のある会計では、POS のカートで「フルフィルメント済みにする」をオフにしてから会計します。</p>
       <Check name="cancelStoreFulfillment" checked={config.cancelStoreFulfillment}>店頭で履行済みになった配送分を取り消して出荷元へ移す</Check>
       <p className="Admin-note">「フルフィルメント済みにする」をオフにできない店舗用です。店舗での履行を取り消してから出荷元へ移し、持ち帰り分はもう一度通知なしで履行します。在庫の戻り方を開発ストアで確かめてからオンにします。</p>
+      <Check name="rescanEnabled" checked={config.rescanEnabled}>印の無いまま終わった注文を拾い直して「要確認の注文」に出す</Check>
+      <p className="Admin-note">会計のあとの処理が、済んだ印も要確認の印も残さずに終わった注文を探し、注文に要確認のタグと理由を書きます。配送・履行には触れません。オフのときは探して件数を出すだけで、注文には何も書きません。探すのは「店頭受取・配送」の画面の「要確認の注文」の「拾い直す」です。</p>
     </>
   );
 }
