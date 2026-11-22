@@ -17,6 +17,8 @@ export const CONFIG_KEY = "pos_lite";
 export const DELIVERY_ATTRIBUTE = "_lsi_delivery";
 /** 明細の属性。この明細のうち配送する数量。 */
 export const SHIP_QTY_PROPERTY = "_lsi_ship";
+/** 明細の属性。商品ごとに出荷元を選んだときの、この明細の出荷元（ロケーションの数字の ID）。 */
+export const SHIP_FROM_PROPERTY = "_lsi_from";
 /**
  * 送料の行（カスタム売上）の印。明細の属性で、注文の明細の customAttributes に残る（先頭の _ でレシートには出ない）。
  * POS Receipt・Shop Point はこの印で送料の行を見分ける（T 11/23 3:40）:
@@ -273,16 +275,21 @@ export function normalizeAddress(input) {
 
 /**
  * 「配送を確定」のときにカートへ書く中身を作る。
- * @param {{lines: {uuid: string, variantId?: number|string|null, quantity: number, title?: string}[], shipQuantities: Record<string, number>, address: object, from: string}} input
+ * 出荷元は必ず選ぶ（T 11/23 3:40「発送の際は必ず商品ごとかまとめて選択」）:
+ *   mode "all"   … 配送全体で 1 つ（input.from）
+ *   mode "items" … 配送する明細ごとに 1 つ（input.lineFrom[uuid]）。明細の属性 _lsi_from に書く
+ * @param {{lines: {uuid: string, variantId?: number|string|null, quantity: number, title?: string}[], shipQuantities: Record<string, number>, address: object, mode?: "all"|"items", from?: string, lineFrom?: Record<string, string>}} input
  * @param {object} row 店舗の設定（locationRow）
- * @returns {{error: string} | {cartProperties: Record<string,string>, lineProperties: {uuid: string, quantity: number}[], clearLines: string[], fee: number, title: string, shipCount: number}}
+ * @returns {{error: string} | {cartProperties: Record<string,string>, lineProperties: {uuid: string, quantity: number, from: string|null}[], clearLines: string[], fee: number, title: string, shipCount: number, mode: "all"|"items"}}
  */
 export function buildDeliveryCart(input, row) {
   if (!row?.enabled) return { error: "この店舗では配送を使わない設定です。" };
-  // 出荷元は会計ごとに必ず選ぶ（配送全体で 1 つ。T 11/23 3:40）
+  const mode = input?.mode === "items" ? "items" : "all";
   const from = numericId(input?.from);
-  if (!from) return { error: "出荷元を選んでください。" };
-  if (sameId(from, row.locationId)) return { error: "出荷元は、販売する店舗と別のロケーションを選んでください。" };
+  if (mode === "all") {
+    if (!from) return { error: "出荷元を選んでください。" };
+    if (sameId(from, row.locationId)) return { error: "出荷元は、販売する店舗と別のロケーションを選んでください。" };
+  }
   const normalized = normalizeAddress(input?.address);
   if (normalized.error) return normalized;
   const lineProperties = [];
@@ -292,10 +299,17 @@ export function buildDeliveryCart(input, row) {
     if (!numericId(line.variantId)) continue;
     const quantity = whole(line.quantity) ?? 0;
     const ship = whole(input?.shipQuantities?.[line.uuid] ?? 0);
-    if (ship == null) return { error: `「${line.title || "商品"}」の配送する数量を確かめてください。` };
-    if (ship > quantity) return { error: `「${line.title || "商品"}」の配送する数量がカートの数量より多いです。` };
+    const name = line.title || "商品";
+    if (ship == null) return { error: `「${name}」の配送する数量を確かめてください。` };
+    if (ship > quantity) return { error: `「${name}」の配送する数量がカートの数量より多いです。` };
     if (ship > 0) {
-      lineProperties.push({ uuid: line.uuid, quantity: ship });
+      let lineFrom = null;
+      if (mode === "items") {
+        lineFrom = numericId(input?.lineFrom?.[line.uuid]);
+        if (!lineFrom) return { error: `「${name}」の出荷元を選んでください。` };
+        if (sameId(lineFrom, row.locationId)) return { error: `「${name}」の出荷元は、販売する店舗と別のロケーションを選んでください。` };
+      }
+      lineProperties.push({ uuid: line.uuid, quantity: ship, from: lineFrom });
       shipCount += ship;
     } else {
       clearLines.push(line.uuid);
@@ -304,8 +318,8 @@ export function buildDeliveryCart(input, row) {
   if (!shipCount) return { error: "配送する商品の数量を 1 つ以上にしてください。" };
   const fee = whole(row.shippingFee) ?? 0;
   const title = row.shippingTitle || "送料";
-  const delivery = { v: 1, from, fee, title, to: normalized.address };
-  return { cartProperties: { [DELIVERY_ATTRIBUTE]: JSON.stringify(delivery) }, lineProperties, clearLines, fee, title, shipCount };
+  const delivery = mode === "items" ? { v: 1, mode, fee, title, to: normalized.address } : { v: 1, mode, from, fee, title, to: normalized.address };
+  return { cartProperties: { [DELIVERY_ATTRIBUTE]: JSON.stringify(delivery) }, lineProperties, clearLines, fee, title, shipCount, mode };
 }
 
 /** 送料の行か（印があるか、印の前の版の行なら同じ名前のカスタム売上）。 */
@@ -370,8 +384,11 @@ export function parseDelivery(raw) {
   } catch {
     return null;
   }
-  if (!data || data.v !== 1 || !numericId(data.from)) return null;
-  const base = { from: numericId(data.from), fee: whole(data.fee) ?? 0, title: String(data.title || "送料") };
+  if (!data || data.v !== 1) return null;
+  // mode が無いのは最初の版（配送全体で 1 つ）
+  const mode = data.mode === "items" ? "items" : "all";
+  if (mode === "all" && !numericId(data.from)) return null;
+  const base = { mode, from: mode === "all" ? numericId(data.from) : "", fee: whole(data.fee) ?? 0, title: String(data.title || "送料") };
   if (data.to == null) return { ...base, to: null };
   const normalized = normalizeAddress({ ...data.to, province: data.to?.provinceCode });
   if (normalized.error) return null;
@@ -453,6 +470,19 @@ export function shipByLine(order) {
   return map;
 }
 
+/**
+ * 明細ごとの出荷元。まとめて選んだときは全部 delivery.from、商品ごとのときは明細の属性 _lsi_from。
+ * まとめてのときは明細の属性を読まない（前に商品ごとにして残った値で動かさない）。読めない明細は ""。
+ */
+export function shipFromByLine(order, delivery, ship) {
+  const map = new Map();
+  for (const line of order.lines || []) {
+    if (!ship.has(line.id)) continue;
+    map.set(line.id, delivery.mode === "items" ? numericId(attribute(line.customAttributes, SHIP_FROM_PROPERTY)) : delivery.from);
+  }
+  return map;
+}
+
 function remainingAt(order, lineItemId, locationId) {
   let total = 0;
   for (const fo of activeFulfillmentOrders(order)) {
@@ -527,9 +557,11 @@ export function planSale(order, config) {
   if (!delivery) return emptyStep("review", "bad_delivery");
   // 配送先を属性から外したあとは、注文の配送先住所が正。どちらも無ければ読めない
   if (!delivery.to && !order.shippingAddress) return emptyStep("review", "bad_delivery");
-  if (sameId(delivery.from, order.salesLocationId)) return emptyStep("review", "same_location");
   const ship = shipByLine(order);
   if (!ship.size) return emptyStep("review", "no_ship_lines");
+  const targets = shipFromByLine(order, delivery, ship);
+  if ([...targets.values()].some((id) => !id)) return emptyStep("review", "bad_delivery");
+  if ([...targets.values()].some((id) => sameId(id, order.salesLocationId))) return emptyStep("review", "same_location");
 
   const active = activeFulfillmentOrders(order);
   if (active.some((fo) => fo.method === "PICK_UP")) return emptyStep("review", "pickup_mixed");
@@ -545,7 +577,9 @@ export function planSale(order, config) {
   const feeCharged = feeLines.reduce((sum, line) => sum + Number(line.unitPrice || 0) * Number(line.quantity || 0), 0);
   const handoff = {
     salesLocationId: numericId(order.salesLocationId),
-    warehouseLocationId: delivery.from,
+    // まとめて選んだときだけ 1 つ。商品ごとのときは null で、明細ごとの warehouseLocationId を見る
+    shipFromMode: delivery.mode,
+    warehouseLocationId: delivery.mode === "all" ? delivery.from : null,
     shippingFee: delivery.fee,
     shippingFeeCharged: Math.round(feeCharged),
     // 送料の行（POS Receipt・Shop Point が見分けるとき、明細の印 _lsi_fee と同じ行）
@@ -554,38 +588,58 @@ export function planSale(order, config) {
     // 配送先（名前・住所・電話）はここに写さない。倉庫は注文の配送先住所を読む（見直し 11/23）
     lines: (order.lines || [])
       .filter((line) => ship.has(line.id))
-      .map((line) => ({ lineItemId: numericId(line.id), sku: line.sku || "", title: line.title || "", quantity: ship.get(line.id) })),
+      .map((line) => ({ lineItemId: numericId(line.id), sku: line.sku || "", title: line.title || "", quantity: ship.get(line.id), warehouseLocationId: targets.get(line.id) })),
   };
   const side = { handoff, addressInput: orderInput(order, delivery.to) };
 
-  // 1) 配送する分のうち、まだ出荷元に無い分を、販売店舗の出荷指示から出荷元へ移す
+  // 1) 配送する分のうち、まだその明細の出荷元に無い分を、販売店舗の出荷指示から出荷元へ移す
   const need = new Map();
   for (const [lineItemId, quantity] of ship) {
-    const there = remainingAt(order, lineItemId, delivery.from) + fulfilledAt(order, lineItemId, delivery.from);
+    const target = targets.get(lineItemId);
+    const there = remainingAt(order, lineItemId, target) + fulfilledAt(order, lineItemId, target);
     need.set(lineItemId, Math.max(0, quantity - there));
   }
+  // 1 回に移すのは 1 つの出荷元の分だけ（出荷元が分かれると、1 つの出荷指示が出荷元ごとに分かれる。
+  // 移したあとは出荷指示の明細の ID が変わりうるので、読み直してから次の出荷元の分を移す）
+  const waitingTargets = [...new Set([...need].filter(([, left]) => left > 0).map(([id]) => targets.get(id)))].sort();
+  const moveTarget = waitingTargets.find((target) =>
+    active.some((fo) => sameId(fo.locationId, order.salesLocationId) && (fo.lines || []).some((line) => line.remaining > 0 && (need.get(line.lineItemId) || 0) > 0 && targets.get(line.lineItemId) === target)),
+  );
   const moves = [];
+  const left = new Map(need);
+  if (moveTarget) {
+    for (const fo of active) {
+      if (!sameId(fo.locationId, order.salesLocationId)) continue;
+      const lines = [];
+      for (const line of fo.lines || []) {
+        if (targets.get(line.lineItemId) !== moveTarget) continue;
+        const want = left.get(line.lineItemId) || 0;
+        if (want <= 0 || line.remaining <= 0) continue;
+        const quantity = Math.min(want, line.remaining);
+        lines.push({ id: line.id, quantity });
+        left.set(line.lineItemId, want - quantity);
+      }
+      if (lines.length) moves.push({ id: fo.id, newLocationId: gid("Location", moveTarget), fulfillmentOrderLineItems: lines });
+    }
+  }
+  // 販売店舗に移す元が足りるか（店頭で引渡済みにされていないか）を、全部の出荷元の分で見る
+  const short = new Map(need);
   for (const fo of active) {
     if (!sameId(fo.locationId, order.salesLocationId)) continue;
-    const lines = [];
     for (const line of fo.lines || []) {
-      const left = need.get(line.lineItemId) || 0;
-      if (left <= 0 || line.remaining <= 0) continue;
-      const quantity = Math.min(left, line.remaining);
-      lines.push({ id: line.id, quantity });
-      need.set(line.lineItemId, left - quantity);
+      const want = short.get(line.lineItemId) || 0;
+      if (want > 0 && line.remaining > 0) short.set(line.lineItemId, Math.max(0, want - line.remaining));
     }
-    if (lines.length) moves.push({ id: fo.id, newLocationId: gid("Location", delivery.from), fulfillmentOrderLineItems: lines });
   }
   // 移す元が残っていない（店頭で引渡済みにされた）
-  if ([...need.values()].some((left) => left > 0)) {
+  if ([...short.values()].some((n) => n > 0)) {
     // POS Lite で「フルフィルメント済みにする」をオフにできないときの道（T 11/23 3:30・既定オフ）:
     // 配送する明細を含む、販売店舗での履行を取り消す。取り消した分は販売店舗の出荷指示に戻るので、次の 1 歩で出荷元へ移す。
     // 取り消すのは履行の丸ごと（持ち帰り分も一度戻る）。持ち帰り分は移したあとにまた通知なしで履行する。
     if (config.cancelStoreFulfillment) {
       const cancels = (order.fulfillments || [])
         .filter((f) => f.id && sameId(f.locationId, order.salesLocationId))
-        .filter((f) => (f.lines || []).some((line) => (need.get(line.lineItemId) || 0) > 0 && line.quantity > 0))
+        .filter((f) => (f.lines || []).some((line) => (short.get(line.lineItemId) || 0) > 0 && line.quantity > 0))
         .map((f) => ({ id: f.id }));
       if (cancels.length) return { ...emptyStep("cancel", null), ...side, cancels };
     }

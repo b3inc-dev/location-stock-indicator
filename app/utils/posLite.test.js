@@ -116,7 +116,7 @@ test("配送の確定: 明細の配送数量・配送先・出荷元・送料を
     { lines: [{ uuid: "a", variantId: 9, quantity: 3 }, { uuid: "b", variantId: 10, quantity: 1 }, { uuid: "fee", variantId: null, quantity: 1 }], shipQuantities: { a: 2 }, address: ADDRESS, from: "gid://shopify/Location/303" },
     ON.locations[0],
   );
-  assert.deepEqual(built.lineProperties, [{ uuid: "a", quantity: 2 }]);
+  assert.deepEqual(built.lineProperties, [{ uuid: "a", quantity: 2, from: null }], "まとめてのときは明細に出荷元を書かない");
   assert.deepEqual(built.clearLines, ["b"]);
   assert.equal(built.shipCount, 2);
   assert.equal(built.fee, 800);
@@ -569,4 +569,131 @@ test("管理画面: 再処理は確認の窓、理由に要確認のバッジ、
   const hook = readFileSync("app/routes/webhooks.orders.paid.jsx", "utf8");
   assert.match(hook, /void processPaidInBackground/);
   assert.match(hook, /check\.action === "retry"[\s\S]*status: 500/);
+});
+
+// ---- 出荷元を商品ごとに選ぶ（T 11/23 3:40「発送の際は必ず商品ごとかまとめて選択」） ----
+
+const W2 = "gid://shopify/Location/303";
+
+test("配送の確定（商品ごと）: 配送する明細はすべて出荷元が要る。販売する店舗は選べない", () => {
+  const lines = [{ uuid: "a", variantId: 9, quantity: 3, title: "シャツ" }, { uuid: "b", variantId: 10, quantity: 2, title: "靴下" }, { uuid: "c", variantId: 11, quantity: 1, title: "帽子" }];
+  const built = buildDeliveryCart({ mode: "items", lines, shipQuantities: { a: 2, b: 2 }, lineFrom: { a: "202", b: "gid://shopify/Location/303" }, address: ADDRESS }, ON.locations[0]);
+  assert.equal(built.mode, "items");
+  assert.deepEqual(built.lineProperties, [{ uuid: "a", quantity: 2, from: "202" }, { uuid: "b", quantity: 2, from: "303" }]);
+  const delivery = JSON.parse(built.cartProperties[DELIVERY_ATTRIBUTE]);
+  assert.equal(delivery.mode, "items");
+  assert.equal("from" in delivery, false, "商品ごとのときは全体の出荷元を書かない");
+  assert.match(buildDeliveryCart({ mode: "items", lines, shipQuantities: { a: 2, b: 1 }, lineFrom: { a: "202" }, address: ADDRESS }, ON.locations[0]).error, /「靴下」の出荷元を選んで/);
+  assert.match(buildDeliveryCart({ mode: "items", lines, shipQuantities: { a: 1 }, lineFrom: { a: "101" }, address: ADDRESS }, ON.locations[0]).error, /「シャツ」の出荷元は、販売する店舗と別/);
+  // 持ち帰りだけの明細（c）は出荷元が要らない
+  assert.equal(buildDeliveryCart({ mode: "items", lines, shipQuantities: { a: 1 }, lineFrom: { a: "202" }, address: ADDRESS }, ON.locations[0]).error, undefined);
+});
+
+function itemsAttr() {
+  const built = buildDeliveryCart(
+    { mode: "items", lines: [{ uuid: "a", variantId: 9, quantity: 3 }, { uuid: "b", variantId: 10, quantity: 2 }], shipQuantities: { a: 2, b: 2 }, lineFrom: { a: "202", b: "303" }, address: ADDRESS },
+    ON.locations[0],
+  );
+  return built.cartProperties[DELIVERY_ATTRIBUTE];
+}
+
+/** シャツ 3 点（配送 2 → 倉庫 W・持ち帰り 1）と靴下 2 点（配送 2 → 第 2 倉庫 W2）。会計の出荷指示は 1 つ。 */
+function orderItems(overrides = {}) {
+  return order3({
+    customAttributes: [{ key: DELIVERY_ATTRIBUTE, value: itemsAttr() }],
+    lines: [
+      { id: "gid://shopify/LineItem/11", sku: "SKU-1", title: "シャツ", quantity: 3, unitPrice: 5000, variantId: "gid://shopify/ProductVariant/9", customAttributes: [{ key: SHIP_QTY_PROPERTY, value: "2" }, { key: "_lsi_from", value: "202" }] },
+      { id: "gid://shopify/LineItem/13", sku: "SKU-2", title: "靴下", quantity: 2, unitPrice: 1000, variantId: "gid://shopify/ProductVariant/10", customAttributes: [{ key: SHIP_QTY_PROPERTY, value: "2" }, { key: "_lsi_from", value: "303" }] },
+      { id: "gid://shopify/LineItem/12", sku: "", title: "送料", quantity: 1, unitPrice: 800, variantId: null, customAttributes: [{ key: "_lsi_fee", value: "1" }] },
+    ],
+    fulfillmentOrders: [
+      { id: "gid://shopify/FulfillmentOrder/71", status: "OPEN", method: "RETAIL", locationId: STORE, lines: [
+        { id: "gid://shopify/FulfillmentOrderLineItem/81", lineItemId: "gid://shopify/LineItem/11", remaining: 3 },
+        { id: "gid://shopify/FulfillmentOrderLineItem/82", lineItemId: "gid://shopify/LineItem/13", remaining: 2 },
+      ] },
+    ],
+    ...overrides,
+  });
+}
+
+test("商品ごと: 1 回に 1 つの出荷元の分だけを移す（1 つの出荷指示が出荷元ごとに分かれる）", () => {
+  const first = planSale(orderItems(), ON);
+  assert.equal(first.phase, "move");
+  assert.deepEqual(first.moves, [{ id: "gid://shopify/FulfillmentOrder/71", newLocationId: WAREHOUSE, fulfillmentOrderLineItems: [{ id: "gid://shopify/FulfillmentOrderLineItem/81", quantity: 2 }] }]);
+  assert.equal(first.handoff.shipFromMode, "items");
+  assert.equal(first.handoff.warehouseLocationId, null);
+  assert.deepEqual(first.handoff.lines.map((l) => [l.lineItemId, l.warehouseLocationId]), [["11", "202"], ["13", "303"]]);
+});
+
+test("商品ごと: 出荷元の無い明細・販売する店舗の明細は要確認。まとめてのときは明細の古い値を読まない", () => {
+  const missing = orderItems();
+  missing.lines[1].customAttributes = [{ key: SHIP_QTY_PROPERTY, value: "2" }];
+  assert.equal(planSale(missing, ON).reason, "bad_delivery");
+  const same = orderItems();
+  same.lines[1].customAttributes[1].value = "101";
+  assert.equal(planSale(same, ON).reason, "same_location");
+  // まとめて（出荷元 202）なのに、明細に前の商品ごとの値（303）が残っていても 202 へ移す
+  const all = order3();
+  all.lines[0].customAttributes.push({ key: "_lsi_from", value: "303" });
+  assert.equal(planSale(all, ON).moves[0].newLocationId, WAREHOUSE);
+});
+
+test("processSale（商品ごと）: W へ 2 点・W2 へ 2 点を移し、持ち帰り 1 点だけを履行。2 回目は何もしない", async () => {
+  const shop = fakeShopify(orderItems());
+  const first = await processSale(shop.request, "gid://shopify/Order/1");
+  assert.equal(first.phase, "done");
+  assert.equal(first.storeQuantity, 1);
+  const openAt = (loc, lineItemId) =>
+    shop.state.fulfillmentOrders
+      .filter((fo) => sameLoc(fo.locationId, loc) && fo.status === "OPEN")
+      .flatMap((fo) => fo.lines)
+      .filter((l) => l.lineItemId === lineItemId)
+      .reduce((sum, l) => sum + l.remaining, 0);
+  assert.equal(openAt(WAREHOUSE, "gid://shopify/LineItem/11"), 2);
+  assert.equal(openAt(W2, "gid://shopify/LineItem/13"), 2);
+  assert.equal(openAt(WAREHOUSE, "gid://shopify/LineItem/13"), 0, "靴下は W に行かない");
+  const store = shop.state.fulfillments.filter((f) => sameLoc(f.locationId, STORE)).flatMap((f) => f.lines);
+  assert.deepEqual(store, [{ lineItemId: "gid://shopify/LineItem/11", quantity: 1 }]);
+  assert.equal(shop.calls.filter((c) => c === "PosLiteMove").length, 2, "出荷元ごとに 1 回ずつ");
+
+  shop.calls.length = 0;
+  const second = await processSale(shop.request, "gid://shopify/Order/1");
+  assert.equal(second.phase, "done");
+  assert.ok(!["PosLiteMove", "PosLiteFulfill", "PosLiteCancelFulfillment"].some((c) => shop.calls.includes(c)));
+});
+
+test("processSale（商品ごと）: 1 つ目の出荷元へ移したあとに止まっても、再処理で 2 つ目から続ける", async () => {
+  const shop = fakeShopify(orderItems());
+  let moves = 0;
+  const request = async (query, variables) => {
+    if (/mutation PosLiteMove/.test(query) && sameLoc(variables.newLocationId, W2) && moves++ === 0) {
+      return { fulfillmentOrderMove: { movedFulfillmentOrder: null, userErrors: [{ message: "第 2 倉庫に在庫の登録がありません" }] } };
+    }
+    return shop.request(query, variables);
+  };
+  const first = await processSale(request, "gid://shopify/Order/1");
+  assert.equal(first.phase, "review");
+  assert.match(first.message, /第 2 倉庫/);
+  assert.ok(!shop.calls.includes("PosLiteFulfill"), "全部移すまで持ち帰りを履行しない");
+  shop.calls.length = 0;
+  const retry = await processSale(request, "gid://shopify/Order/1");
+  assert.equal(retry.phase, "done");
+  assert.equal(shop.calls.filter((c) => c === "PosLiteMove").length, 1, "W へはもう移さない（W2 の分だけ）");
+  assert.ok(!shop.state.tags.includes(REVIEW_TAG));
+});
+
+test("代わりの道（商品ごと）: 店頭で全部履行済みでも、取り消して出荷元ごとに移す", async () => {
+  const all = orderItems({
+    fulfillmentOrders: [{ id: "fo", status: "CLOSED", method: "RETAIL", locationId: STORE, lines: [
+      { id: "l1", lineItemId: "gid://shopify/LineItem/11", remaining: 0 },
+      { id: "l2", lineItemId: "gid://shopify/LineItem/13", remaining: 0 },
+    ] }],
+    fulfillments: [{ id: "gid://shopify/Fulfillment/95", locationId: STORE, lines: [{ lineItemId: "gid://shopify/LineItem/11", quantity: 3 }, { lineItemId: "gid://shopify/LineItem/13", quantity: 2 }] }],
+  });
+  const shop = fakeShopify(all);
+  const result = await processSale(shop.request, "gid://shopify/Order/1", { config: { ...ON, cancelStoreFulfillment: true } });
+  assert.equal(result.phase, "done");
+  assert.equal(shop.calls.filter((c) => c === "PosLiteCancelFulfillment").length, 1);
+  assert.equal(shop.calls.filter((c) => c === "PosLiteMove").length, 2);
+  assert.equal(result.storeQuantity, 1);
 });

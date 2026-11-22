@@ -76,6 +76,9 @@ const MOVE = `mutation PosLiteMove($id: ID!, $newLocationId: ID!, $fulfillmentOr
     userErrors { field message }
   }
 }`;
+/** 出荷元の数の上限のつもり（1 回に 1 つの出荷元へ移す。これを超えたら要確認で止める）。 */
+const MAX_MOVE_ROUNDS = 20;
+
 const CANCEL = `mutation PosLiteCancelFulfillment($id: ID!) {
   fulfillmentCancel(id: $id) { fulfillment { id status } userErrors { field message } }
 }`;
@@ -241,16 +244,22 @@ export async function processSale(request, orderId, options = {}) {
       if (step.phase === "retry") return finish(request, order, { ...step, phase: "review" });
       if (!["move", "fulfill", "done"].includes(step.phase)) return finish(request, order, step);
     }
-    if (step.phase === "move") {
+    // 出荷元が分かれるときは、1 回に 1 つの出荷元の分を移し、読み直して次の出荷元へ（同じ手が続いたら止める）
+    let lastMoves = null;
+    for (let round = 0; step.phase === "move"; round += 1) {
+      const signature = JSON.stringify(step.moves);
+      if (round >= MAX_MOVE_ROUNDS || signature === lastMoves) {
+        return finish(request, order, { ...step, phase: "review", reason: "move_incomplete", message: messageFor("move_incomplete") });
+      }
+      lastMoves = signature;
       for (const move of step.moves) {
         const error = await firstUserError(request, MOVE, move, "fulfillmentOrderMove");
         if (error) return finish(request, order, { phase: "review", reason: "move", message: `出荷元へ移せませんでした（${error}）。出荷元に商品の在庫の登録があるか確かめてください。` });
       }
       order = await loadSaleOrder(request, orderId);
       step = planSale(order, config);
-      if (step.phase === "move") return finish(request, order, { ...step, phase: "review", reason: "move_incomplete", message: messageFor("move_incomplete") });
-      if (step.phase !== "fulfill" && step.phase !== "done") return finish(request, order, step);
     }
+    if (step.phase !== "fulfill" && step.phase !== "done") return finish(request, order, step);
     for (const fulfill of step.fulfills) {
       const error = await firstUserError(
         request,

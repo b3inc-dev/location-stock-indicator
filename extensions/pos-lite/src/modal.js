@@ -4,6 +4,7 @@
 import { adminRequest, busy, button, currentLocationId, field, loadState, screen, text } from "./api.js";
 import {
   DELIVERY_ATTRIBUTE,
+  SHIP_FROM_PROPERTY,
   SHIP_QTY_PROPERTY,
   buildDeliveryCart,
   collectPages,
@@ -254,6 +255,14 @@ function renderDelivery(state) {
   const saved = parseDelivery(cart.properties?.[DELIVERY_ATTRIBUTE]);
   text("商品ごとに、配送する数量を決めます。残りは持ち帰りです。", list);
   const ship = {};
+  // 出荷元: 発送の際は必ず「まとめて」か「商品ごと」に選ぶ（T 11/23 3:40）。
+  // 管理画面の既定の出荷元は、先に選んでおくだけ（画面に出す。黙って決めない）
+  let mode = saved?.mode === "items" ? "items" : "all";
+  let from = saved?.mode === "all" ? saved.from : "";
+  const lineFrom = {};
+  const linePickers = [];
+  let choices = [];
+  let preset = "";
   const fee = text("", list);
   const showFee = () => {
     const total = Object.values(ship).reduce((sum, n) => sum + n, 0);
@@ -279,29 +288,65 @@ function renderDelivery(state) {
     minus.addEventListener("click", () => change(-1));
     plus.addEventListener("click", () => change(1));
     draw();
+    // 商品ごとに選ぶときの、この明細の出荷元
+    lineFrom[line.uuid] = String(line.properties?.[SHIP_FROM_PROPERTY] || "");
+    const pickerLabel = text("", list, "subdued");
+    const pickerBox = document.createElement("s-stack");
+    pickerBox.setAttribute("direction", "inline");
+    pickerBox.setAttribute("gap", "small");
+    list.append(pickerBox);
+    linePickers.push({ uuid: line.uuid, label: pickerLabel, box: pickerBox });
   }
   showFee();
-  // 出荷元: 会計ごとに必ず選ぶ（配送全体で 1 つ）。管理画面の既定の出荷元は、先に選んでおくだけ（T 11/23 3:40）
-  let from = saved?.from || "";
+  const modeBox = document.createElement("s-stack");
+  modeBox.setAttribute("direction", "inline");
+  modeBox.setAttribute("gap", "small");
+  list.append(modeBox);
   const fromLabel = text("出荷元: 読み込み中…", list);
   const fromBox = document.createElement("s-stack");
   fromBox.setAttribute("gap", "small");
   list.append(fromBox);
-  const drawFrom = (choices) => {
-    fromBox.replaceChildren();
-    const chosen = choices.find((c) => c.id === from);
-    fromLabel.textContent = chosen ? `出荷元: ${chosen.name}` : "出荷元を選んでください（必ず選びます）";
+  const pickButtons = (box, selected, onPick) => {
+    box.replaceChildren();
     for (const choice of choices) {
-      const pick = button(choice.id === from ? `✓ ${choice.name}` : choice.name, fromBox, choice.id === from ? "primary" : "secondary");
-      pick.addEventListener("click", () => { from = choice.id; drawFrom(choices); });
+      const pick = button(choice.id === selected ? `✓ ${choice.name}` : choice.name, box, choice.id === selected ? "primary" : "secondary");
+      pick.addEventListener("click", () => onPick(choice.id));
+    }
+  };
+  const nameOf = (id) => choices.find((c) => c.id === id)?.name || "";
+  const drawFrom = () => {
+    modeBox.replaceChildren();
+    const all = button(mode === "all" ? "✓ まとめて選ぶ" : "まとめて選ぶ", modeBox, mode === "all" ? "primary" : "secondary");
+    const items = button(mode === "items" ? "✓ 商品ごとに選ぶ" : "商品ごとに選ぶ", modeBox, mode === "items" ? "primary" : "secondary");
+    all.addEventListener("click", () => { mode = "all"; drawFrom(); });
+    items.addEventListener("click", () => { mode = "items"; drawFrom(); });
+    if (mode === "all") {
+      fromLabel.textContent = nameOf(from) ? `出荷元（配送全体）: ${nameOf(from)}` : "出荷元を選んでください（必ず選びます）";
+      pickButtons(fromBox, from, (id) => { from = id; drawFrom(); });
+    } else {
+      fromLabel.textContent = "商品ごとに、下で出荷元を選んでください（配送する商品は必ず選びます）";
+      fromBox.replaceChildren();
+    }
+    for (const picker of linePickers) {
+      if (mode !== "items") {
+        picker.label.textContent = "";
+        picker.box.replaceChildren();
+        continue;
+      }
+      const chosen = nameOf(lineFrom[picker.uuid]);
+      picker.label.textContent = chosen ? `この商品の出荷元: ${chosen}` : "この商品の出荷元を選んでください";
+      pickButtons(picker.box, lineFrom[picker.uuid], (id) => { lineFrom[picker.uuid] = id; drawFrom(); });
     }
   };
   adminRequest(`query PosLiteShipFrom { locations(first: 250, includeInactive: false) { nodes { id name } } }`, {})
     .then((data) => {
-      const { choices, preset } = shipFromChoices(data.locations?.nodes || [], row);
-      if (!from || !choices.some((c) => c.id === from)) from = preset;
+      ({ choices, preset } = shipFromChoices(data.locations?.nodes || [], row));
+      if (!choices.some((c) => c.id === from)) from = preset;
+      for (const picker of linePickers) {
+        if (!choices.some((c) => c.id === lineFrom[picker.uuid])) lineFrom[picker.uuid] = preset;
+      }
       if (!choices.length) fromLabel.textContent = "出荷元にできるロケーションがありません。";
-      else drawFrom(choices);
+      else drawFrom();
     })
     .catch((error) => { fromLabel.textContent = `出荷元を読めませんでした（${error.message}）`; });
   const to = saved?.to || {};
@@ -326,17 +371,25 @@ function renderDelivery(state) {
             lines: (latest.lineItems || []).map((line) => ({ uuid: line.uuid, variantId: line.variantId, quantity: line.quantity, title: line.title })),
             shipQuantities: ship,
             address: Object.fromEntries(Object.entries(address).map(([key, item]) => [key, String(item.value ?? "")])),
+            mode,
             from,
+            lineFrom,
           },
           row,
         );
         if (built.error) throw new Error(built.error);
         for (const item of built.lineProperties) {
-          await shopify.cart.addLineItemProperties(item.uuid, { [SHIP_QTY_PROPERTY]: String(item.quantity) });
+          const props = { [SHIP_QTY_PROPERTY]: String(item.quantity) };
+          if (item.from) props[SHIP_FROM_PROPERTY] = item.from;
+          await shopify.cart.addLineItemProperties(item.uuid, props);
+          const line = (latest.lineItems || []).find((l) => l.uuid === item.uuid);
+          // まとめて選んだときは、前に商品ごとに選んだ値を消す（サーバーはまとめてのとき明細の値を読まないが、残さない）
+          if (!item.from && line?.properties?.[SHIP_FROM_PROPERTY]) await shopify.cart.removeLineItemProperties(item.uuid, [SHIP_FROM_PROPERTY]);
         }
         for (const uuid of built.clearLines) {
           const line = (latest.lineItems || []).find((l) => l.uuid === uuid);
-          if (line?.properties?.[SHIP_QTY_PROPERTY]) await shopify.cart.removeLineItemProperties(uuid, [SHIP_QTY_PROPERTY]);
+          const stale = [SHIP_QTY_PROPERTY, SHIP_FROM_PROPERTY].filter((key) => line?.properties?.[key]);
+          if (stale.length) await shopify.cart.removeLineItemProperties(uuid, stale);
         }
         await shopify.cart.addCartProperties(built.cartProperties);
         await applyFee(feeSync(shopify.cart.current.value.lineItems, built.title, built.fee, state.config.shippingTaxable), built.title, state.config, built.fee > 0);
@@ -356,7 +409,8 @@ function renderDelivery(state) {
       try {
         const latest = shopify.cart.current.value;
         for (const line of latest.lineItems || []) {
-          if (line.properties?.[SHIP_QTY_PROPERTY]) await shopify.cart.removeLineItemProperties(line.uuid, [SHIP_QTY_PROPERTY]);
+          const stale = [SHIP_QTY_PROPERTY, SHIP_FROM_PROPERTY].filter((key) => line.properties?.[key]);
+          if (stale.length) await shopify.cart.removeLineItemProperties(line.uuid, stale);
         }
         if (latest.properties?.[DELIVERY_ATTRIBUTE]) await shopify.cart.removeCartProperties([DELIVERY_ATTRIBUTE]);
         await applyFee(feeSync(shopify.cart.current.value.lineItems, row.shippingTitle, 0, state.config.shippingTaxable), row.shippingTitle, state.config, false);
