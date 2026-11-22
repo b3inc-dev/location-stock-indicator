@@ -65,16 +65,21 @@ read_inventory, read_locations, read_products, read_shipping, write_app_proxy
 | 2026-04: 在庫を書く mutation に `changeFromQuantity`、冪等キーが必須 | 事実: 在庫は読むだけなので影響なし |
 | 2026-04: `DeliveryProfile.legacyMode` が非推奨 | 事実: `legacyMode` は使っていない |
 | 2026-07: マーケット主導配送（MDS）の店では `deliveryProfiles` が古い値を返すことがある | 事実: MDS の店は前から `Market.delivery.shipping`（2026-07）で読んでいる。legacy の店だけ `deliveryProfiles` |
-| **2026-04: JSON のメタフィールドの書き込みは 128KB まで**（2026-04 以降の版。2026-04-01 より前から JSON を使っていたアプリは 2MB のまま） | **要確認**。下を見る |
+| **2026-04: JSON のメタフィールドの書き込みは 128KB まで**（2026-04 以降の版。2026-04-01 より前から JSON を使っていたアプリは 2MB のまま） | 分析を日ごとのキーに分けて対応（#67）。下を見る |
 
 **JSON メタフィールド 128KB の件**（出典: https://shopify.dev/changelog/posts/reduced-metafield-value-sizes ）
 
-- 事実: このアプリは店のメタフィールドに JSON を書いている。設定 `location_stock.config`（`app.settings.jsx`・`app.locations.jsx`）と、分析の月ごとの記録 `location_stock.analytics_YYYY_MM`（`app/analytics.server.js`）。
+- 事実: このアプリは店のメタフィールドに JSON を書いている。設定 `location_stock.config`（`app.settings.jsx`・`app.locations.jsx`）と、分析の日ごとの記録 `location_stock.analytics_YYYY_MM_DD`（`app/analytics.server.js`。#67 から）。
+- 事実: #67 より前は、分析を月ごとのキー `location_stock.analytics_YYYY_MM`（1 か月分を 1 本）に書いていた。#67 からは月ごとのキーには書かず、読むだけ。分析画面は月ごとのキーと日ごとのキーの両方を読み、同じ日は足す（同じイベントが両方に入ることはないので、二重には数えない）。
 - 事実: 2025-10 のときはこの上限の外だった。#44 で 2026-07 にすると上限の中に入る。
 - 事実: 2MB のままになる「前から使っていたアプリ」を、アプリごと・店ごとのどちらで決めるかは、Shopify のページに書いていない。超えた書き込みがどう失敗するかも書いていない。
 - 推測: 自社用（Location Stock - Ciara）は 2026-04 より前から JSON を書いているので 2MB のままの見込み。公開用は別のアプリ（別の client ID）なので、128KB になるかもしれない。
-- 推測: 分析の 1 か月分は「日数 × ロケーション数 × 2 つの表」で増える。ロケーションの ID（`gid://shopify/Location/…`）1 件が 45 バイトほどとすると、毎日すべてのロケーションが出る店では **45 か所前後で 128KB を超える**。設定（`config`）は小さいので当面は届かない見込み。
-- 次にすること（T さんが決める）: (1) 開発ストアで 2026-07 のまま分析の書き込みが通るか確かめる、(2) 多いロケーションの店のために、分析を月ではなく日ごと・週ごとのキーに分けるか、ロケーションの ID を短くする直しを別の PR で作る、(3) 必要なら Shopify のフォームで上限を上げてもらう。
+- 推測: 前の月ごとのキーでは、1 か月分が「日数 × ロケーション数 × 2 つの表」で増え、毎日すべてのロケーションが出る店では **45 か所前後で 128KB を超える**おそれがあった（ロケーションの ID `gid://shopify/Location/…` 1 件を 45 バイトほどとして）。設定（`config`）は小さいので当面は届かない見込み。
+- 事実（#67）: 日ごとのキーなら 1 日分はふつう数 KB。試験では 300 か所が 1 日にすべて出ても 128KB 未満。
+- 事実（#67）: 1 日分が 120,000 バイト（`MAX_DAY_BYTES`。128KB より少し下）に届くときは、合計の数（エリア表示回数・近隣クリック数・受け取りクリック数）だけ足し、ロケーション別に足せなかった件数と理由を `sizeLimitSkipped: { count, reason: "size_limit" }` としてその日に残す。分析画面の上のお知らせ枠と、サーバーの記録（ログ。キー・件数・理由だけ）に出す。
+- 推測: 1 日分が上限に届くのは 1,000 か所を超えるくらいの店。
+- 事実: Shopify の説明（https://shopify.dev/docs/apps/build/metafields/metafield-limits ）には、1 つの店に付けられるメタフィールドの値の数の上限は書かれていない（上限があるのは定義の数）。日ごとのキーは 1 年に 365 本ずつ増え、今は古い日を消す処理は無い。
+- 次にすること（T さんが決める）: (1) 開発ストアで 2026-07 のまま分析の書き込みと画面が通るか確かめる（#44 と一緒に）、(2) 古い日のキーを消すかどうか（`docs/listing/README.md` の 4「アンインストールのあと残すか」と一緒に）。
 
 ## 3. App Proxy
 
