@@ -88,6 +88,29 @@ read_inventory, read_locations, read_products, read_shipping, write_app_proxy
 - 成功: HTTP 200 + `{ ok: true, ... }`。エラーも多くは HTTP 200 + `{ ok: false, error, message }`（Shopify のエラーページ回避コメントあり）。
 - 分析: GET `action=analytics&event=...&date=YYYY-MM-DD` または POST JSON。
 
+### 分析の入力をサーバーで確かめる（#70 から）
+
+ストアフロントから来る分析の入力は、記録の前にサーバーで確かめる（`app/utils/analyticsInput.js`。試験は `app/utils/analyticsInput.test.js`）。GET（loader）と POST（action）の両方で同じ処理を使う。App Proxy の認証（`authenticate.public.appProxy`）は前と同じ。
+
+| 確かめること | 決まり | はじいたとき（理由） |
+|---|---|---|
+| イベントの種類 | `area_display`・`nearby_click`・`order_pick_click` だけ | 記録しない |
+| 日付 | 店のタイムゾーン（`Shop.ianaTimezone`。取れないとき・おかしいときは `Asia/Tokyo`）の今日の前後 1 日だけ。ありえない日付（`2026-11-31` など）もはじく | イベントごと記録しない（`date_out_of_range`・`bad_format`） |
+| ロケーション ID | その店の `locations` にある `gid://shopify/Location/<数字>` だけ。同じ ID は 1 回だけ | その ID だけ足さない。合計の数（クリック数など）は足す（`not_in_shop`・`bad_format`・`duplicate`） |
+| 1 回の数 | 1 回のイベントで 20 件まで（`MAX_LOCATION_IDS_PER_EVENT`。今のストアフロントは 1 件だけ送る）。GET の `locationIds` は 40 件（上限の 2 倍）より後を見ない | 超えた分を足さない（`over_limit`） |
+| 店のロケーションが読めない | — | ロケーション別には足さない（`lookup_failed`） |
+
+- 事実: 前後 1 日にしたのは、ストアフロントがお客様のブラウザの日付を送るため（`location-stock-indicator.js` の `getTodayDateStr`）。店とお客様のタイムゾーンのずれをこの幅で受ける。
+- 事実: はじいた分は黙って捨てない。理由ごとの件数をサーバーの記録（ログ `[analytics] storefront input rejected`）に出し、応答の `rejected`（例 `{ ok: true, rejected: { not_in_shop: 1 } }`）にも入れる。記録に出すのはストア・イベントの種類・理由ごとの件数だけで、日付・ロケーション ID の中身・お客様の情報は出さない（試験あり）。
+- 事実: POST で日付などが外れたときは HTTP 400 + `{ ok: false, error: <理由>, rejected }`。GET は今までどおり HTTP 200 + `{ ok: true }`（はじいた分があれば `rejected` を足す）。
+- 事実（API の数）: どのタイムゾーン（UTC−12〜UTC+14）でも外れる日付（UTC の今日の前後 2 日の外）は、API を呼ぶ前にはじく。GET では Lite の店（`features.analytics` なし）はプランを見たところで止まり、店の情報を読まない。
+- 事実（API の数）: 店の ID・タイムゾーン・ロケーション ID は、問い合わせ `AnalyticsShopContext`（`shop { id ianaTimezone }` と `locations(first: 250)`。前の `shop { id }` の代わり）でまとめて読み、店ごとに 5 分だけ覚える（`shortCache`、キー `analytics-ctx:<shop>`）。認証が切れた・店の ID がない・ロケーションが読めないときは覚えない。
+- 事実: 読むロケーションは 1,000 か所まで（250 件 × 4 ページ、`MAX_LOCATION_PAGES`）。超える店は、超えた分が `not_in_shop` になる。
+- 事実: 店で新しく足したロケーションは、覚えている間（最大 5 分）`not_in_shop` としてはじかれることがある（件数は記録に出る）。
+- 推測: 止めた（無効の）ロケーションの ID は `locations` の既定では返らないのではじかれるが、ストアフロントに出るのは有効なロケーションだけなので、ふだんは起きない。
+- 推測: 店とお客様のタイムゾーンが 1 日より大きくずれる場合（例: 店 UTC+14・お客様 UTC−12）は、正しいクリックでも `date_out_of_range` になる。ごくまれで、件数は記録に出る。
+- 事実: POST（action）は、プランと本文を見る前に店の情報を読む（5 分は覚える）。今のストアフロントは GET だけを使う。順番を変えるかは #70 のレビューの P2（まだ決まっていない）。
+
 ## 4. Theme App Extension
 
 - ディレクトリ: `extensions/location-stock-theme/`
