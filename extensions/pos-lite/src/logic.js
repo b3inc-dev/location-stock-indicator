@@ -416,6 +416,11 @@ export function planFeeLine(cartLines, title, fee, taxable = true, { ownUnmarked
   return result;
 }
 
+/** 商品の無い、同じ名前の、印の無い行（送料の行と紛らわしい行。消さずに知らせるだけ）。 */
+export function unmarkedFeeLines(cartLines, title) {
+  return (cartLines || []).filter((line) => line && !numericId(line.variantId) && !isFeeLine(line) && line.title === title);
+}
+
 /** カートの今の配送の点数（タイルの表示用）。 */
 export function cartShipCount(cart) {
   if (!cart?.properties?.[DELIVERY_ATTRIBUTE]) return 0;

@@ -17,6 +17,7 @@ import {
   pickupLabel,
   planFeeLine,
   shipFromChoices,
+  unmarkedFeeLines,
 } from "./logic.js";
 
 export default async function () {
@@ -261,7 +262,13 @@ export async function applyFee(title, fee, config) {
     if (feeLine && !isFeeLine(feeLine)) ownUnmarkedFees.add(feeLine.uuid);
   }
   if (!feeLine) feeLine = current().find((line) => isFeeLine(line)) || null;
-  if (!feeLine) return;
+  // 送料の行が見つからないまま「確定しました」と出さない（見直し #77）。もう一度押しても、残っている印の無い行があれば
+  // planFeeLine の conflict で止まるので二重にはならない
+  if (!feeLine) {
+    throw new Error(
+      `「${title}」の行をカートで見つけられませんでした。カートに「${title}」の行があるか確かめ、無ければもう一度「配送を確定」を押してください（あれば消してから押してください）。`,
+    );
+  }
   const want = feeProperties(config);
   if (Object.entries(want).some(([key, value]) => feeLine.properties?.[key] !== value)) {
     try {
@@ -458,6 +465,13 @@ function renderDelivery(state) {
         }
         if (latest.properties?.[DELIVERY_ATTRIBUTE]) await shopify.cart.removeCartProperties([DELIVERY_ATTRIBUTE]);
         await applyFee(row.shippingTitle, 0, state.config);
+        // 印の無い送料の行（手で入れた行・覚えが消えた行）は消さないので、残っていたら知らせる（見直し #77）
+        const leftover = unmarkedFeeLines(shopify.cart.current.value.lineItems, row.shippingTitle);
+        if (leftover.length) {
+          result.setAttribute("tone", "warning");
+          result.textContent = `配送を取り消しました。全部持ち帰りです。カートに印の無い「${row.shippingTitle}」の行が ${leftover.length} つ残っています。要らなければカートで消してください。`;
+          return;
+        }
         result.setAttribute("tone", "success");
         result.textContent = "配送を取り消しました。全部持ち帰りです。";
       } catch (error) {
