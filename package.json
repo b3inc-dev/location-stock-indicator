@@ -20,7 +20,7 @@
     "graphql-codegen": "graphql-codegen",
     "vite": "vite",
     "typecheck": "react-router typegen && tsc --noEmit",
-    "test": "node --test app/utils/*.test.js app/analytics.server.test.js"
+    "test": "node --test app/utils/*.test.js app/analytics.server.test.js tests/theme/*.test.js tests/ui/*.test.mjs"
   },
   "type": "module",
   "engines": {

@@ -28,7 +28,10 @@ api_version = "2026-01"
 scopes = "read_inventory,read_locations,read_products,read_shipping,read_markets,write_app_proxy"
 
 [auth]
-redirect_urls = [ "https://location-stock-indicator.onrender.com/api/auth" ]
+redirect_urls = [
+  "https://location-stock-indicator.onrender.com/auth/callback",
+  "https://location-stock-indicator.onrender.com/api/auth"
+]
 
 [app_proxy]
 url = "https://location-stock-indicator.onrender.com/apps/location-stock"
