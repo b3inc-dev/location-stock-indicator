@@ -15,6 +15,16 @@ import {
 import { loadLocationDeliveryFlags } from "../utils/deliveryProfiles.js";
 import { cacheGet, cacheSet } from "../utils/shortCache.js";
 import { classifyAppProxyThrown } from "../utils/appProxyThrown.js";
+import {
+  ANALYTICS_EVENT_TYPES,
+  REJECT_REASONS,
+  isDatePossiblyAllowed,
+  loadAnalyticsShopContext,
+  logAnalyticsRejections,
+  rejectedTotal,
+  splitLocationIdsParam,
+  validateAnalyticsEvent,
+} from "../utils/analyticsInput.js";
 
 /** 配送フラグ短命キャッシュ（ms）— Admin API 連打緩和 */
 const DELIVERY_FLAGS_TTL_MS = 60_000;
@@ -64,10 +74,6 @@ const VARIANT_INVENTORY_WITH_CONFIG_QUERY = `#graphql
       }
     }
   }
-`;
-
-const SHOP_ID_QUERY = `#graphql
-  query ShopId { shop { id } }
 `;
 
 /**
@@ -288,6 +294,28 @@ async function graphqlWithAuthRetry(admin, session, query, variables, context, r
     result: second.result,
     refreshStatus: refreshResult.status,
   };
+}
+
+/** 分析の入力を確かめるための店の情報（ID・タイムゾーン・ロケーション ID）を少しの間覚えておく */
+const ANALYTICS_CONTEXT_TTL_MS = 5 * 60 * 1000;
+
+async function loadAnalyticsContextCached(admin, session, route) {
+  const shop = session?.shop;
+  const cacheKey = shop ? `analytics-ctx:${shop}` : null;
+  if (cacheKey) {
+    const hit = cacheGet(cacheKey);
+    if (hit) return hit;
+  }
+  const ctx = await loadAnalyticsShopContext(async (query, variables) => {
+    const attempt = await graphqlWithAuthRetry(admin, session, query, variables, { route });
+    if (attempt.authFailed) return { authFailed: true };
+    return { data: attempt.result?.data };
+  });
+  // ロケーションが読めなかったとき（locationIds: null）は覚えない。次の回にもう一度読む
+  if (cacheKey && !ctx.authFailed && ctx.shopId && ctx.locationIds) {
+    cacheSet(cacheKey, ctx, ANALYTICS_CONTEXT_TTL_MS);
+  }
+  return ctx;
 }
 
 /**
@@ -733,10 +761,33 @@ export async function loader({ request }) {
     if (url.searchParams.get("action") === "analytics") {
       const eventType = url.searchParams.get("event");
       const dateStr = url.searchParams.get("date");
-      if (eventType && dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-        const allowed = ["area_display", "nearby_click", "order_pick_click"];
-        if (allowed.includes(eventType)) {
-          try {
+      let rejected = undefined;
+      const formatOk =
+        typeof eventType === "string" &&
+        ANALYTICS_EVENT_TYPES.includes(eventType) &&
+        typeof dateStr === "string" &&
+        /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
+      if (!formatOk) {
+        // 黙って捨てない: 形の違う入力も理由と件数を記録に出す（値の中身は出さない）
+        const result = {
+          ok: false,
+          reason: ANALYTICS_EVENT_TYPES.includes(eventType) ? "invalid_date" : "invalid_event",
+          rejected: { [REJECT_REASONS.badFormat]: 1 },
+        };
+        logAnalyticsRejections(session?.shop, eventType, result);
+        rejected = result.rejected;
+      } else {
+        try {
+          if (!isDatePossiblyAllowed(dateStr, new Date())) {
+            // 店のタイムゾーンを読む前に、どのタイムゾーンでも今日 ±1 日に入らない日付をはじく（API を呼ばない）
+            const result = {
+              ok: false,
+              reason: REJECT_REASONS.dateOutOfRange,
+              rejected: { [REJECT_REASONS.dateOutOfRange]: 1 },
+            };
+            logAnalyticsRejections(session?.shop, eventType, result);
+            rejected = result.rejected;
+          } else {
             // Lite / plan null では記録しない（features.analytics）
             let analyticsPlan = null;
             try {
@@ -750,35 +801,36 @@ export async function loader({ request }) {
               );
             }
             if (analyticsPlan?.features?.analytics) {
-              const shopIdAttempt = await graphqlWithAuthRetry(
-                admin,
-                session,
-                SHOP_ID_QUERY,
-                undefined,
-                { route: "loader_analytics" }
-              );
-              if (!shopIdAttempt.authFailed) {
-                const shopId = shopIdAttempt.result?.data?.shop?.id;
-                if (shopId) {
-                  const payload = {};
-                  if (eventType === "nearby_click") {
-                    const ids = url.searchParams.get("locationIds");
-                    payload.locationIds = ids ? ids.split(",").filter(Boolean) : [];
+              const ctx = await loadAnalyticsContextCached(admin, session, "loader_analytics");
+              if (!ctx.authFailed && ctx.shopId) {
+                const split = splitLocationIdsParam(url.searchParams.get("locationIds"));
+                const result = validateAnalyticsEvent(
+                  {
+                    eventType,
+                    dateStr,
+                    locationIds: eventType === "nearby_click" ? split.ids : undefined,
+                    locationId: url.searchParams.get("locationId"),
+                    extraOverLimit: eventType === "nearby_click" ? split.overLimit : 0,
+                  },
+                  {
+                    now: new Date(),
+                    timeZone: ctx.timeZone,
+                    knownLocationIds: ctx.locationIds,
                   }
-                  if (eventType === "order_pick_click") {
-                    const id = url.searchParams.get("locationId");
-                    if (id) payload.locationId = id;
-                  }
-                  await recordAnalyticsEvent(admin, shopId, dateStr, eventType, payload);
+                );
+                logAnalyticsRejections(session?.shop, eventType, result);
+                if (rejectedTotal(result.rejected) > 0) rejected = result.rejected;
+                if (result.ok) {
+                  await recordAnalyticsEvent(admin, ctx.shopId, dateStr, eventType, result.payload);
                 }
               }
             }
-          } catch (analyticsErr) {
-            console.error("[location-stock] analytics record error:", analyticsErr);
           }
+        } catch (analyticsErr) {
+          console.error("[location-stock] analytics record error:", analyticsErr);
         }
       }
-      return new Response(JSON.stringify({ ok: true }), {
+      return new Response(JSON.stringify(rejected ? { ok: true, rejected } : { ok: true }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
@@ -1016,14 +1068,8 @@ export async function action({ request }) {
         headers: { "Content-Type": "application/json" },
       });
     }
-    const shopIdAttempt = await graphqlWithAuthRetry(
-      admin,
-      session,
-      SHOP_ID_QUERY,
-      undefined,
-      { route: "action" }
-    );
-    if (shopIdAttempt.authFailed) {
+    const shopCtx = await loadAnalyticsContextCached(admin, session, "action");
+    if (shopCtx.authFailed) {
       return new Response(
         JSON.stringify({
           ok: false,
@@ -1034,7 +1080,7 @@ export async function action({ request }) {
         { status: 401, headers: { "Content-Type": "application/json" } }
       );
     }
-    const shopId = shopIdAttempt.result?.data?.shop?.id;
+    const shopId = shopCtx.shopId;
     if (!shopId) {
       return new Response(JSON.stringify({ ok: false, error: "Shop not found" }), {
         status: 500,
@@ -1064,8 +1110,7 @@ export async function action({ request }) {
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
-    const allowed = ["area_display", "nearby_click", "order_pick_click"];
-    if (!allowed.includes(eventType)) {
+    if (!ANALYTICS_EVENT_TYPES.includes(eventType)) {
       return new Response(
         JSON.stringify({ ok: false, error: "Invalid event type" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
@@ -1088,15 +1133,25 @@ export async function action({ request }) {
         headers: { "Content-Type": "application/json" },
       });
     }
-    const payload = {};
-    if (eventType === "nearby_click" && Array.isArray(body.locationIds)) {
-      payload.locationIds = body.locationIds;
+    const result = validateAnalyticsEvent(
+      {
+        eventType,
+        dateStr,
+        locationIds: eventType === "nearby_click" ? body.locationIds : undefined,
+        locationId: eventType === "order_pick_click" ? body.locationId : undefined,
+      },
+      { now: new Date(), timeZone: shopCtx.timeZone, knownLocationIds: shopCtx.locationIds }
+    );
+    logAnalyticsRejections(session?.shop, eventType, result);
+    if (!result.ok) {
+      return new Response(
+        JSON.stringify({ ok: false, error: result.reason, rejected: result.rejected }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
     }
-    if (eventType === "order_pick_click" && body.locationId) {
-      payload.locationId = body.locationId;
-    }
-    await recordAnalyticsEvent(admin, shopId, dateStr, eventType, payload);
-    return new Response(JSON.stringify({ ok: true }), {
+    await recordAnalyticsEvent(admin, shopId, dateStr, eventType, result.payload);
+    const rejected = rejectedTotal(result.rejected) > 0 ? result.rejected : undefined;
+    return new Response(JSON.stringify(rejected ? { ok: true, rejected } : { ok: true }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
