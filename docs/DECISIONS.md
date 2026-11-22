@@ -17,6 +17,7 @@
 | D7 | 分析はメタフィールド月分割（外部 DB なし） | `analytics.server.js`, REQUIREMENTS §11 |
 | D8 | Theme Extension の Liquid 容量対策としてクラス短縮・JS 圧縮済み | REQUIREMENTS §12 |
 | D9 | App Proxy エラーは HTTP 200 + `ok: false` を多用 | `errorJson` コメント |
+| D10 | 公開用の契約は Partner API の `activeSubscription` でも読めるようにする（既定オフ。見つかれば正、契約なしなら Admin、失敗なら Admin だけ→読めなければ fail-closed。店ごとに 60 秒/15 秒覚える）。2026-11-22 T の決定 | `partnerSubscription.server.js`, `PLAN_SETTINGS_DESIGN.md` §3.4 |
 
 ---
 
