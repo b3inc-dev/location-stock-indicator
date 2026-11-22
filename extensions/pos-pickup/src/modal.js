@@ -1,6 +1,7 @@
 import {pickupOrders, pickupDetails, preparePickup, completePickup} from "./pickup.js";
 import {renderDelivery} from "./delivery-screen.js";
 import {renderReview} from "./review-screen.js";
+import {screen} from "./admin.js";
 import {requirePosAccess} from "./access.js";
 
 async function request(query, variables) {
@@ -16,15 +17,11 @@ async function request(query, variables) {
 }
 
 export function renderPickup() {
-  const page = document.createElement("s-page");
-  page.setAttribute("heading", "店舗受取");
-  const scroll = document.createElement("s-scroll-box");
+  const content = screen("店舗受取");
   const list = document.createElement("s-stack");
   const button = document.createElement("s-button");
   button.textContent = "更新";
-  scroll.append(list, button);
-  page.append(scroll);
-  document.body.replaceChildren(page);
+  content.append(list, button);
   function line(message, parent = list) {
     const item = document.createElement("s-text");
     item.textContent = message;

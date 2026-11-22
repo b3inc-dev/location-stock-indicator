@@ -1,3 +1,5 @@
+import {SettingsSections} from "../components/SettingsSections.jsx";
+import "../components/pos-operations.css";
 import {useState} from "react";
 import {useFetcher, useLoaderData} from "react-router";
 import {authenticate} from "../shopify.server";
@@ -123,30 +125,38 @@ export default function PosOperations() {
   const data = useLoaderData();
   const fetcher = useFetcher();
   const [rows, setRows] = useState(data.rows || []);
+  const [section, setSection] = useState("対象期間");
   if (data.locked) return <p>店舗受取と配送は Pro プランで利用できます。</p>;
   const errors = fetcher.data?.errors || [];
   const update = (locationId, patch) => {
     setRows((current) => current.map((row) => (row.locationId === locationId ? {...row, ...patch} : row)));
   };
   return (
-    <main style={{padding: 20, maxWidth: 1100}}>
+    <main className="pos-operations">
       <h1 style={{fontSize: 20}}>店舗の配送と引渡</h1>
+      <SettingsSections labels={["対象期間", "配送設定"]} selected={section} onSelect={setSection} />
       <p>
         対象期間の支払済みPOS販売だけを処理します。POSの自動履行は対象端末でオフにしてください。配送は店舗ごとに初期オフです。停止するときは対象を外すと、空の終了日時を現在時刻で閉じます。終了日時より前の注文は、遅れて届いても処理します。
       </p>
       {errors.map((error) => <p key={error}>{error}</p>)}
       {fetcher.data?.saved && <p>保存しました。</p>}
-      <form onSubmit={(event) => {
+      <form data-section={section} onInvalidCapture={(event) => {
+        const input = event.target;
+        setSection(input.closest(".delivery-column") ? "配送設定" : "対象期間");
+        requestAnimationFrame(() => input.focus());
+      }} onSubmit={(event) => {
         event.preventDefault();
+        if (fetcher.state !== "idle") return;
         const body = new FormData();
         body.set("payload", JSON.stringify(rows));
         fetcher.submit(body, {method: "post"});
       }}>
+        <div className="pos-operations-table">
         <table style={{width: "100%", borderCollapse: "collapse"}}>
           <thead>
             <tr>
-              {["店舗", "対象", "開始", "終了", "配送", "出荷元", "送料", "送料名"].map((label) => (
-                <th key={label} style={{textAlign: "left", padding: 8}}>{label}</th>
+              {["店舗", "対象", "開始", "終了", "配送", "出荷元", "送料", "送料名"].map((label, index) => (
+                <th className={index === 0 ? undefined : index < 4 ? "period-column" : "delivery-column"} key={label} style={{textAlign: "left", padding: 8}}>{label}</th>
               ))}
             </tr>
           </thead>
@@ -154,23 +164,26 @@ export default function PosOperations() {
             {rows.map((row) => (
               <tr key={row.locationId}>
                 <td style={{padding: 8}}>{row.name}</td>
-                <td><input type="checkbox" checked={row.active} onChange={(event) => update(row.locationId, {active: event.target.checked})} /></td>
-                <td><input type="datetime-local" value={row.startsAt} onChange={(event) => update(row.locationId, {startsAt: event.target.value})} /></td>
-                <td><input type="datetime-local" value={row.endsAt} onChange={(event) => update(row.locationId, {endsAt: event.target.value})} /></td>
-                <td><input type="checkbox" checked={row.deliveryEnabled} onChange={(event) => update(row.locationId, {deliveryEnabled: event.target.checked})} /></td>
-                <td>
+                <td className="period-column"><input type="checkbox" checked={row.active} onChange={(event) => update(row.locationId, {active: event.target.checked})} /></td>
+                <td className="period-column"><input type="datetime-local" value={row.startsAt} onChange={(event) => update(row.locationId, {startsAt: event.target.value})} /></td>
+                <td className="period-column"><input type="datetime-local" value={row.endsAt} onChange={(event) => update(row.locationId, {endsAt: event.target.value})} /></td>
+                <td className="delivery-column"><input type="checkbox" checked={row.deliveryEnabled} onChange={(event) => update(row.locationId, {deliveryEnabled: event.target.checked})} /></td>
+                <td className="delivery-column">
                   <select value={row.warehouseLocationId} onChange={(event) => update(row.locationId, {warehouseLocationId: event.target.value})}>
                     <option value="">選択</option>
                     {rows.filter((location) => location.locationId !== row.locationId).map((location) => <option key={location.locationId} value={location.locationId}>{location.name}</option>)}
                   </select>
                 </td>
-                <td><input type="number" min="0" step="1" value={row.shippingFee} onChange={(event) => update(row.locationId, {shippingFee: event.target.value})} style={{width: 90}} /></td>
-                <td><input value={row.shippingTitle} onChange={(event) => update(row.locationId, {shippingTitle: event.target.value})} style={{width: 100}} /></td>
+                <td className="delivery-column"><input type="number" min="0" step="1" value={row.shippingFee} onChange={(event) => update(row.locationId, {shippingFee: event.target.value})} style={{width: 90}} /></td>
+                <td className="delivery-column"><input value={row.shippingTitle} onChange={(event) => update(row.locationId, {shippingTitle: event.target.value})} style={{width: 100}} /></td>
               </tr>
             ))}
           </tbody>
         </table>
-        <button type="submit" style={{marginTop: 16}}>保存</button>
+        </div>
+        <div className="pos-operations-save">
+          <button type="submit" disabled={fetcher.state !== "idle"}>{fetcher.state === "idle" ? "保存" : "保存中..."}</button>
+        </div>
       </form>
     </main>
   );
