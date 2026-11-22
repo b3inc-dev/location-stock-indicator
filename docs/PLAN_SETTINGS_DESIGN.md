@@ -93,7 +93,7 @@ shopify.dev の Shopify App Pricing の説明では、店の今の契約を確�
 - 送り先: `POST https://partners.shopify.com/{Partner ID}/api/2026-10/graphql.json`、ヘッダー `X-Shopify-Access-Token`。Partner ID は **Partner Dashboard の URL の数字**（Dev Dashboard の数字＝organization ID ではない）。版は `PARTNER_API_VERSION` で変えられる
 - 引数は `gid://shopify/App/<数字>`・`gid://shopify/Shop/<数字>`（店の ID は Admin API の `shop { id }`）。権限は **Manage apps**。公開アプリだけで使える
 - 契約が見つかれば正（項目の `handle` を名前として今と同じ Pro/Lite の決まり。handle に `lite` / `pro` を入れる）。「契約なし」なら Admin API の結果。失敗（429・5 秒の timeout・権限など）なら Admin API だけで決め、両方読めなければ今まで通り `planCheckFailed`（App Proxy は fail-closed のまま）
-- App Proxy は商品ページのたびに `getShopPlan` を呼ぶので、店ごとに見つかった結果は 60 秒・契約なしは 15 秒覚え、同時の呼び出しは 1 回にまとめる（上限 1 クライアント 4 回/秒）。失敗は覚えない。トークンはログに出さない
+- App Proxy は商品ページのたびに `getShopPlan` を呼ぶので、店ごとに見つかった結果は 60 秒・契約なしは 15 秒覚え、同時の呼び出しは 1 回にまとめる（上限 1 クライアント 4 回/秒）。失敗した店は 30 秒聞き直さず Admin API だけで決める（商品ページが timeout の 5 秒を毎回待たない）。429 のあとは 10 秒どの店でも聞かない（2026-11-22 レビューで追加）。3 つのアプリは Partner API client を分ける（上限は client ごと）。トークンはログに出さない
 - 未確認: 開発ストアのテスト課金が Partner に出るか（出なければ Admin の結果を使う）
 
 ---
