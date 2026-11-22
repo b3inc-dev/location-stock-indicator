@@ -28,7 +28,7 @@ read_inventory, read_locations, read_products, read_shipping, write_app_proxy
 - `app/uninstalled` → `/webhooks/app/uninstalled`
 - `app/scopes_update` → `/webhooks/app/scopes_update`
 - compliance: `customers/data_request`, `customers/redact`, `shop/redact` → `/webhooks/compliance`
-- `api_version = "2026-01"`
+- `api_version = "2026-07"`（両 toml。#44 で 2026-01 から上げた）
 
 ## 2. 認証
 
@@ -42,7 +42,39 @@ read_inventory, read_locations, read_products, read_shipping, write_app_proxy
 - セッションストレージ: `@shopify/shopify-app-session-storage-prisma`
 - 期限切れオフライントークン: `future.expiringOfflineAccessTokens` + `refresh-offline-session.js`（App Proxy で期限前 refresh・失敗時は握りつぶさず再認可エラー、GraphQL 認証失敗後に 1 回 refresh→再試行、refresh 無し非期限付きは token-exchange 移行）。手順: `docs/OFFLINE_SESSION_CIARA_REPRO.md`
 
-Admin GraphQL API バージョン（アプリコード）: `ApiVersion.October25`（`shopify.server.js`）。toml の webhooks `2026-01` とは別に設定されている。
+### API の版（#44 から）
+
+| どこ | 版 | 設定の場所 |
+|------|----|------------|
+| Admin GraphQL（アプリのコード全体） | `2026-07` | `app/shopify.server.js` の `ADMIN_API_VERSION`（`ApiVersion.July26 ?? "2026-07"`） |
+| 配送設定の読み取り（MDS） | `2026-07` | `app/utils/deliveryProfiles.js` の `MARKET_DRIVEN_SHIPPING_API_VERSION`（前から 2026-07。今はアプリ全体と同じ） |
+| Webhook の本文の形 | `2026-07` | `shopify.app.toml`・`shopify.app.public.toml` の `[webhooks] api_version` |
+| 型の生成（`npm run graphql-codegen`） | `2026-07` | `.graphqlrc.js` |
+
+- 事実: 入っているライブラリ（`@shopify/shopify-app-react-router` 1.0.x）の `ApiVersion` に `July26` が無いときも、文字列 `"2026-07"` がそのまま Admin API の URL に使われる（`shopify.server.js` のコメント）。
+- 事実: Shopify は各版を少なくとも 12 か月支える（https://shopify.dev/docs/api/usage/versioning）。2026-07 は 2027-07 ごろまで使える見込み。
+- 版を上げるときは、上の 4 か所を同じ PR でそろえる。webhook の版は toml を `shopify app deploy` したときに Shopify 側へ反映される（自社用・公開用の両方）。
+
+#### 2025-10 → 2026-07 で見たこと（2026-11-23、Shopify の 2026-01・2026-04・2026-07 のリリースノートとコードを見比べた）
+
+このアプリが使う GraphQL: `locations`・`nodes`・`productVariant`→`inventoryItem`→`inventoryLevels`/`quantities`・`shop.metafield`・`metafieldsSet`・`deliveryProfiles`・`markets`（`Market.delivery`）・`shop.features.marketDrivenShipping`。#48 より前のブランチでは `appSubscriptionCreate`・`appUsageRecordCreate` も。
+
+| リリースノートの変更 | このアプリへの影響 |
+|----|----|
+| 2026-01: `InventoryItem.variant` が非推奨、`Shop.billingAddress` が非推奨、`compareQuantity` をやめる | 事実: どれも使っていない（`app/`・`extensions/` を検索） |
+| 2026-04: 在庫を書く mutation に `changeFromQuantity`、冪等キーが必須 | 事実: 在庫は読むだけなので影響なし |
+| 2026-04: `DeliveryProfile.legacyMode` が非推奨 | 事実: `legacyMode` は使っていない |
+| 2026-07: マーケット主導配送（MDS）の店では `deliveryProfiles` が古い値を返すことがある | 事実: MDS の店は前から `Market.delivery.shipping`（2026-07）で読んでいる。legacy の店だけ `deliveryProfiles` |
+| **2026-04: JSON のメタフィールドの書き込みは 128KB まで**（2026-04 以降の版。2026-04-01 より前から JSON を使っていたアプリは 2MB のまま） | **要確認**。下を見る |
+
+**JSON メタフィールド 128KB の件**（出典: https://shopify.dev/changelog/posts/reduced-metafield-value-sizes ）
+
+- 事実: このアプリは店のメタフィールドに JSON を書いている。設定 `location_stock.config`（`app.settings.jsx`・`app.locations.jsx`）と、分析の月ごとの記録 `location_stock.analytics_YYYY_MM`（`app/analytics.server.js`）。
+- 事実: 2025-10 のときはこの上限の外だった。#44 で 2026-07 にすると上限の中に入る。
+- 事実: 2MB のままになる「前から使っていたアプリ」を、アプリごと・店ごとのどちらで決めるかは、Shopify のページに書いていない。超えた書き込みがどう失敗するかも書いていない。
+- 推測: 自社用（Location Stock - Ciara）は 2026-04 より前から JSON を書いているので 2MB のままの見込み。公開用は別のアプリ（別の client ID）なので、128KB になるかもしれない。
+- 推測: 分析の 1 か月分は「日数 × ロケーション数 × 2 つの表」で増える。ロケーションの ID（`gid://shopify/Location/…`）1 件が 45 バイトほどとすると、毎日すべてのロケーションが出る店では **45 か所前後で 128KB を超える**。設定（`config`）は小さいので当面は届かない見込み。
+- 次にすること（T さんが決める）: (1) 開発ストアで 2026-07 のまま分析の書き込みが通るか確かめる、(2) 多いロケーションの店のために、分析を月ではなく日ごと・週ごとのキーに分けるか、ロケーションの ID を短くする直しを別の PR で作る、(3) 必要なら Shopify のフォームで上限を上げてもらう。
 
 ## 3. App Proxy
 

@@ -603,7 +603,7 @@
 | **言語** | JavaScript（app）、Liquid（Theme App Extension） |
 | **セッション・DB** | Prisma + SQLite（セッションストア。分析データはメタフィールド） |
 | **デプロイ** | Render（`application_url` 等は toml 参照） |
-| **API バージョン** | 2026-01（webhooks で指定。Admin API は CLI デフォルト） |
+| **API バージョン** | 2026-07（Admin API は `app/shopify.server.js`、webhooks は両 toml。くわしくは `SHOPIFY.md` の「API の版」） |
 
 ### 14.2 ルート一覧（管理画面・API）
 
