@@ -8,11 +8,14 @@ import {
   buildDeliveryCart,
   collectPages,
   deliveryUsable,
+  feeProperties,
   feeSync,
+  isFeeLine,
   locationRow,
   parseDelivery,
   pickupAction,
   pickupLabel,
+  shipFromChoices,
 } from "./logic.js";
 
 export default async function () {
@@ -210,9 +213,23 @@ async function runPickup(id, locationId, intent, config) {
 // 配送の分け（会計の前）
 // ---------------------------------------------------------------------------
 
-async function applyFee(action) {
+/**
+ * 送料の行をカートに合わせ、残った行に印（_lsi_fee など）を付ける。
+ * 印で POS Receipt・Shop Point が送料の行を見分け、売上・ポイントの対象にするかを読む（T 11/23 3:40）。
+ */
+async function applyFee(action, title, config, mark) {
   for (const uuid of action.remove) if (uuid) await shopify.cart.removeLineItem(uuid);
-  if (action.add) await shopify.cart.addCustomSale(action.add);
+  let added = null;
+  if (action.add) added = await shopify.cart.addCustomSale(action.add);
+  if (!mark) return;
+  // 足した行の uuid が返らない版もあるので、カートを読み直して送料の行を探す
+  const lines = shopify.cart.current.value.lineItems || [];
+  const fee = (typeof added === "string" && lines.find((line) => line.uuid === added)) || lines.find((line) => isFeeLine(line, title));
+  if (!fee) return;
+  const want = feeProperties(config);
+  if (Object.entries(want).some(([key, value]) => fee.properties?.[key] !== value)) {
+    await shopify.cart.addLineItemProperties(fee.uuid, want);
+  }
 }
 
 function renderDelivery(state) {
@@ -264,6 +281,29 @@ function renderDelivery(state) {
     draw();
   }
   showFee();
+  // 出荷元: 会計ごとに必ず選ぶ（配送全体で 1 つ）。管理画面の既定の出荷元は、先に選んでおくだけ（T 11/23 3:40）
+  let from = saved?.from || "";
+  const fromLabel = text("出荷元: 読み込み中…", list);
+  const fromBox = document.createElement("s-stack");
+  fromBox.setAttribute("gap", "small");
+  list.append(fromBox);
+  const drawFrom = (choices) => {
+    fromBox.replaceChildren();
+    const chosen = choices.find((c) => c.id === from);
+    fromLabel.textContent = chosen ? `出荷元: ${chosen.name}` : "出荷元を選んでください（必ず選びます）";
+    for (const choice of choices) {
+      const pick = button(choice.id === from ? `✓ ${choice.name}` : choice.name, fromBox, choice.id === from ? "primary" : "secondary");
+      pick.addEventListener("click", () => { from = choice.id; drawFrom(choices); });
+    }
+  };
+  adminRequest(`query PosLiteShipFrom { locations(first: 250, includeInactive: false) { nodes { id name } } }`, {})
+    .then((data) => {
+      const { choices, preset } = shipFromChoices(data.locations?.nodes || [], row);
+      if (!from || !choices.some((c) => c.id === from)) from = preset;
+      if (!choices.length) fromLabel.textContent = "出荷元にできるロケーションがありません。";
+      else drawFrom(choices);
+    })
+    .catch((error) => { fromLabel.textContent = `出荷元を読めませんでした（${error.message}）`; });
   const to = saved?.to || {};
   const address = {
     lastName: field("姓", list, to.lastName || ""),
@@ -275,10 +315,6 @@ function renderDelivery(state) {
     address2: field("建物名・部屋番号", list, to.address2 || ""),
     phone: field("電話番号", list, to.phone || ""),
   };
-  const from = text("出荷元: 読み込み中…", list, "subdued");
-  adminRequest(`query PosLiteFrom($id: ID!) { location(id: $id) { name } }`, { id: `gid://shopify/Location/${row.warehouseLocationId}` })
-    .then((data) => { from.textContent = `出荷元: ${data.location?.name || "管理画面で決めたロケーション"}`; })
-    .catch(() => { from.textContent = "出荷元: 管理画面で決めたロケーション"; });
   const result = text("", list);
   const confirm = button("配送を確定", list, "primary");
   confirm.addEventListener("click", () =>
@@ -290,6 +326,7 @@ function renderDelivery(state) {
             lines: (latest.lineItems || []).map((line) => ({ uuid: line.uuid, variantId: line.variantId, quantity: line.quantity, title: line.title })),
             shipQuantities: ship,
             address: Object.fromEntries(Object.entries(address).map(([key, item]) => [key, String(item.value ?? "")])),
+            from,
           },
           row,
         );
@@ -302,9 +339,11 @@ function renderDelivery(state) {
           if (line?.properties?.[SHIP_QTY_PROPERTY]) await shopify.cart.removeLineItemProperties(uuid, [SHIP_QTY_PROPERTY]);
         }
         await shopify.cart.addCartProperties(built.cartProperties);
-        await applyFee(feeSync(shopify.cart.current.value.lineItems, built.title, built.fee));
+        await applyFee(feeSync(shopify.cart.current.value.lineItems, built.title, built.fee, state.config.shippingTaxable), built.title, state.config, built.fee > 0);
         result.setAttribute("tone", "success");
-        result.textContent = `配送 ${built.shipCount} 点を確定しました。会計の前に、カートの「フルフィルメント済みにする」をオフにしてください。`;
+        result.textContent = state.config.cancelStoreFulfillment
+          ? `配送 ${built.shipCount} 点を確定しました。会計の前に、カートの「フルフィルメント済みにする」をオフにしてください（オフにできないときも、会計のあとアプリが配送分を出荷元へ移します）。`
+          : `配送 ${built.shipCount} 点を確定しました。会計の前に、カートの「フルフィルメント済みにする」をオフにしてください。`;
       } catch (error) {
         result.setAttribute("tone", "critical");
         result.textContent = error.message || "配送を確定できませんでした。";
@@ -320,7 +359,7 @@ function renderDelivery(state) {
           if (line.properties?.[SHIP_QTY_PROPERTY]) await shopify.cart.removeLineItemProperties(line.uuid, [SHIP_QTY_PROPERTY]);
         }
         if (latest.properties?.[DELIVERY_ATTRIBUTE]) await shopify.cart.removeCartProperties([DELIVERY_ATTRIBUTE]);
-        await applyFee(feeSync(shopify.cart.current.value.lineItems, row.shippingTitle, 0));
+        await applyFee(feeSync(shopify.cart.current.value.lineItems, row.shippingTitle, 0, state.config.shippingTaxable), row.shippingTitle, state.config, false);
         result.setAttribute("tone", "success");
         result.textContent = "配送を取り消しました。全部持ち帰りです。";
       } catch (error) {

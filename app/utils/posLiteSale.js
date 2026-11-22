@@ -12,6 +12,8 @@ import {
   messageFor,
   parseConfig,
   planSale,
+  scrubHandoff,
+  scrubbedAttributes,
 } from "../../extensions/pos-lite/src/logic.js";
 
 export const CONFIG_QUERY = `query PosLiteConfig {
@@ -35,7 +37,7 @@ const ORDER_QUERY = `query PosLiteOrder($id: ID!, $linesAfter: String) {
       }
     }
     fulfillments {
-      status
+      id status
       location { id }
       fulfillmentLineItems(first: 100) {
         pageInfo { hasNextPage }
@@ -73,6 +75,9 @@ const MOVE = `mutation PosLiteMove($id: ID!, $newLocationId: ID!, $fulfillmentOr
     movedFulfillmentOrder { id }
     userErrors { field message }
   }
+}`;
+const CANCEL = `mutation PosLiteCancelFulfillment($id: ID!) {
+  fulfillmentCancel(id: $id) { fulfillment { id status } userErrors { field message } }
 }`;
 const FULFILL = `mutation PosLiteFulfill($fulfillment: FulfillmentInput!) {
   fulfillmentCreate(fulfillment: $fulfillment) { fulfillment { id status } userErrors { field message } }
@@ -140,6 +145,7 @@ export async function loadSaleOrder(request, orderId) {
     .map((f) => {
       if (f.fulfillmentLineItems?.pageInfo?.hasNextPage) throw new Error(messageFor("pagination"));
       return {
+        id: f.id || "",
         locationId: f.location?.id || "",
         lines: (f.fulfillmentLineItems?.nodes || []).map((n) => ({ lineItemId: n.lineItem?.id || "", quantity: Number(n.quantity || 0) })),
       };
@@ -196,10 +202,14 @@ async function applySideEffects(request, order, step) {
 }
 
 /**
- * 1 件の注文を処理する。結果の phase: skip（対象外・何もしない）/ review（人が見る）/ done（済み）。
+ * 1 件の注文を処理する。結果の phase:
+ *   skip（対象外・何もしない）/ retry（出荷指示がまだ無い。印を付けない）/ review（人が見る）/ done（済み）。
+ * 順: 配送先を注文に書く（属性の配送先は外す）→ [店頭の履行を取り消す] → 出荷元へ移す → 持ち帰り分を履行する。
+ * どの 1 歩のあとも注文を読み直して次を決めるので、途中で止まっても再処理で続きから進む。
  * @param {(query: string, variables?: object) => Promise<any>} request
  * @param {string} orderId
- * @param {{config?: object}} [options]
+ * @param {{config?: object, retryAsReview?: boolean}} [options]
+ *   retryAsReview: 出荷指示を待つときも要確認の印を付ける（Shopify に送り直してもらえない、後ろで処理するとき）。
  */
 export async function processSale(request, orderId, options = {}) {
   const config = options.config || (await loadConfig(request)).config;
@@ -209,12 +219,28 @@ export async function processSale(request, orderId, options = {}) {
   } catch (error) {
     return { phase: "review", reason: "network", message: error instanceof Error ? error.message : messageFor("network"), orderId };
   }
+  const waiting = (step) =>
+    options.retryAsReview ? finish(request, order, { ...step, phase: "review" }) : { ...step, orderId, orderName: order.name };
   let step = planSale(order, config);
   if (step.phase === "skip") return { ...step, orderId };
-  if (step.phase === "review") return finish(request, order, step);
+  if (step.phase === "retry") return waiting(step);
   try {
+    // 配送先の住所は、要確認で止まるときも先に注文へ書き、属性のコピーを外す
     const sideError = await applySideEffects(request, order, step);
     if (sideError) return finish(request, order, { phase: "review", reason: "network", message: sideError });
+    if (step.phase === "review") return finish(request, order, step);
+
+    if (step.phase === "cancel") {
+      for (const cancel of step.cancels) {
+        const error = await firstUserError(request, CANCEL, { id: cancel.id }, "fulfillmentCancel");
+        if (error) return finish(request, order, { phase: "review", reason: "cancel", message: `${messageFor("cancel")}（${error}）` });
+      }
+      order = await loadSaleOrder(request, orderId);
+      step = planSale(order, config);
+      if (step.phase === "cancel") return finish(request, order, { ...step, phase: "review", reason: "cancel_incomplete", message: messageFor("cancel_incomplete") });
+      if (step.phase === "retry") return finish(request, order, { ...step, phase: "review" });
+      if (!["move", "fulfill", "done"].includes(step.phase)) return finish(request, order, step);
+    }
     if (step.phase === "move") {
       for (const move of step.moves) {
         const error = await firstUserError(request, MOVE, move, "fulfillmentOrderMove");
@@ -282,4 +308,109 @@ export async function withOrderLock(orderId, work) {
   } finally {
     if (running.get(orderId) === next) running.delete(orderId);
   }
+}
+
+// ---------------------------------------------------------------------------
+// orders/paid: 先に短く確かめて返し、重い処理は後ろで行う（Shopify の 5 秒の内に返す）
+// ---------------------------------------------------------------------------
+
+const PAID_PRECHECK_QUERY = `query PosLitePaidPrecheck($id: ID!) {
+  shop { metafield(namespace: "${CONFIG_NAMESPACE}", key: "${CONFIG_KEY}") { value } }
+  order(id: $id) {
+    id
+    fulfillmentOrders(first: 1) { nodes { id } }
+    fulfillments(first: 1) { id }
+  }
+}`;
+
+/**
+ * orders/paid で最初に 1 回だけ呼ぶ。
+ * @returns {Promise<{action: "ignore"|"retry"|"process", config: object}>}
+ *   ignore: スイッチがオフ / retry: 出荷指示がまだ無い（500 を返して送り直してもらう）/ process: 後ろで処理する
+ */
+export async function precheckPaid(request, orderId) {
+  const data = await request(PAID_PRECHECK_QUERY, { id: orderId });
+  const config = parseConfig(data?.shop?.metafield?.value);
+  if (!config.deliveryEnabled) return { action: "ignore", config };
+  const order = data?.order;
+  if (!order) return { action: "retry", config };
+  const hasFo = (order.fulfillmentOrders?.nodes || []).length > 0;
+  const hasFulfillment = (order.fulfillments || []).length > 0;
+  return { action: hasFo || hasFulfillment ? "process" : "retry", config };
+}
+
+/**
+ * 後ろで処理する（応答を返したあと）。失敗しても投げない。結果は注文の印と記録に残す。
+ * @param {{request: Function, orderId: string, config: object, allowed: () => Promise<boolean>, lockKey: string, log?: Function}} args
+ */
+export async function processPaidInBackground({ request, orderId, config, allowed, lockKey, log = console.log }) {
+  try {
+    if (!(await allowed())) return { phase: "skip", reason: "plan", orderId };
+    const result = await withOrderLock(lockKey, () => processSale(request, orderId, { config, retryAsReview: true }));
+    // 顧客の値（住所など）は記録に出さない。注文の ID と結果だけ
+    log("[location-stock] pos-lite sale", { orderId, phase: result.phase, reason: result.reason || null });
+    return result;
+  } catch (error) {
+    log("[location-stock] pos-lite sale failed", { orderId }, error instanceof Error ? error.message : "failed");
+    return { phase: "review", reason: "network", orderId };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// customers/redact: 注文に残したアプリのコピーから配送先を消す
+// ---------------------------------------------------------------------------
+
+const REDACT_ORDER_QUERY = `query PosLiteRedactOrder($id: ID!) {
+  order(id: $id) {
+    id
+    customAttributes { key value }
+    metafield(namespace: "${CONFIG_NAMESPACE}", key: "${HANDOFF_KEY}") { value }
+  }
+}`;
+const REDACT_ATTRIBUTES = `mutation PosLiteRedactAttributes($input: OrderInput!) {
+  orderUpdate(input: $input) { order { id } userErrors { field message } }
+}`;
+
+/**
+ * お客様の削除の依頼（customers/redact の orders_to_redact）の注文から、
+ * カートの属性 _lsi_delivery の配送先と、配送の記録の配送先（前の版の destination）を消す。
+ * 注文そのものの配送先住所は Shopify の持ち物なので触らない。何度呼んでも同じ結果になる。
+ * 1 件でも消せなければ投げる（500 にして、Shopify にもう一度送ってもらう）。
+ * @param {(query: string, variables?: object) => Promise<any>} request
+ * @param {Array<string|number>} orderIds
+ */
+export async function redactPosLiteOrders(request, orderIds) {
+  let scrubbed = 0;
+  for (const raw of Array.isArray(orderIds) ? orderIds : []) {
+    const id = String(raw).startsWith("gid://") ? String(raw) : `gid://shopify/Order/${String(raw).replace(/\D/g, "")}`;
+    if (!/^gid:\/\/shopify\/Order\/\d+$/.test(id)) continue;
+    let data;
+    try {
+      data = await request(REDACT_ORDER_QUERY, { id });
+    } catch (error) {
+      // 注文を読む権限（read_orders）をまだ承認していない店は、POS Lite の配送を使えていないので消すものが無い
+      if (/access denied|ACCESS_DENIED|read_orders/i.test(error instanceof Error ? error.message : "")) return { scrubbed, skipped: "no_access" };
+      throw error;
+    }
+    const order = data?.order;
+    if (!order) continue;
+    const attributes = scrubbedAttributes(order.customAttributes);
+    if (attributes) {
+      const error = await firstUserError(request, REDACT_ATTRIBUTES, { input: { id, customAttributes: attributes } }, "orderUpdate");
+      if (error) throw new Error(`注文の属性から配送先を消せませんでした（${error}）`);
+      scrubbed += 1;
+    }
+    const handoff = scrubHandoff(order.metafield?.value);
+    if (handoff) {
+      const error = await firstUserError(
+        request,
+        METAFIELDS_SET,
+        { metafields: [{ ownerId: id, namespace: CONFIG_NAMESPACE, key: HANDOFF_KEY, type: "json", value: handoff }] },
+        "metafieldsSet",
+      );
+      if (error) throw new Error(`配送の記録から配送先を消せませんでした（${error}）`);
+      scrubbed += 1;
+    }
+  }
+  return { scrubbed };
 }

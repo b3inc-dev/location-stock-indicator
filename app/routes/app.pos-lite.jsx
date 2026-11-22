@@ -6,12 +6,14 @@ import { Form, useActionData, useLoaderData, useNavigation, useOutletContext } f
 import {
   AdminBlock,
   AdminIntro,
+  ConfirmAction,
   EditCell,
   EditRow,
   EditTable,
   EmptyState,
   PrimaryLink,
   SaveBar,
+  StateBadge,
   StatusBanner,
   SuccessToast,
   UnitInput,
@@ -78,6 +80,7 @@ export const action = async ({ request }) => {
     if (!config.deliveryEnabled) return { ok: false, error: "「持ち帰りと配送の履行」がオフなので再処理できません。" };
     const result = await withOrderLock(`${session.shop}:${orderId}`, () => processSale(run, orderId, { config }));
     if (result.phase === "done") return { ok: true, message: `${result.orderName || "注文"}: ${result.message}`, at: Date.now() };
+    // retry: 出荷指示がまだ無い（印は付けない）。理由をそのまま出す
     return { ok: false, error: `${result.orderName || "注文"}: ${result.message || "再処理できませんでした。"}` };
   }
 
@@ -95,6 +98,10 @@ export const action = async ({ request }) => {
       pickupEnabled: form.get("pickupEnabled") === "on",
       pickupNotifyOnHandover: form.get("pickupNotifyOnHandover") === "on",
       deliveryEnabled: form.get("deliveryEnabled") === "on",
+      cancelStoreFulfillment: form.get("cancelStoreFulfillment") === "on",
+      shippingTaxable: form.get("shippingTaxable") === "on",
+      feeCountsAsSales: form.get("feeCountsAsSales") === "on",
+      feeEarnsPoints: form.get("feeEarnsPoints") === "on",
       locations: rows,
     },
     locations,
@@ -194,13 +201,18 @@ export default function PosLitePage() {
                 <span>会計のあと、配送分を出荷元へ移し、持ち帰り分を履行する</span>
               </label>
               <p className="Admin-note">配送のある会計では、POS のカートで「フルフィルメント済みにする」をオフにしてから会計します。</p>
+              <label>
+                <input type="checkbox" name="cancelStoreFulfillment" defaultChecked={config.cancelStoreFulfillment} />
+                <span>店頭で履行済みになった配送分を取り消して出荷元へ移す</span>
+              </label>
+              <p className="Admin-note">「フルフィルメント済みにする」をオフにできない店舗用です。店舗での履行を取り消してから出荷元へ移し、持ち帰り分はもう一度通知なしで履行します。在庫の戻り方を開発ストアで確かめてからオンにします。</p>
             </AdminBlock>
-            <AdminBlock wide title="店舗ごとの配送" description="配送を受け付ける店舗に印を付け、出荷元と送料を決めます。送料は配送が 1 点以上のとき 1 回だけ足します。">
+            <AdminBlock wide title="店舗ごとの配送" description="配送を受け付ける店舗に印を付け、送料を決めます。出荷元は会計ごとに POS で必ず選びます（ここで決めるのは最初に選んでおく値）。送料は配送が 1 点以上のとき 1 回だけ足します。">
               <EditTable
                 columns={[
                   { label: "店舗", width: "minmax(140px, 1.4fr)" },
                   { label: "配送を受け付ける", width: "minmax(96px, 0.8fr)" },
-                  { label: "出荷元", width: "minmax(160px, 1.4fr)" },
+                  { label: "既定の出荷元", width: "minmax(160px, 1.4fr)" },
                   { label: "送料", width: "minmax(120px, 1fr)" },
                   { label: "送料の名前", width: "minmax(120px, 1fr)" },
                 ]}
@@ -213,8 +225,8 @@ export default function PosLitePage() {
                       <EditCell label="配送を受け付ける">
                         <input type="checkbox" name={`enabled_${location.id}`} aria-label={`${location.name}で配送を受け付ける`} defaultChecked={row?.enabled === true} />
                       </EditCell>
-                      <EditCell label="出荷元">
-                        <select className="Admin-select" name={`warehouse_${location.id}`} aria-label={`${location.name}の出荷元`} defaultValue={row?.warehouseLocationId || ""}>
+                      <EditCell label="既定の出荷元">
+                        <select className="Admin-select" name={`warehouse_${location.id}`} aria-label={`${location.name}の既定の出荷元`} defaultValue={row?.warehouseLocationId || ""}>
                           <option value="">選ばない</option>
                           {locations.filter((l) => l.id !== location.id).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
                         </select>
@@ -230,6 +242,20 @@ export default function PosLitePage() {
                 })}
               </EditTable>
               <p className="Admin-note">出荷元には、配送する商品の在庫の登録が要ります（無いと出荷元へ移せず「要確認」になります）。</p>
+              <label>
+                <input type="checkbox" name="shippingTaxable" defaultChecked={config.shippingTaxable} />
+                <span>送料に消費税をかける</span>
+              </label>
+              <p className="Admin-note">送料の行を税ありでカートに入れます（最初は税あり）。変えると、次に配送を確定したカートから効きます。</p>
+              <label>
+                <input type="checkbox" name="feeCountsAsSales" defaultChecked={config.feeCountsAsSales} />
+                <span>送料の行を売上に含める</span>
+              </label>
+              <label>
+                <input type="checkbox" name="feeEarnsPoints" defaultChecked={config.feeEarnsPoints} />
+                <span>送料の行をポイントの対象にする</span>
+              </label>
+              <p className="Admin-note">送料の行には印が付き、会計のときのこの 2 つの値も行に残ります。POS Receipt と Shop Point がこの印を読みます（それぞれのアプリが対応してから効きます）。</p>
             </AdminBlock>
           </Form>
         ) : null}
@@ -249,15 +275,22 @@ export default function PosLitePage() {
                         <td data-label="注文" className="History-keep">{order.name}</td>
                         <td data-label="日時" className="History-keep">{formatDate(order.createdAt)}</td>
                         <td data-label="店舗">{order.locationName || "—"}</td>
-                        <td data-label="理由">{order.reason}</td>
+                        <td data-label="理由"><StateBadge label="要確認" /> {order.reason}</td>
                         <td data-label="操作" className="History-keep">
-                          <Form method="post">
-                            <input type="hidden" name="intent" value="retry" />
-                            <input type="hidden" name="orderId" value={order.id} />
-                            <button type="submit" className="Admin-secondary" disabled={busyIntent === "retry"}>
-                              {busyIntent === "retry" && busyOrder === order.id ? "処理中…" : "再処理"}
-                            </button>
-                          </Form>
+                          {/* 再処理は履行を作る（あとで戻しにくい）ので、確認の窓を出す（UI ルール 4章） */}
+                          <ConfirmAction
+                            trigger="secondary"
+                            label={busyIntent === "retry" && busyOrder === order.id ? "処理中…" : "再処理"}
+                            heading={`${order.name} を再処理しますか`}
+                            message={
+                              config?.cancelStoreFulfillment
+                                ? "配送分を出荷元へ移し、持ち帰り分を通知なしで履行します。店頭で履行済みの配送分は、店舗での履行を取り消してから移します。"
+                                : "配送分を出荷元へ移し、持ち帰り分を通知なしで履行します。"
+                            }
+                            confirmLabel="再処理する"
+                            fields={{ intent: "retry", orderId: order.id }}
+                            disabled={busyIntent === "retry"}
+                          />
                         </td>
                       </tr>
                     ))}
