@@ -1153,31 +1153,67 @@
       }
 
       var lastVariantId = null;
-      var fetchRetryFor = null;
-      function onFetchFailure(vid, code) {
+      // 選ぶたびに番号を 1 つ進める。番号が今と違う応答・失敗・予約済みのやり直しは捨てる
+      // （A→B→A で B の遅い応答が A の表示を上書きしないように。#20 §3・#26）。
+      var selectionVersion = 0;
+      var activeController = null;
+      var retryTimer = null;
+      // ずっと続く理由: やり直しても直らないので 3 秒のやり直しをしない。
+      // それ以外（一時的な理由・通信の失敗・描画の失敗）は 1 回だけやり直す。
+      // 画面の文はどの理由でも店の設定の errorMessage だけ。プラン・設定の話は商品ページに出さない（T の決定 2026-11-23）。
+      var PERMANENT_ERROR_CODES = {
+        plan_required: true,
+        location_plan_mismatch: true,
+        session_reauth_required: true,
+        missing_admin_client: true,
+        missing_variant_id: true
+      };
+      function isCurrentSelection(version) {
+        return version === selectionVersion;
+      }
+      function cancelPendingRetry() {
+        if (retryTimer != null && typeof clearTimeout === "function") clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      function onFetchFailure(vid, version, canRetry, code) {
+        if (!isCurrentSelection(version)) return;
         lastVariantId = null;
         if (code) console.error("[location-stock] API error", code);
+        var permanent = Boolean(code && PERMANENT_ERROR_CODES[code]);
         setMessage("error", settings.errorMessage);
-        if (vid && fetchRetryFor !== vid) {
-          fetchRetryFor = vid;
-          setTimeout(function () { fetchStocks(vid); }, 3000);
+        if (vid && canRetry && !permanent) {
+          cancelPendingRetry();
+          retryTimer = setTimeout(function () {
+            retryTimer = null;
+            if (!isCurrentSelection(version)) return;
+            lastVariantId = vid;
+            fetchStocks(vid, version, false);
+          }, 3000);
         }
       }
 
-      function fetchStocks(variantId) {
+      function fetchStocks(variantId, version, canRetry) {
         setMessage("loading", settings.loadingMessage);
-        fetch("/apps/location-stock?variant_id=" + encodeURIComponent(variantId))
+        // 前の選択の通信は止める（止められないブラウザでも番号の比較で捨てる）
+        if (activeController) {
+          try { activeController.abort(); } catch (e) { /* 止められなくても番号で捨てる */ }
+        }
+        var controller = typeof AbortController === "function" ? new AbortController() : null;
+        activeController = controller;
+        var url = "/apps/location-stock?variant_id=" + encodeURIComponent(variantId);
+        (controller ? fetch(url, { signal: controller.signal }) : fetch(url))
           .then(function (res) {
             if (!res.ok) throw new Error("HTTP " + res.status);
             return res.json();
           })
           .then(function (data) {
+            if (!isCurrentSelection(version)) return;
+            if (activeController === controller) activeController = null;
             try {
             if (!data || data.ok === false) {
-              onFetchFailure(variantId, data && data.error);
+              onFetchFailure(variantId, version, canRetry, data && data.error);
               return;
             }
-            fetchRetryFor = null;
 
             var appConfig = data.config || {};
 
@@ -1385,12 +1421,15 @@
               sendAnalyticsEvent("area_display", {});
             } catch (e) {
               console.error("[location-stock] render error", e);
-              onFetchFailure(variantId, "render");
+              onFetchFailure(variantId, version, canRetry, "render");
             }
           })
           .catch(function (err) {
+            // 新しい選択で止めた通信・古い選択の失敗は何もしない
+            if (!isCurrentSelection(version)) return;
+            if (activeController === controller) activeController = null;
             console.error("[location-stock] fetch error", err);
-            onFetchFailure(variantId, "network");
+            onFetchFailure(variantId, version, canRetry, "network");
           });
       }
 
@@ -1398,30 +1437,185 @@
       updateNoticeElements();
       applyLegendNoticeVisibility();
 
-      function updateStocksByVariantId(variantId) {
-        if (!variantId) return;
-        if (variantId === lastVariantId) return;
-        lastVariantId = variantId;
-        root.dataset.variantId = variantId;
-        fetchStocks(variantId);
+      // ---- 選んでいるバリアントの拾い方（テーマごとの違いを吸収する） ----
+      // 1) テーマのイベント（variant:change など。detail の形はテーマごとに違う）
+      // 2) カート追加フォームの name="id"（複数フォーム・作り直されるフォームも拾えるよう document で受ける）
+      // 3) URL の ?variant=（初期表示と、history で URL だけ変えるテーマ）
+      // ほかの商品（おすすめ・クイック表示）のバリアントは、この商品のバリアント一覧で除く。
+      var productId = String(root.getAttribute("data-product-id") || "");
+      var ownVariantIds = (function () {
+        var raw = String(root.getAttribute("data-variant-ids") || "");
+        var count = parseInt(root.getAttribute("data-variants-count") || "", 10);
+        var ids = raw.split(",").map(function (v) { return v.trim(); }).filter(Boolean);
+        if (!ids.length) return null;
+        // Liquid の product.variants は 250 件まで。全部そろっていないときは除かない（受ける）。
+        if (ids.length >= 250 && !(count > 0 && count === ids.length)) return null;
+        var map = {};
+        ids.forEach(function (id) { map[id] = true; });
+        return map;
+      })();
+
+      function normalizeVariantId(value) {
+        if (value == null) return "";
+        var str = String(value).trim();
+        var gid = /^gid:\/\/shopify\/ProductVariant\/(\d+)/.exec(str);
+        if (gid) str = gid[1];
+        return /^\d+$/.test(str) ? str : "";
+      }
+      function isOwnVariant(variantId) {
+        if (!variantId) return false;
+        return ownVariantIds ? ownVariantIds[variantId] === true : true;
+      }
+      function isDetached() {
+        // テーマエディタでブロックを消したあとは、このブロックの通信を止める
+        return root.isConnected === false;
       }
 
-      var initialVariantId = root.dataset.variantId;
+      function updateStocksByVariantId(value) {
+        var variantId = normalizeVariantId(value);
+        if (!variantId) return;
+        if (isDetached()) return;
+        if (variantId === lastVariantId) return;
+        if (!isOwnVariant(variantId)) return;
+        lastVariantId = variantId;
+        root.dataset.variantId = variantId;
+        selectionVersion += 1;
+        cancelPendingRetry();
+        fetchStocks(variantId, selectionVersion, true);
+      }
+
+      function readUrlVariantId() {
+        try {
+          var search = window.location && window.location.search;
+          if (!search) return "";
+          var m = /[?&]variant=([^&#]*)/.exec(search);
+          return m ? normalizeVariantId(decodeURIComponent(m[1])) : "";
+        } catch (e) {
+          return "";
+        }
+      }
+
+      function isCartAddForm(form) {
+        if (!form || typeof form.getAttribute !== "function") return false;
+        var action = String(form.getAttribute("action") || "");
+        return /\/cart\/add(\b|\.js|$|\?)/.test(action);
+      }
+      function readFormVariantId(form) {
+        var field = null;
+        if (form.elements && typeof form.elements.namedItem === "function") {
+          field = form.elements.namedItem("id");
+        }
+        if (!field && typeof form.querySelector === "function") {
+          field = form.querySelector('[name="id"]:checked') || form.querySelector('[name="id"]');
+        }
+        return field ? normalizeVariantId(field.value) : "";
+      }
+      function formBelongsToProduct(form) {
+        var pidField = typeof form.querySelector === "function" ? form.querySelector('[name="product-id"]') : null;
+        if (pidField && productId) return String(pidField.value) === productId;
+        return isOwnVariant(readFormVariantId(form));
+      }
+      function findProductFormVariantId() {
+        var forms = document.querySelectorAll('form[action*="/cart/add"]');
+        for (var k = 0; k < forms.length; k += 1) {
+          if (!isCartAddForm(forms[k])) continue;
+          if (!formBelongsToProduct(forms[k])) continue;
+          var vid = readFormVariantId(forms[k]);
+          if (vid) return vid;
+        }
+        return "";
+      }
+
+      // フォームの値・URL は「前に見た値から変わったとき」だけ使う。
+      // イベントで先に切り替わったあと、遅れて書きかわるフォームが表示を戻さないように。
+      var seenFormVariantId = findProductFormVariantId();
+      var seenUrlVariantId = readUrlVariantId();
+      function probeSelectedVariant() {
+        if (isDetached()) return;
+        var fromForm = findProductFormVariantId();
+        if (fromForm && fromForm !== seenFormVariantId) {
+          seenFormVariantId = fromForm;
+          updateStocksByVariantId(fromForm);
+          return;
+        }
+        var fromUrl = readUrlVariantId();
+        if (fromUrl && fromUrl !== seenUrlVariantId) {
+          seenUrlVariantId = fromUrl;
+          updateStocksByVariantId(fromUrl);
+        }
+      }
+      var probeTimers = [];
+      function scheduleProbe() {
+        probeTimers.forEach(function (t) { if (typeof clearTimeout === "function") clearTimeout(t); });
+        probeTimers = [50, 300, 1000].map(function (delay) {
+          return setTimeout(probeSelectedVariant, delay);
+        });
+      }
+
+      var initialVariantId = normalizeVariantId(root.dataset.variantId);
+      var urlVariantId = seenUrlVariantId;
+      if (urlVariantId && isOwnVariant(urlVariantId) && ownVariantIds) {
+        initialVariantId = urlVariantId;
+      }
       if (initialVariantId) {
         updateStocksByVariantId(initialVariantId);
       }
 
-      document.addEventListener("variant:change", function (event) {
-        var variant = event.detail && event.detail.variant;
-        if (!variant || !variant.id) return;
-        updateStocksByVariantId(variant.id);
+      function variantIdFromEventDetail(detail) {
+        if (!detail || typeof detail !== "object") return "";
+        var candidates = [
+          detail.variant && detail.variant.id,
+          detail.resource && detail.resource.id,
+          detail.selectedVariant && detail.selectedVariant.id,
+          detail.currentVariant && detail.currentVariant.id,
+          detail.variantId
+        ];
+        for (var k = 0; k < candidates.length; k += 1) {
+          var vid = normalizeVariantId(candidates[k]);
+          if (vid) return vid;
+        }
+        return "";
+      }
+      [
+        "variant:change",
+        "variant:changed",
+        "variant:update",
+        "variantChange",
+        "variant-change",
+        "on:variant:change",
+        "product:variant-change"
+      ].forEach(function (name) {
+        document.addEventListener(name, function (event) {
+          var vid = variantIdFromEventDetail(event && event.detail);
+          if (vid) updateStocksByVariantId(vid);
+          else scheduleProbe();
+        });
       });
 
-      var variantIdInput = document.querySelector('form[action^="/cart/add"] [name="id"]');
-      if (variantIdInput) {
-        variantIdInput.addEventListener("change", function () {
-          updateStocksByVariantId(this.value);
-        });
+      // name="id" の変更は capture で受ける（bubbles しない change を送るテーマ・あとから作り直されるフォームも拾う）
+      document.addEventListener(
+        "change",
+        function (event) {
+          var target = event && event.target;
+          if (!target) return;
+          if (target.name === "id") {
+            var form = target.form || (typeof target.closest === "function" ? target.closest("form") : null);
+            if (form && isCartAddForm(form) && formBelongsToProduct(form)) {
+              var vid = normalizeVariantId(target.value);
+              seenFormVariantId = vid || seenFormVariantId;
+              updateStocksByVariantId(vid);
+              return;
+            }
+          }
+          // オプションのボタン・セレクトの変更: テーマが name="id" や URL を書きかえるのを少し待って読む
+          scheduleProbe();
+        },
+        true
+      );
+      // ボタン形のオプション（input ではない）を使うテーマ向け。読むのは DOM と URL だけで、変わったときしか通信しない
+      document.addEventListener("click", function () { scheduleProbe(); }, true);
+      if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+        window.addEventListener("popstate", function () { scheduleProbe(); });
       }
   }
   function run() {
@@ -1429,4 +1623,6 @@
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run);
   else run();
+  // テーマエディタでブロックを足し直したとき、新しいブロックを動かす（動いているブロックは data-lsi-started で二重に動かさない）
+  document.addEventListener("shopify:section:load", run);
 })();

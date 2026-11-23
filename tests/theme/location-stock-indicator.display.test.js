@@ -281,7 +281,7 @@ describe("location stock storefront display", () => {
     assert.equal(logs.some((line) => line.includes("internal_error")), true);
   });
 
-  it("shows the generic error for a plan_required payload on the current theme", async () => {
+  it("shows the generic error for a plan_required payload (no plan text on the product page)", async () => {
     const { body } = await renderIndicator({
       status: 200,
       body: {
