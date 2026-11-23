@@ -1,0 +1,15 @@
+api_version = "2026-07"
+
+[[extensions]]
+name = "店舗受取"
+handle = "location-stock-pickup"
+type = "ui_extension"
+description = "現在の店舗で受け取る注文を確認"
+
+[[extensions.targeting]]
+target = "pos.home.tile.render"
+module = "./src/tile.js"
+
+[[extensions.targeting]]
+target = "pos.home.modal.render"
+module = "./src/modal.js"
