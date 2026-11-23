@@ -28,9 +28,10 @@ export function classifyAppProxyThrown(error) {
   }
 
   if (error instanceof Error) {
+    // お客様に見える message には例外の中身を出さない（内部の構成が見えるため）。中身はログだけ
     return {
       kind: "unexpected",
-      message: error.message,
+      message: "在庫情報の取得中にエラーが発生しました。",
       logMessage: error.message,
     };
   }

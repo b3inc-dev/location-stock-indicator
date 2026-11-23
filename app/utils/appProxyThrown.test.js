@@ -26,11 +26,12 @@ describe("classifyAppProxyThrown", () => {
     assert.equal(await classified.response.text(), SECRET_BODY);
   });
 
-  it("treats an Error as an unexpected failure and keeps its message", () => {
+  it("treats an Error as an unexpected failure and keeps its message in the log only", () => {
     const classified = classifyAppProxyThrown(new Error("database unavailable"));
 
     assert.equal(classified.kind, "unexpected");
-    assert.equal(classified.message, "database unavailable");
+    assert.equal(classified.message, "在庫情報の取得中にエラーが発生しました。");
+    assert.equal(classified.message.includes("database"), false);
     assert.equal(classified.logMessage, "database unavailable");
   });
 
