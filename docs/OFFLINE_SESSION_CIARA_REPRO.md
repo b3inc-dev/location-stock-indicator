@@ -28,7 +28,7 @@
 4. 同じ商品ページをリロード（または別バリアントに切り替えて戻す）。
 5. 期待（本修正後）:
    - 在庫が表示される（proactive refresh または GraphQL 認証失敗後の 1 回 refresh→再試行）。
-   - 失敗する場合は Theme が約 3 秒後に同一 variant を 1 回だけ再 fetch する。
+   - 一時的な理由で失敗する場合は Theme が約 3 秒後に同一 variant を 1 回だけ再 fetch する（`session_reauth_required` などずっと続く理由ではやり直さず、サーバーの文を出す。PR #86）。
 6. それでも失敗し `error: session_reauth_required` のとき:
    - 管理画面からアプリを開く（再認可／token exchange）。
    - 再度商品ページを確認し、表示が回復するか見る。

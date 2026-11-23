@@ -76,8 +76,9 @@
 
 | ID | Feature | Spec source | Code evidence | Storefront/admin check | Result | Severity | Fix PR candidate |
 |----|---------|-------------|---------------|------------------------|--------|----------|------------------|
-| VAR-01 | variant 変更で再 fetch | `BUSINESS_RULES.md` §6 | `variant:change` と cart form change → `updateStocksByVariantId` | テーマでバリアント切替（未実施） | Pass | — | — |
-| VAR-02 | エラー後の同一 variant 再 fetch 抑止 | Phase0；fundamental-improvement-plan | **再監査**: `onFetchFailure` が `lastVariantId = null`＋約3秒後 1 回再 fetch（PR #5/#7 Theme） | エラー後の再表示（未実施） | Pass | — | — |
+| VAR-01 | variant 変更で再 fetch | `BUSINESS_RULES.md` §6 | テーマのイベント群・全カート追加フォーム・`?variant=`・読み直し → `updateStocksByVariantId`（PR #86） | テーマでバリアント切替（未実施） | Pass | — | — |
+| VAR-02 | エラー後の同一 variant 再 fetch 抑止 | Phase0；fundamental-improvement-plan | `onFetchFailure` が `lastVariantId = null`＋一時的な理由だけ約3秒後 1 回再 fetch。別の選択で予約を消す（PR #86） | エラー後の再表示（未実施） | Pass | — | — |
+| VAR-03 | 連続切替・応答順逆転で最後の選択だけ表示 | #20 §3・#26 | `selectionVersion`＋`AbortController`。合成ハーネス S1〜S6 合格（PR #86） | 実機で A→B→A（未実施） | Pass | — | — |
 | LEG-01 | 凡例 ON/OFF・位置・文言 | `BUSINESS_RULES.md` §7 | display.showLegend；theme schema；`applyLegendNoticeVisibility` | カスタマイザー（未実施） | Pass | — | — |
 | LEG-02 | ステータス色（テーマ） | 同上 | schema colors → `buildStatusHtml` | 色変更（未実施） | Pass | — | — |
 | CLK-01 | `showLocationLinks` + 行 `linkUrl` | `REQUIREMENTS.md` §2.5；`BUSINESS_RULES.md` §8 | locations 保存；`applyClickAction` 最優先で linkUrl | リンク行（未実施） | Pass | — | — |

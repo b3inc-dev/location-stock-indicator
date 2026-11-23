@@ -124,9 +124,13 @@
 
 スニペット JS（確認済み）:
 
-1. 初期: `data-variant-id` で `updateStocksByVariantId`。
-2. `document` の `variant:change`（`event.detail.variant.id`）。
-3. `form[action^="/cart/add"] [name="id"]` の `change`。
-4. 同一 ID は `lastVariantId` でスキップ。
+1. 初期: `data-variant-id`。URL の `?variant=` がこの商品のバリアント（`data-variant-ids`）なら、そちらを使う。
+2. `document` のイベント `variant:change`・`variant:changed`・`variant:update`・`variantChange`・`variant-change`・`on:variant:change`・`product:variant-change`。ID は `detail.variant.id`・`detail.resource.id`・`detail.selectedVariant.id`・`detail.currentVariant.id`・`detail.variantId` の順に読む（数字・文字・`gid://shopify/ProductVariant/…`）。
+3. ページ上のすべての `form[action*="/cart/add"]` の `name="id"` の `change`（`document` の capture で受ける）。
+4. ほかの `change`・`click`・`popstate` のあと 50 / 300 / 1000ms に、この商品のフォームの `name="id"` と URL の `?variant=` を読み、前に読んだ値から変わったときだけ使う。
+5. ほかの商品のバリアントは除く（フォームの `product-id` が `data-product-id` と違う、またはバリアントが `data-variant-ids` に無い）。Liquid の一覧は 250 件までなので、それより多い商品では除かない。
+6. 同一 ID は `lastVariantId` でスキップ。ブロックが DOM から外れたら（`isConnected === false`）何もしない。テーマエディタの `shopify:section:load` で新しいブロックを動かす。
 
-テーマ固有の他イベントはコードに無い。テーマが上記を発火しない場合は再取得されない。
+取得は選ぶたびに `selectionVersion` を進め、番号が違う応答・失敗・予約済みのやり直しを捨てる。前の通信は `AbortController` で止める。やり直しは選択ごとに 1 回（約 3 秒後）で、`plan_required`・`location_plan_mismatch`・`session_reauth_required`・`missing_admin_client`・`missing_variant_id` はやり直さずサーバーの `message` を出す。それ以外の失敗は店の errorMessage を出す。
+
+テーマが上記のどれでも選択を外に出さない場合は再取得されない（実機で確かめたテーマは PR #86 の確認表を参照）。
