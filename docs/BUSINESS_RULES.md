@@ -73,7 +73,8 @@
 
 ## 6. variant 変更
 
-- 再取得トリガ: 初期表示、`variant:change`、カートフォーム `name="id"` の change（`ARCHITECTURE.md` §9）。
+- 再取得トリガ: 初期表示（URL の `?variant=` を含む）、テーマのバリアントのイベント、すべてのカート追加フォームの `name="id"` の change、オプション変更後のフォーム・URL の書きかえ（`ARCHITECTURE.md` §9）。ほかの商品のバリアントでは再取得しない。
+- 速く切り替えても、最後に選んだバリアントの応答だけを表示する（古い応答・失敗・予約済みのやり直しは捨てる）。
 - バリアント切替のたびに App Proxy を呼び、分析の `area_display` も再送されうる（`REQUIREMENTS.md` §11）。
 
 ## 7. 凡例・色・注意書き

@@ -43,7 +43,7 @@
 | **App Proxy 責務の肥大** | 在庫取得・config 整形・配送・プラン制限・分析 GET/POST が同一ルート | 障害切り分け・レート消費が集中 |
 | **API レスポンス型** | 実行時 JSON のみ。共有 TypeScript 型やスキーマ検証なし | フロント／サーバのキー不一致リスク（例: fulfills 別名フォールバックがスニペット側に存在） |
 | **GraphQL／判定ロジック重複** | `DELIVERY_PROFILES_QUERY` と `isLocalDeliveryMethodName` が App Proxy と `app.locations.jsx` に重複 | キーワード追加漏れの温床（DEPLOY_AND_SCOPES も両ファイル更新を指示） |
-| **variant イベント** | `variant:change` と input `change` の二重購読。`lastVariantId` で抑止 | テーマによってはどちらか一方のみ／両方発火。カバレッジはテーマ依存 |
+| **variant イベント** | 複数のテーマのイベント名・すべてのカート追加フォームの `name="id"`・URL の `?variant=`・オプション変更後の読み直しで拾う。`lastVariantId` で重複を抑え、`selectionVersion` で古い応答を捨てる（PR #86） | 実機で確かめていないテーマでは、上記のどれも出さない可能性が残る。読み直しは最大 1 秒後まで |
 | **Theme 埋込の処理量** | 毎回 deliveryProfiles も取得（キャッシュなし） | ストアフロント表示のたびに Admin API 消費 |
 | **エラーハンドリング** | `logAppProxyError` あり。delivery 失敗は warn して空フラグ | ユーザーには配送ソートが効かない状態になりうる |
 | **rate limit** | バッファ／まとめて更新は分析 docs で言及。在庫 GET ごとのキャッシュ実装は**コード上なし** | 高トラフィック・バリアント連打で制限に当たりうる |
