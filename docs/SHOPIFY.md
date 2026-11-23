@@ -29,6 +29,7 @@ read_inventory, read_locations, read_products, read_shipping, write_app_proxy
 - `app/scopes_update` → `/webhooks/app/scopes_update`
 - compliance: `customers/data_request`, `customers/redact`, `shop/redact` → `/webhooks/compliance`
 - `api_version = "2026-01"`
+- アンインストール・`shop/redact` で何を消し、何が残るか: `docs/DATA_RETENTION_AND_UNINSTALL.md`
 
 ## 2. 認証
 
