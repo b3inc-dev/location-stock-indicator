@@ -1158,8 +1158,9 @@
       var selectionVersion = 0;
       var activeController = null;
       var retryTimer = null;
-      // ずっと続く理由: やり直しても直らないので 3 秒のやり直しをしない。サーバーの message（お客様向け）を出す。
-      // それ以外（一時的な理由・通信の失敗・描画の失敗）は店の設定の errorMessage を出し、1 回だけやり直す。
+      // ずっと続く理由: やり直しても直らないので 3 秒のやり直しをしない。
+      // それ以外（一時的な理由・通信の失敗・描画の失敗）は 1 回だけやり直す。
+      // 画面の文はどの理由でも店の設定の errorMessage だけ。プラン・設定の話は商品ページに出さない（T の決定 2026-11-23）。
       var PERMANENT_ERROR_CODES = {
         plan_required: true,
         location_plan_mismatch: true,
@@ -1174,16 +1175,12 @@
         if (retryTimer != null && typeof clearTimeout === "function") clearTimeout(retryTimer);
         retryTimer = null;
       }
-      function onFetchFailure(vid, version, canRetry, code, apiMessage) {
+      function onFetchFailure(vid, version, canRetry, code) {
         if (!isCurrentSelection(version)) return;
         lastVariantId = null;
         if (code) console.error("[location-stock] API error", code);
         var permanent = Boolean(code && PERMANENT_ERROR_CODES[code]);
-        var text =
-          permanent && typeof apiMessage === "string" && apiMessage.trim() !== ""
-            ? apiMessage.trim()
-            : settings.errorMessage;
-        setMessage("error", text);
+        setMessage("error", settings.errorMessage);
         if (vid && canRetry && !permanent) {
           cancelPendingRetry();
           retryTimer = setTimeout(function () {
@@ -1214,13 +1211,7 @@
             if (activeController === controller) activeController = null;
             try {
             if (!data || data.ok === false) {
-              onFetchFailure(
-                variantId,
-                version,
-                canRetry,
-                data && data.error,
-                data && data.message
-              );
+              onFetchFailure(variantId, version, canRetry, data && data.error);
               return;
             }
 
