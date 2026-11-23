@@ -15,6 +15,18 @@ import {
 import { loadLocationDeliveryFlags } from "../utils/deliveryProfiles.js";
 import { cacheGet, cacheSet } from "../utils/shortCache.js";
 import { classifyAppProxyThrown } from "../utils/appProxyThrown.js";
+import { STOREFRONT_UNAVAILABLE_MESSAGE } from "../utils/storefrontMessages.js";
+import {
+  INVENTORY_LEVELS_PAGE_QUERY,
+  INVENTORY_LEVELS_PAGE_SIZE,
+  MAX_INVENTORY_LEVEL_PAGES,
+  collectInventoryLevelEdges,
+} from "../utils/inventoryLevelsPaging.js";
+import {
+  LOCATION_PLAN_MISMATCH_CODE,
+  LOCATION_PLAN_MISMATCH_MESSAGE,
+  isStorefrontLocationLimitExceeded,
+} from "../utils/storefrontLocationLimit.js";
 
 /** 配送フラグ短命キャッシュ（ms）— Admin API 連打緩和 */
 const DELIVERY_FLAGS_TTL_MS = 60_000;
@@ -30,7 +42,11 @@ const VARIANT_INVENTORY_WITH_CONFIG_QUERY = `#graphql
       title
       inventoryItem {
         id
-        inventoryLevels(first: 250) {
+        inventoryLevels(first: ${INVENTORY_LEVELS_PAGE_SIZE}) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
           edges {
             node {
               id
@@ -115,7 +131,7 @@ async function ensureSessionOrErrorResponse(session, admin, context) {
     );
     return errorJson(
       "session_reauth_required",
-      "アプリの再認可が必要です。Shopify 管理画面からアプリを開いてください。"
+      STOREFRONT_UNAVAILABLE_MESSAGE
     );
   }
 
@@ -134,7 +150,7 @@ async function ensureSessionOrErrorResponse(session, admin, context) {
     );
     return errorJson(
       "session_reauth_required",
-      "アプリの再認可が必要です。Shopify 管理画面からアプリを開いてください。"
+      STOREFRONT_UNAVAILABLE_MESSAGE
     );
   }
 
@@ -722,9 +738,10 @@ export async function loader({ request }) {
         null,
         { route: "loader", hasSession: Boolean(session) }
       );
+      // 商品ページには設定の話を出さない（storefrontMessages.js）。詳しい理由は上のログだけ
       return errorJson(
         "missing_admin_client",
-        "管理画面 API クライアントの初期化に失敗しました。アプリの設定（APIキーなど）を確認してください。"
+        STOREFRONT_UNAVAILABLE_MESSAGE
       );
     }
 
@@ -810,7 +827,7 @@ export async function loader({ request }) {
     if (inventoryAttempt.authFailed) {
       return errorJson(
         "session_reauth_required",
-        "アプリの再認可が必要です。Shopify 管理画面からアプリを開いてください。"
+        STOREFRONT_UNAVAILABLE_MESSAGE
       );
     }
 
@@ -840,6 +857,66 @@ export async function loader({ request }) {
       });
     }
 
+    // 在庫レベルを 250 件ずつ次のページまで読む（上限 MAX_INVENTORY_LEVEL_PAGES ページ）。
+    // 途中で失敗したら一部だけの一覧は返さない（店舗を黙って欠けさせない）。
+    const pageRead = createInventoryRead(runAdminGraphql, request.signal);
+    const levelsCollected = await collectInventoryLevelEdges(
+      variant.inventoryItem.inventoryLevels,
+      async (after) => {
+        const attempt = await graphqlWithAuthRetry(
+          admin,
+          session,
+          INVENTORY_LEVELS_PAGE_QUERY,
+          { id: variantGid, after },
+          { route: "loader_inventory_page", variantId },
+          pageRead
+        );
+        if (attempt.unavailable) return { ok: false, reason: "upstream_inventory_unavailable" };
+        if (attempt.authFailed) return { ok: false, reason: "session_reauth_required" };
+        if (attempt.result?.errors?.length) {
+          return { ok: false, reason: "graphql_error", detail: attempt.result.errors };
+        }
+        const connection = attempt.result?.data?.productVariant?.inventoryItem?.inventoryLevels;
+        if (!connection) return { ok: false, reason: "inventory_page_missing" };
+        return { ok: true, connection };
+      }
+    );
+
+    if (!levelsCollected.ok) {
+      logAppProxyError(
+        session?.shop,
+        variantId,
+        "inventory_page_failed",
+        "在庫レベルの続きのページを読めなかったため、一部だけの在庫は返しません。",
+        levelsCollected.detail ?? null,
+        { reason: levelsCollected.reason, pages: levelsCollected.pages }
+      );
+      if (levelsCollected.reason === "session_reauth_required") {
+        return errorJson(
+          "session_reauth_required",
+          STOREFRONT_UNAVAILABLE_MESSAGE
+        );
+      }
+      if (levelsCollected.reason === "upstream_inventory_unavailable") {
+        return errorJson("upstream_inventory_unavailable", "在庫情報を取得できません。しばらくしてから再度お試しください。");
+      }
+      return errorJson("graphql_error", "在庫情報の取得中にエラーが発生しました。");
+    }
+
+    const levels = levelsCollected.edges;
+    if (levelsCollected.truncated) {
+      // 上限で止めた: 黙って欠けさせず、ログと応答の印（inventoryTruncated）で知らせる
+      console.warn(
+        "[location-stock] inventory levels truncated",
+        JSON.stringify({
+          shop: session?.shop,
+          variantId,
+          pages: levelsCollected.pages,
+          maxLocations: MAX_INVENTORY_LEVEL_PAGES * INVENTORY_LEVELS_PAGE_SIZE,
+        })
+      );
+    }
+
     // 配送フラグ（MDS: Market.delivery / legacy: deliveryProfiles。短命キャッシュ）
     let deliveryFlagsByLocationId = new Map();
     const dpCacheKey = `deliveryFlags:${session?.shop || "unknown"}`;
@@ -849,9 +926,7 @@ export async function loader({ request }) {
         deliveryFlagsByLocationId = cached;
       } else {
         const loaded = await loadLocationDeliveryFlags(admin, session, {
-          allLocationIds: (
-            variant.inventoryItem.inventoryLevels?.edges ?? []
-          )
+          allLocationIds: levels
             .map((e) => e?.node?.location?.id)
             .filter(Boolean),
         });
@@ -865,7 +940,6 @@ export async function loader({ request }) {
     }
 
     // 在庫レベルをベースの stocks に変換（配送・店舗受け取りフラグを付与）
-    const levels = variant.inventoryItem.inventoryLevels?.edges ?? [];
     const baseStocks = levels.map((edge) => {
       const node = edge.node;
       const location = node.location;
@@ -934,8 +1008,24 @@ export async function loader({ request }) {
       );
       return errorJson(
         "plan_required",
-        "料金プランを選択すると在庫が表示されます。Shopify 管理画面のアプリからプランを選択してください。"
+        STOREFRONT_UNAVAILABLE_MESSAGE
       );
+    }
+
+    // 公開用 Lite でロケーション数が上限（10）を超えているときは在庫を返さない（管理画面の /app/plan 誘導と同じ判定）
+    if (isStorefrontLocationLimitExceeded(shopPlan)) {
+      logAppProxyError(
+        session?.shop,
+        variantId,
+        LOCATION_PLAN_MISMATCH_CODE,
+        "Lite のロケーション上限を超えているためストアフロント在庫を返しません。",
+        null,
+        {
+          locationsCount: shopPlan.locationsCount,
+          maxLocationsForPlan: shopPlan.maxLocationsForPlan,
+        }
+      );
+      return errorJson(LOCATION_PLAN_MISMATCH_CODE, LOCATION_PLAN_MISMATCH_MESSAGE);
     }
 
     if (!isProFeaturesAllowed(shopPlan)) {
@@ -957,6 +1047,7 @@ export async function loader({ request }) {
       variantTitle: variant.title,
       stocks,
       config: globalConfig,
+      ...(levelsCollected.truncated ? { inventoryTruncated: true } : {}),
     });
   } catch (error) {
     const classified = classifyAppProxyThrown(error);
@@ -1029,7 +1120,7 @@ export async function action({ request }) {
           ok: false,
           error: "session_reauth_required",
           message:
-            "アプリの再認可が必要です。Shopify 管理画面からアプリを開いてください。",
+            STOREFRONT_UNAVAILABLE_MESSAGE,
         }),
         { status: 401, headers: { "Content-Type": "application/json" } }
       );
@@ -1114,10 +1205,8 @@ export async function action({ request }) {
       JSON.stringify({ message: classified.logMessage })
     );
     return new Response(
-      JSON.stringify({
-        ok: false,
-        error: err instanceof Error ? err.message : "Internal error",
-      }),
+      // 例外の中身は上のログだけ。応答には出さない
+      JSON.stringify({ ok: false, error: "internal_error" }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
