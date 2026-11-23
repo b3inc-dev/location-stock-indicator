@@ -281,7 +281,7 @@ describe("location stock storefront display", () => {
     assert.equal(logs.some((line) => line.includes("internal_error")), true);
   });
 
-  it("shows the generic error for a plan_required payload on the current theme", async () => {
+  it("shows the server message for a permanent plan_required payload", async () => {
     const { body } = await renderIndicator({
       status: 200,
       body: {
@@ -291,8 +291,8 @@ describe("location stock storefront display", () => {
       },
     });
 
-    assert.equal(body.textContent, GENERIC_ERROR);
-    assert.equal(body.textContent.includes("料金プラン"), false);
+    assert.equal(body.textContent, "料金プランを選択すると在庫が表示されます。");
+    assert.equal(body.classList.contains("lsi-message--error"), true);
   });
 
   it("shows the empty message when synthetic stocks are empty", async () => {
