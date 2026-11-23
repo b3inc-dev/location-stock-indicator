@@ -41,6 +41,26 @@ export function isNotInstalledError(err) {
   );
 }
 
+function toTime(v) {
+  if (v == null) return null;
+  const t = v instanceof Date ? v.getTime() : new Date(v).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
+/**
+ * トークンが切れていて、リフレッシュトークンも無い・切れている（更新できない）か。
+ * 期限の無い古いトークン（expires が無い）は false。
+ * @param {{ expires?: unknown, refreshToken?: string|null, refreshTokenExpires?: unknown }} session
+ * @param {number} [now]
+ */
+export function isOfflineSessionUnrefreshable(session, now = Date.now()) {
+  const exp = toTime(session?.expires);
+  if (exp == null || exp > now) return false;
+  if (!session?.refreshToken) return true;
+  const rtExp = toTime(session?.refreshTokenExpires);
+  return rtExp != null && rtExp <= now;
+}
+
 /**
  * @param {{
  *   shop: string,
@@ -52,6 +72,9 @@ export function isNotInstalledError(err) {
 export async function probeShopStillInstalled({ shop, findOfflineSession, runProbeQuery }) {
   const session = await findOfflineSession(shop);
   if (!session) return false;
+  // 期限付きのトークンで、トークンもリフレッシュトークンも切れている → もう更新できない（外した店）。
+  // ここで呼ぶとライブラリの更新が 500 を投げて、Shopify が送り直しを続けるので、呼ばずに「入っていない」とする。
+  if (isOfflineSessionUnrefreshable(session)) return false;
   try {
     await runProbeQuery(shop);
     return true;
