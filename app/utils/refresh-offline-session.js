@@ -1,5 +1,5 @@
 // オフラインアクセストークンが切れる前にリフレッシュし、DB を更新する（App Proxy 等で使用）
-import prisma from "../db.server";
+import prisma from "../db.server.js"; // .js を付ける（scripts/migrate-offline-tokens.mjs をふつうの node で動かすため）
 
 /** 期限切れの約5分前も「更新する」とみなす（単位: ミリ秒） */
 const WITHIN_MS_OF_EXPIRY = 5 * 60 * 1000;
