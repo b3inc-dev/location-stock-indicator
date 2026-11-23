@@ -6,9 +6,20 @@ import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { authenticate } from "../shopify.server";
 import { AppNavBar } from "../components/AppNavBar";
 import { getShopPlan } from "../utils/shopPlan.server.js";
+import { ensureOfflineAccessTokenFresh } from "../utils/refresh-offline-session.js";
+import {
+  isExpiringTokenMigrationEnabled,
+  migrateOfflineSessionOnAdmin,
+} from "../utils/offlineTokenMigration.js";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
+  // 期限の無い古いオフライントークンなら、期限付きに移す（スイッチ EXPIRING_TOKEN_MIGRATION・既定オフ）。
+  // 移したあとは session の中のトークンも新しいものになるので、下の admin の呼び出しはそのまま使える。
+  await migrateOfflineSessionOnAdmin(session, {
+    enabled: isExpiringTokenMigrationEnabled(),
+    ensureFresh: (s) => ensureOfflineAccessTokenFresh(s),
+  });
   // 管理画面のレイアウトだけが Pro の従量（App Events API）の報告を頼む（待たない。1 請求期間 1 回）
   const shopPlan = await getShopPlan(admin, session?.shop, { reportUsage: true });
 

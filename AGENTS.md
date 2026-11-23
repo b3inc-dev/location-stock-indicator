@@ -30,7 +30,7 @@ Shopify ストアフロントの商品ページに、**ロケーション別在�
 | 3 | [`docs/BUSINESS_RULES.md`](docs/BUSINESS_RULES.md) | 在庫表示・並び・フィルタ等の業務ルール（コード確認済み） |
 | 4 | [`docs/SHOPIFY.md`](docs/SHOPIFY.md) | 認証・スコープ・App Proxy・Theme Extension・環境変数・デプロイ |
 | 5 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | 観測できる設計判断・負債・将来拡張の整合性 |
-| 6 | [`docs/UI_RULES.md`](docs/UI_RULES.md) | 管理画面の UI ルール（確定版 v1.0。正本は T の Doc） |
+| 6 | [`docs/UI_RULES.md`](docs/UI_RULES.md) | 管理画面の UI ルール（完全版 v1.1。正本は T の Doc） |
 
 詳細・運用手順は既存 docs（`REQUIREMENTS.md`、`APP_AND_RENDER_CONFIG.md` 等）を参照。一覧は PROJECT_CONTEXT 内。
 
@@ -38,7 +38,7 @@ Shopify ストアフロントの商品ページに、**ロケーション別在�
 
 - **アプリコード変更**と **docs のみ変更**を混ぜない（docs-only PR 可）。
 - 仕様の断定は、該当ソースまたは既存 docs に根拠がある場合のみ。
-- 管理画面・POS の UI は [`docs/UI_RULES.md`](docs/UI_RULES.md)（確定版 v1.0）に従う。画面を作る・直す PR は、12章の確認項目を PR 本文で確かめる。ルールと違う作りにするときは先に T に確認する。
+- 管理画面・POS の UI は [`docs/UI_RULES.md`](docs/UI_RULES.md)（完全版 v1.1）に従う。画面を作る・直す PR は、15章の確認項目を PR 本文で確かめる。ルールと違う作りにするときは先に T に確認する。
 - Theme App Extension の Liquid 合計は **100 KB** 制限あり（`REQUIREMENTS.md` §12）。
 - テーマスキーマの interactive 設定は公式目安 **25** に対し現状超過の記載あり（`REQUIREMENTS.md` §3.1）。
 
