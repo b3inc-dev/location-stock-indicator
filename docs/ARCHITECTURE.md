@@ -131,6 +131,6 @@
 5. ほかの商品のバリアントは除く（フォームの `product-id` が `data-product-id` と違う、またはバリアントが `data-variant-ids` に無い）。Liquid の一覧は 250 件までなので、それより多い商品では除かない。
 6. 同一 ID は `lastVariantId` でスキップ。ブロックが DOM から外れたら（`isConnected === false`）何もしない。テーマエディタの `shopify:section:load` で新しいブロックを動かす。
 
-取得は選ぶたびに `selectionVersion` を進め、番号が違う応答・失敗・予約済みのやり直しを捨てる。前の通信は `AbortController` で止める。やり直しは選択ごとに 1 回（約 3 秒後）で、`plan_required`・`location_plan_mismatch`・`session_reauth_required`・`missing_admin_client`・`missing_variant_id` はやり直さずサーバーの `message` を出す。それ以外の失敗は店の errorMessage を出す。
+取得は選ぶたびに `selectionVersion` を進め、番号が違う応答・失敗・予約済みのやり直しを捨てる。前の通信は `AbortController` で止める。やり直しは選択ごとに 1 回（約 3 秒後）で、`plan_required`・`location_plan_mismatch`・`session_reauth_required`・`missing_admin_client`・`missing_variant_id` はやり直さない。画面の文はどの理由でも店の errorMessage だけで、サーバーの `message`（プラン・設定の話）は商品ページに出さない（T の決定 2026-11-23）。
 
 テーマが上記のどれでも選択を外に出さない場合は再取得されない（実機で確かめたテーマは PR #86 の確認表を参照）。
