@@ -74,6 +74,7 @@ Admin GraphQL API バージョン（アプリコード）: `ApiVersion.October25
 | `NODE_ENV` | production 等 | `db.server.js`, Dockerfile |
 | `PORT` / `FRONTEND_PORT` | サーバ／Vite | `vite.config.js` |
 | `RENDER_EXTERNAL_URL` | docs 上 Render 向け（任意） | deploy docs |
+| `EXPIRING_TOKEN_MIGRATION` | `on` で、管理画面を開いたときに期限の無い古いオフライントークンを期限付きに移す（既定オフ。オンにするのは T） | `app.jsx` → `offlineTokenMigration.js` / `docs/EXPIRING_OFFLINE_TOKENS.md` |
 
 シークレットをリポジトリに書かないこと（`APP_AND_RENDER_CONFIG.md`）。
 
