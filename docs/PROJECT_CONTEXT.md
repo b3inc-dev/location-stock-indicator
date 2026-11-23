@@ -73,6 +73,8 @@ shopify.app.public.toml           # 公開用
 | `SETTINGS_SPLIT_SUMMARY.md` | 管理画面 vs カスタマイザー |
 | `APP_REVIEW_SUBMISSION.md` | 審査提出情報 |
 | `FINAL_ADJUSTMENTS.md` | リリース前チェックリスト |
+| `DATA_RETENTION_AND_UNINSTALL.md` | アンインストール・再インストール時のデータの扱い（#20） |
+| `RELEASE_DEVICE_TEST_CHECKLIST.md` | 次回リリースの実機テスト表（#20） |
 | その他 | `CONSOLE_ERROR_ANALYSIS.md`, `NEARBY_ACCORDION_DEBUG.md` |
 
 ※ `REQUIREMENTS.md` が参照する `docs/ADMIN_UI_DESIGN_RULES.md` は**本リポジトリ内に存在しない**（2026-10 調査時点）。
