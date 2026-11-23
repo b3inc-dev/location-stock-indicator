@@ -15,6 +15,7 @@ import {
 import { loadLocationDeliveryFlags } from "../utils/deliveryProfiles.js";
 import { cacheGet, cacheSet } from "../utils/shortCache.js";
 import { classifyAppProxyThrown } from "../utils/appProxyThrown.js";
+import { STOREFRONT_UNAVAILABLE_MESSAGE } from "../utils/storefrontMessages.js";
 import {
   INVENTORY_LEVELS_PAGE_QUERY,
   INVENTORY_LEVELS_PAGE_SIZE,
@@ -130,7 +131,7 @@ async function ensureSessionOrErrorResponse(session, admin, context) {
     );
     return errorJson(
       "session_reauth_required",
-      "アプリの再認可が必要です。Shopify 管理画面からアプリを開いてください。"
+      STOREFRONT_UNAVAILABLE_MESSAGE
     );
   }
 
@@ -149,7 +150,7 @@ async function ensureSessionOrErrorResponse(session, admin, context) {
     );
     return errorJson(
       "session_reauth_required",
-      "アプリの再認可が必要です。Shopify 管理画面からアプリを開いてください。"
+      STOREFRONT_UNAVAILABLE_MESSAGE
     );
   }
 
@@ -737,10 +738,10 @@ export async function loader({ request }) {
         null,
         { route: "loader", hasSession: Boolean(session) }
       );
-      // お客様に見える文には技術用語（API キー等）を出さない。詳しい理由は上のログだけ
+      // 商品ページには設定の話を出さない（storefrontMessages.js）。詳しい理由は上のログだけ
       return errorJson(
         "missing_admin_client",
-        "在庫情報を表示できません。ストアの管理者が Shopify 管理画面からアプリを一度開くと直ることがあります。"
+        STOREFRONT_UNAVAILABLE_MESSAGE
       );
     }
 
@@ -826,7 +827,7 @@ export async function loader({ request }) {
     if (inventoryAttempt.authFailed) {
       return errorJson(
         "session_reauth_required",
-        "アプリの再認可が必要です。Shopify 管理画面からアプリを開いてください。"
+        STOREFRONT_UNAVAILABLE_MESSAGE
       );
     }
 
@@ -893,7 +894,7 @@ export async function loader({ request }) {
       if (levelsCollected.reason === "session_reauth_required") {
         return errorJson(
           "session_reauth_required",
-          "アプリの再認可が必要です。Shopify 管理画面からアプリを開いてください。"
+          STOREFRONT_UNAVAILABLE_MESSAGE
         );
       }
       if (levelsCollected.reason === "upstream_inventory_unavailable") {
@@ -1007,7 +1008,7 @@ export async function loader({ request }) {
       );
       return errorJson(
         "plan_required",
-        "料金プランを選択すると在庫が表示されます。Shopify 管理画面のアプリからプランを選択してください。"
+        STOREFRONT_UNAVAILABLE_MESSAGE
       );
     }
 
@@ -1119,7 +1120,7 @@ export async function action({ request }) {
           ok: false,
           error: "session_reauth_required",
           message:
-            "アプリの再認可が必要です。Shopify 管理画面からアプリを開いてください。",
+            STOREFRONT_UNAVAILABLE_MESSAGE,
         }),
         { status: 401, headers: { "Content-Type": "application/json" } }
       );

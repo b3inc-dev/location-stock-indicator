@@ -28,9 +28,8 @@ describe("isStorefrontLocationLimitExceeded", () => {
     assert.equal(isStorefrontLocationLimitExceeded(undefined), false);
   });
 
-  it("uses a stable code and a customer-facing message without technical words", () => {
+  it("uses a stable code and a plain display error without plan or settings talk", () => {
     assert.equal(LOCATION_PLAN_MISMATCH_CODE, "location_plan_mismatch");
-    assert.match(LOCATION_PLAN_MISMATCH_MESSAGE, /Pro/);
-    assert.doesNotMatch(LOCATION_PLAN_MISMATCH_MESSAGE, /API|GraphQL|token/i);
+    assert.equal(LOCATION_PLAN_MISMATCH_MESSAGE, "在庫情報を表示できません。");
   });
 });
