@@ -315,19 +315,21 @@ describe("variant switching race (A→B→A)", () => {
     assert.match(ind.body.innerHTML, /B ok/);
   });
 
-  it("does not retry a permanent reason and shows the server message", async () => {
-    const ind = openIndicator();
-    ind.requests[0].respond({
-      ok: false,
-      error: "plan_required",
-      message: "料金プランを選択すると在庫が表示されます。",
+  for (const code of ["plan_required", "location_plan_mismatch", "session_reauth_required"]) {
+    it(`does not retry ${code} and shows only the shop's error message`, async () => {
+      const ind = openIndicator();
+      ind.requests[0].respond({
+        ok: false,
+        error: code,
+        message: "料金プランを選択すると在庫が表示されます。",
+      });
+      await setImmediate();
+      assert.equal(ind.body.textContent, GENERIC_ERROR);
+      assert.equal(ind.pending(3000).length, 0);
     });
-    await setImmediate();
-    assert.equal(ind.body.textContent, "料金プランを選択すると在庫が表示されます。");
-    assert.equal(ind.pending(3000).length, 0);
-  });
+  }
 
-  it("uses the shop's error message for a temporary reason even if the server sends one", async () => {
+  it("retries a temporary reason once and shows the shop's error message", async () => {
     const ind = openIndicator();
     ind.requests[0].respond({ ok: false, error: "internal_error", message: "boom" });
     await setImmediate();
