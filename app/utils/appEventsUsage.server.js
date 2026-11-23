@@ -1,0 +1,461 @@
+/**
+ * Pro の「1 ロケーション $2」の従量を Shopify App Events API で報告する（公開用だけ）。
+ *
+ * T の決定（2026-11-21、#49）: 料金は Shopify App Pricing。Pro は $20 ＋ 1 か所 $2 の従量を残し、App Events API で報告する。
+ * 上限は Shopify 側に無い（App Pricing は usage cap 非対応）ので、アプリ側の上限（APP_EVENTS_USAGE_MAX_UNITS）で止める。
+ * Lite は従量なし（今まで通り 10 か所まで）。
+ *
+ * 決まり:
+ * - 1 店・1 請求期間（Shopify の currentPeriodEnd）につき 1 回だけ送る。DB（AppUsageReport）の
+ *   (shop, periodEnd) の一意と、Shopify の idempotency_key（請求イベントは永久に重複しない）の 2 重で守る。
+ * - 外へ送るのは APP_EVENTS_USAGE_ENABLED=1 のときだけ（既定オフ）。オフでも数は DB に「disabled」で残す。
+ * - 失敗は黙って捨てない。DB に status=failed・HTTP の番号・理由を残し、時間をおいて同じキーで送り直す（同じキーなので二重請求にならない）。
+ * - 上限を超えた分は送らず status=over_limit で残す（上限を見直すと次の確認で送る）。
+ * - 請求期間が分からないときは送らず status=missing_period で残す（periodEnd は MISSING_PERIOD_END の 1 店 1 行。期間が分かれば別の行で送る）。
+ * - DB の periodEnd とキーは期間の終わりの UTC の日付（usagePeriodKey）。同じ日付の行が無くても前後 1 日の行があれば同じ期間とみる
+ *   （Partner と Admin で期間の終わりが 0 時をまたいでずれたとき）。
+ * - 自社用（Ciara）はここに来ない（呼ぶ側で distribution === "public" を確かめる）。
+ *
+ * Shopify の仕様（2026-11-21 shopify.dev で確認）:
+ * - トークン: POST https://api.shopify.com/auth/access_token（client_credentials。60 分有効）。鍵は公開用アプリ自身の
+ *   client ID / client secret（resolveAppEventsCredentials。APP_EVENTS_CLIENT_* が無ければ SHOPIFY_API_KEY / SHOPIFY_API_SECRET）
+ * - 送信: POST https://api.shopify.com/app/{version}/events（1 件ずつ。202 は「受け取った」だけで、請求の成否は Dev Dashboard の Logs）
+ * - body: shop_id / event_handle（Partner Dashboard のメーターの handle）/ timestamp（今の請求期間の中）/ idempotency_key（64 文字まで）/ attributes.value（0 以外）
+ *
+ * POS Stock（b3inc-dev/stock-transfer-pos の app/utils/app-events-usage.server.ts）と同じ作り。違いは数え方（全ロケーション）とキーの頭だけ。
+ */
+
+import { resolvePlanDistribution } from "./planDistribution.js";
+
+/** Pro の 1 ロケーションあたりの従量（USD/月）。基本料 $20 は Partner Dashboard のプラン */
+export const PRO_PRICE_PER_LOCATION_USD = 2;
+
+export const DEFAULT_APP_EVENTS_API_VERSION = "2026-10";
+/** Partner Dashboard の Pro プランのメーターの handle（APP_EVENTS_HANDLE_PRO で変えられる） */
+export const DEFAULT_EVENT_HANDLE = "pro_location";
+/** アプリ側の上限（1 期間に送るロケーション数）。超えたら送らずに残す */
+export const DEFAULT_MAX_UNITS = 100;
+/** 失敗のあと、同じ期間をもう一度送るまで待つ時間 */
+export const RETRY_AFTER_MS = 10 * 60_000;
+/** 送り直す回数の上限（超えたら failed のまま。T が見る） */
+export const MAX_ATTEMPTS = 8;
+/** sending のまま止まった行（落ちたなど）を取り直すまでの時間 */
+export const STALE_SENDING_MS = 5 * 60_000;
+/**
+ * 請求期間の終わりがこれより近い（または過ぎた）ときは送らない。
+ * イベントの timestamp は「今」なので、期間が終わったあとに古い期間のキーで送ると、次の期間の請求に入り、
+ * 次の期間のキーで送る分と 2 回になる（Shopify の currentPeriodEnd が更新に遅れたとき・失敗の送り直しのとき）。
+ */
+export const PERIOD_END_MARGIN_MS = 10 * 60_000;
+/** 同じ店・同じ期間の DB 確認の間隔（管理画面を開くたびに DB を読まない） */
+export const RECHECK_MS = 10 * 60_000;
+/** 請求期間が分からないときに記録する行の periodEnd（日付として読めない値。送る行とは混ざらない） */
+export const MISSING_PERIOD_END = "unknown";
+export function isUsageReportingEnabled(env = process.env) {
+  return String(env.APP_EVENTS_USAGE_ENABLED ?? "").trim() === "1";
+}
+export function getEventHandle(env = process.env) {
+  return String(env.APP_EVENTS_HANDLE_PRO ?? "").trim() || DEFAULT_EVENT_HANDLE;
+}
+export function getMaxUnits(env = process.env) {
+  const n = Number(String(env.APP_EVENTS_USAGE_MAX_UNITS ?? "").trim());
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_MAX_UNITS;
+}
+/**
+ * 店に見せる・送る数（純粋な計算）。Pro は全ロケーション × $2。Lite は従量なし（0）。
+ * @param {"lite"|"pro"|null} plan
+ * @param {number} locationsCount
+ */
+export function computeProLocationUsage(plan, locationsCount) {
+  const count = Math.max(0, Math.floor(Number(locationsCount) || 0));
+  const units = plan === "pro" ? count : 0;
+  const unitPriceUsd = PRO_PRICE_PER_LOCATION_USD;
+  return { locationsCount: count, units, unitPriceUsd, amountUsd: units * unitPriceUsd };
+}
+/** gid://shopify/Shop/123 → "123" */
+export function numericShopId(shopGid) {
+  const m = String(shopGid ?? "").match(/(\d+)\s*$/);
+  return m ? m[1] : null;
+}
+/** 請求期間の終わりを ISO 8601（UTC）にそろえる。読めなければ null */
+export function normalizePeriodEnd(value) {
+  if (typeof value !== "string" || !value.trim())
+    return null;
+  const t = Date.parse(value);
+  return Number.isFinite(t) ? new Date(t).toISOString() : null;
+}
+/**
+ * 期間を表すキー: 期間の終わりの UTC の日付（"2026-12-21"）。読めなければ null。
+ * Partner の currentBillingCycle.endTime と Admin の currentPeriodEnd が秒の単位でずれても同じ値にする
+ * （DB の (shop, periodEnd) と idempotency_key に使う。期間の終わり 10 分前の止めは正確な時刻で見る）。
+ * @param {string|null|undefined} periodEnd
+ */
+export function usagePeriodKey(periodEnd) {
+  const t = Date.parse(String(periodEnd ?? ""));
+  return Number.isFinite(t) ? new Date(t).toISOString().slice(0, 10) : null;
+}
+/**
+ * 従量を数える請求期間を選ぶ（純粋な関数）。
+ * プランを Partner API の契約で決めたとき（planSource === "partner"）は、その契約の期間を先に使う
+ * （Admin API に契約が出ない店でも送れるように）。無ければ Admin API の ACTIVE な契約の currentPeriodEnd。どちらも無ければ null。
+ * @param {{ planSource: "partner"|"admin"; partnerPeriodEnd?: string|null; adminSubscriptions?: Array<{ status?: string|null; currentPeriodEnd?: string|null }>|null }} args
+ * @returns {{ periodEnd: string|null; periodSource: "partner"|"admin"|null }}
+ */
+export function pickUsagePeriodEnd(args) {
+  if (args.planSource === "partner") {
+    const p = normalizePeriodEnd(args.partnerPeriodEnd);
+    if (p)
+      return { periodEnd: p, periodSource: "partner" };
+  }
+  for (const s of args.adminSubscriptions ?? []) {
+    if (String(s?.status ?? "").toUpperCase() !== "ACTIVE")
+      continue;
+    const a = normalizePeriodEnd(s?.currentPeriodEnd);
+    if (a)
+      return { periodEnd: a, periodSource: "admin" };
+  }
+  return { periodEnd: null, periodSource: null };
+}
+/**
+ * "2026-12-21" を days 日ずらす（UTC）
+ * @param {string} periodKey
+ * @param {number} days
+ */
+export function shiftPeriodKey(periodKey, days) {
+  return new Date(Date.parse(`${periodKey}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+}
+/**
+ * この期間の行を探す。同じ日付が無ければ前後 1 日の行も同じ期間として返す
+ * （Partner と Admin で期間の終わりが UTC の 0 時をまたいでずれたとき。例 23:59:58 と 00:00:01）。
+ * 請求期間は 30 日・1 年なので、終わりが 1 日以内の別の期間は無い。missing_period の行は日付でないので混ざらない。
+ * @param {{ findUnique: Function }} store
+ * @param {string} shop
+ * @param {string} periodKey
+ */
+export async function findUsageReportForPeriod(store, shop, periodKey) {
+  for (const key of [periodKey, shiftPeriodKey(periodKey, -1), shiftPeriodKey(periodKey, 1)]) {
+    const row = await store.findUnique({ where: { shop_periodEnd: { shop, periodEnd: key } } });
+    if (row)
+      return row;
+  }
+  return null;
+}
+/**
+ * 1 店・1 期間で変わらないキー（64 文字まで）。期間は usagePeriodKey（UTC の日付）。
+ * 例: lsi-loc-12345678-20261221
+ */
+export function buildIdempotencyKey(shopGid, periodEnd) {
+  const id = numericShopId(shopGid);
+  const day = usagePeriodKey(periodEnd);
+  if (!id || !day)
+    return null;
+  const key = `lsi-loc-${id}-${day.replace(/-/g, "")}`;
+  return key.length <= 64 ? key : null;
+}
+/** 失敗をもう一度送ってよいか（同じキーなので二重請求にはならない） */
+export function isRetryableHttpStatus(status) {
+  if (status == null)
+    return true; // 通信の失敗
+  return status === 401 || status === 409 || status === 429 || status >= 500;
+}
+// ---- トークン（client_credentials。60 分有効なので 50 分で取り直す） ----
+let tokenCache = null;
+export function __resetAppEventsTokenForTest() {
+  tokenCache = null;
+}
+/**
+ * App Events API のトークンを取る鍵。shopify.dev（send-events）のとおり、**公開用アプリ自身の client ID と client secret**
+ * （client_credentials）。別に作る「Dev Dashboard の API キー」ではない。
+ * 1. APP_EVENTS_CLIENT_ID / APP_EVENTS_CLIENT_SECRET があればそれ（両方そろったときだけ）
+ * 2. 無ければ SHOPIFY_API_KEY / SHOPIFY_API_SECRET（公開用の Render では同じ値なので二重に入れなくてよい）
+ * サーバーが自社用（resolvePlanDistribution が inhouse。自社用の client_id・APP_DISTRIBUTION=inhouse など）なら鍵を返さない
+ * （自社用は送らない。呼ぶ側の distribution === "public" と 2 重の守り）。
+ * @param {Record<string, string|undefined>} env
+ * @returns {{ clientId: string, clientSecret: string, source: "app_events_env"|"shopify_api_key" } | { error: string }}
+ */
+export function resolveAppEventsCredentials(env) {
+  const dist = resolvePlanDistribution(env, null);
+  if (dist.distribution === "inhouse") {
+    return { error: `自社用のサーバー（${dist.reason}）なので App Events API へ送らない` };
+  }
+  const id = String(env.APP_EVENTS_CLIENT_ID ?? "").trim();
+  const secret = String(env.APP_EVENTS_CLIENT_SECRET ?? "").trim();
+  if (id && secret) return { clientId: id, clientSecret: secret, source: "app_events_env" };
+  if (id || secret) return { error: "APP_EVENTS_CLIENT_ID と APP_EVENTS_CLIENT_SECRET は両方入れる（片方だけ）" };
+  const apiKey = String(env.SHOPIFY_API_KEY ?? "").trim();
+  const apiSecret = String(env.SHOPIFY_API_SECRET ?? "").trim();
+  if (apiKey && apiSecret) return { clientId: apiKey, clientSecret: apiSecret, source: "shopify_api_key" };
+  return { error: "APP_EVENTS_CLIENT_ID / APP_EVENTS_CLIENT_SECRET も SHOPIFY_API_KEY / SHOPIFY_API_SECRET も未設定" };
+}
+async function getAccessToken(env, fetchImpl, now) {
+  if (tokenCache && tokenCache.expiresAt > now)
+    return tokenCache.token;
+  const creds = resolveAppEventsCredentials(env);
+  if ("error" in creds)
+    throw new UsageSendError(creds.error, null);
+  const { clientId, clientSecret } = creds;
+  const res = await fetchImpl("https://api.shopify.com/auth/access_token", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "User-Agent": "location-stock-app" },
+    body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, grant_type: "client_credentials" }),
+  });
+  const text = await res.text().catch(() => "");
+  if (res.status !== 200)
+    throw new UsageSendError(`token ${res.status}: ${text.slice(0, 200)}`, res.status);
+  let token = "";
+  try {
+    token = String(JSON.parse(text).access_token ?? "");
+  }
+  catch {
+    token = "";
+  }
+  if (!token)
+    throw new UsageSendError("token response has no access_token", res.status);
+  tokenCache = { token, expiresAt: now + 50 * 60_000 };
+  return token;
+}
+class UsageSendError extends Error {
+  httpStatus;
+  constructor(message, httpStatus) {
+    super(message);
+    this.httpStatus = httpStatus;
+  }
+}
+/** App Events API に 1 件送る。202 なら受け取られた（請求の成否は Dev Dashboard の Logs） */
+export async function sendUsageEvent(args, deps = {}) {
+  const env = deps.env ?? process.env;
+  const fetchImpl = deps.fetchImpl ?? globalThis.fetch;
+  const now = deps.now ?? Date.now();
+  const token = await getAccessToken(env, fetchImpl, now);
+  const version = String(env.APP_EVENTS_API_VERSION ?? "").trim() || DEFAULT_APP_EVENTS_API_VERSION;
+  const res = await fetchImpl(`https://api.shopify.com/app/${encodeURIComponent(version)}/events`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, "User-Agent": "location-stock-app" },
+    body: JSON.stringify({
+      shop_id: args.shopGid,
+      event_handle: args.eventHandle,
+      timestamp: new Date(now).toISOString().replace(/\.\d{3}Z$/, "Z"),
+      idempotency_key: args.idempotencyKey,
+      attributes: { value: args.units },
+    }),
+  });
+  const text = await res.text().catch(() => "");
+  if (res.status === 401)
+    tokenCache = null;
+  if (res.status !== 202 && res.status !== 200) {
+    throw new UsageSendError(`events ${res.status}: ${text.slice(0, 300)}`, res.status);
+  }
+  let success = true;
+  try {
+    const body = JSON.parse(text);
+    if (body && body.success === false)
+      success = false;
+    if (!success)
+      throw new UsageSendError(`events ${res.status}: ${String(body.error ?? "success=false")}`, res.status);
+  }
+  catch (e) {
+    if (e instanceof UsageSendError)
+      throw e;
+  }
+  const replay = String(res.headers?.get("Idempotent-Replay") ?? "").toLowerCase() === "true";
+  return { httpStatus: res.status, replay };
+}
+const recentChecks = new Map();
+export function __resetUsageRecheckForTest() {
+  recentChecks.clear();
+}
+/**
+ * Pro なら、この期間の分（ロケーション数）を 1 回だけ報告する。何度呼んでも安全（同じ期間は 1 件だけ）。
+ * 呼ぶ側は await しなくてよい（失敗は DB と console に残る。投げない）。
+ * @param {{ shop: string; shopGid: string|null; plan: "lite"|"pro"|null; locationsCount: number; periodEnd: string|null }} input
+ *   periodEnd は pickUsagePeriodEnd で選んだ請求期間の終わり（Partner で決めたら Partner の期間、そうでなければ Admin の currentPeriodEnd）
+ * @param {{ store: object; env?: Record<string, string|undefined>; fetchImpl?: Function; now?: () => number; force?: boolean }} deps
+ *   store は prisma.appUsageReport（findUnique / create / updateMany / update）
+ * @returns {Promise<{ outcome: "skipped"; reason: string } | { outcome: "already_sent"|"disabled"|"over_limit"|"sent"|"failed"|"missing_period"; row: object }>}
+ */
+export async function reportProLocationUsage(input, deps) {
+  const env = deps.env ?? process.env;
+  const nowFn = deps.now ?? Date.now;
+  const usage = computeProLocationUsage(input.plan, input.locationsCount);
+  if (usage.units <= 0)
+    return { outcome: "skipped", reason: "no_usage" };
+  if (!input.periodEnd || !Number.isFinite(Date.parse(input.periodEnd))) {
+    // 期間が分からないと 1 期間 1 回のキーを作れないので送らない。黙って捨てずに数と理由を残す
+    console.warn(`[app-events-usage] no billing period; not sent (recorded as missing_period). shop=${input.shop}`);
+    return recordMissingPeriod(input, usage, deps);
+  }
+  if (nowFn() >= Date.parse(input.periodEnd) - PERIOD_END_MARGIN_MS) {
+    // 期間が終わった（終わりそう）。今送ると次の期間の請求に入って 2 重になるので送らない（記録も変えない）
+    console.warn(`[app-events-usage] period ended or ending; not sent. shop=${input.shop} periodEnd=${input.periodEnd}`);
+    return { outcome: "skipped", reason: "period_ended" };
+  }
+  const idempotencyKey = input.shopGid ? buildIdempotencyKey(input.shopGid, input.periodEnd) : null;
+  if (!input.shopGid || !idempotencyKey) {
+    console.warn(`[app-events-usage] no shop id; cannot report. shop=${input.shop}`);
+    return { outcome: "skipped", reason: "missing_shop_id" };
+  }
+  // DB の行とキーは期間の日付（正確な時刻は上の「期間の終わり 10 分前」の止めだけに使う）
+  const periodKey = usagePeriodKey(input.periodEnd);
+  const memoKey = `${input.shop}|${periodKey}`;
+  const now = nowFn();
+  if (!deps.force) {
+    const last = recentChecks.get(memoKey);
+    if (last != null && now - last < RECHECK_MS)
+      return { outcome: "skipped", reason: "recently_checked" };
+  }
+  recentChecks.set(memoKey, now);
+  const store = deps.store;
+  const where = { shop_periodEnd: { shop: input.shop, periodEnd: periodKey } };
+  const enabled = isUsageReportingEnabled(env);
+  const maxUnits = getMaxUnits(env);
+  const eventHandle = getEventHandle(env);
+  // 同じ日付の行が無ければ前後 1 日の行（送った・送りかけ・止めた、どれでも）を同じ期間として使う。
+  // その行のキーで続ける（新しいキーで 2 回目を送らない）
+  let row = await findUsageReportForPeriod(store, input.shop, periodKey);
+  if (row?.status === "sent")
+    return { outcome: "already_sent", row };
+  // 一度でも送ろうとした行は、数を変えない（Shopify 側に届いているかもしれない値と DB を揃える）
+  const frozen = row != null && row.attempts > 0;
+  const units = frozen ? row.units : usage.units;
+  const fields = frozen
+    ? {}
+    : { plan: input.plan, eventHandle, locationsCount: usage.locationsCount, units: usage.units };
+  // 送らない状態（スイッチオフ・上限超え）は数と理由だけ残す
+  const holdStatus = !enabled ? "disabled" : !frozen && units > maxUnits ? "over_limit" : null;
+  if (holdStatus) {
+    const lastError = holdStatus === "disabled"
+      ? "APP_EVENTS_USAGE_ENABLED がオフのため送っていない"
+      : `アプリ側の上限を超えた（${units} > APP_EVENTS_USAGE_MAX_UNITS=${maxUnits}）ため送っていない`;
+    if (holdStatus === "over_limit") {
+      console.error(`[app-events-usage] over app-side limit; not sent. shop=${input.shop} units=${units} max=${maxUnits}`);
+    }
+    if (!row) {
+      try {
+        row = await store.create({
+          data: { shop: input.shop, periodEnd: periodKey, idempotencyKey, status: holdStatus, lastError, attempts: 0, ...fields },
+        });
+      }
+      catch {
+        row = await store.findUnique({ where });
+        if (!row)
+          return { outcome: "skipped", reason: "lost_race" };
+      }
+    }
+    else if (row.status !== "sending") {
+      row = await store.update({ where: { id: row.id }, data: { status: holdStatus, lastError, ...fields } });
+    }
+    return { outcome: holdStatus, row };
+  }
+  // ---- 送る権利を取る（同時に 2 つ送らない） ----
+  if (!row) {
+    try {
+      row = await store.create({
+        data: { shop: input.shop, periodEnd: periodKey, idempotencyKey, status: "sending", attempts: 1, ...fields },
+      });
+    }
+    catch {
+      return { outcome: "skipped", reason: "lost_race" };
+    }
+  }
+  else {
+    const age = now - new Date(row.updatedAt).getTime();
+    if (row.status === "sending" && age < STALE_SENDING_MS)
+      return { outcome: "skipped", reason: "in_progress" };
+    if (row.status === "failed") {
+      if (row.attempts >= MAX_ATTEMPTS)
+        return { outcome: "skipped", reason: "max_attempts" };
+      if (row.httpStatus != null && !isRetryableHttpStatus(row.httpStatus) && !deps.force) {
+        return { outcome: "skipped", reason: "not_retryable" };
+      }
+      if (age < RETRY_AFTER_MS && !deps.force)
+        return { outcome: "skipped", reason: "waiting_retry" };
+    }
+    const claimed = await store.updateMany({
+      where: { id: row.id, status: row.status, updatedAt: row.updatedAt },
+      data: { status: "sending", attempts: row.attempts + 1, ...fields },
+    });
+    if (claimed.count !== 1)
+      return { outcome: "skipped", reason: "lost_race" };
+  }
+  const key = row.idempotencyKey || idempotencyKey;
+  const handle = frozen ? row.eventHandle : eventHandle;
+  try {
+    const sent = await sendUsageEvent({ shopGid: input.shopGid, eventHandle: handle, idempotencyKey: key, units }, { env, fetchImpl: deps.fetchImpl, now: nowFn() });
+    row = await store.update({
+      where: { id: row.id },
+      data: { status: "sent", httpStatus: sent.httpStatus, lastError: sent.replay ? "Idempotent-Replay（前に届いていた）" : null, sentAt: new Date(nowFn()) },
+    });
+    console.info(`[app-events-usage] sent shop=${input.shop} units=${units} handle=${handle} key=${key}`);
+    return { outcome: "sent", row };
+  }
+  catch (e) {
+    const httpStatus = e instanceof UsageSendError ? e.httpStatus : null;
+    const message = (e instanceof Error ? e.message : String(e)).slice(0, 500);
+    console.error(`[app-events-usage] send failed shop=${input.shop} status=${httpStatus ?? "network"} ${message}`);
+    row = await store.update({ where: { id: row.id }, data: { status: "failed", httpStatus, lastError: message } });
+    return { outcome: "failed", row };
+  }
+}
+/** 店に見せる「報告の状態」（料金プラン画面） */
+/**
+ * 期間が分からない店の行のキー（Shopify には送らない。idempotencyKey の一意を守るためだけ）
+ * @param {{ shop: string; shopGid: string|null }} input
+ */
+function missingPeriodKey(input) {
+  const id = input.shopGid ? numericShopId(input.shopGid) : null;
+  return `lsi-loc-${id ?? input.shop}-noperiod`.slice(0, 64);
+}
+/**
+ * 請求期間が分からないとき: 送らずに (shop, MISSING_PERIOD_END) の 1 行へ数と理由を残す
+ */
+async function recordMissingPeriod(input, usage, deps) {
+  const env = deps.env ?? process.env;
+  const now = (deps.now ?? Date.now)();
+  const memoKey = `${input.shop}|${MISSING_PERIOD_END}`;
+  if (!deps.force) {
+    const last = recentChecks.get(memoKey);
+    if (last != null && now - last < RECHECK_MS)
+      return { outcome: "skipped", reason: "recently_checked" };
+  }
+  recentChecks.set(memoKey, now);
+  const where = { shop_periodEnd: { shop: input.shop, periodEnd: MISSING_PERIOD_END } };
+  const fields = {
+    plan: String(input.plan ?? ""),
+    eventHandle: getEventHandle(env),
+    locationsCount: usage.locationsCount,
+    units: usage.units,
+    status: "missing_period",
+    lastError: "請求期間（currentPeriodEnd / currentBillingCycle）を Partner API・Admin API のどちらからも読めないため送っていない",
+  };
+  let row = await deps.store.findUnique({ where });
+  if (!row) {
+    try {
+      row = await deps.store.create({
+        data: { shop: input.shop, periodEnd: MISSING_PERIOD_END, idempotencyKey: missingPeriodKey(input), attempts: 0, ...fields },
+      });
+    } catch {
+      row = await deps.store.findUnique({ where });
+      if (!row)
+        return { outcome: "skipped", reason: "lost_race" };
+    }
+  } else {
+    row = await deps.store.update({ where: { id: row.id }, data: fields });
+  }
+  return { outcome: "missing_period", row };
+}
+export function describeUsageReportForMerchant(row) {
+  switch (row?.status) {
+    case "sent":
+      return "今の請求期間の分は Shopify に報告済みです。請求は Shopify の請求書に載ります。";
+    case "failed":
+      return "Shopify への報告がまだ済んでいません。アプリが時間をおいて自動でやり直します。";
+    case "over_limit":
+      return "ロケーション数がアプリの上限を超えているため、まだ報告していません。サポートが確認します。";
+    case "sending":
+      return "Shopify に報告しています。";
+    case "missing_period":
+      return "Shopify から請求期間を読めないため、まだ報告していません。読めるようになったら自動で報告します。";
+    default:
+      return "今の請求期間の分は、まだ Shopify に報告していません。";
+  }
+}

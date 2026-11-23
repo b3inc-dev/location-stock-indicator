@@ -28,6 +28,9 @@ read_inventory, read_locations, read_products, read_shipping, write_app_proxy
 - `app/uninstalled` → `/webhooks/app/uninstalled`
 - `app/scopes_update` → `/webhooks/app/scopes_update`
 - compliance: `customers/data_request`, `customers/redact`, `shop/redact` → `/webhooks/compliance`
+  - `shop/redact`（アンインストールの 48 時間後）: その店の `Session` と使用量の記録 `AppUsageReport` を消す（入れ直していたら消さない）。記録（ログ）には消した件数だけを出す（`app/utils/complianceWebhook.js`）
+  - `app/uninstalled`: `Session` だけを消す。`AppUsageReport` は消さない（48 時間のうちに入れ直したとき、同じ期間を二重に報告しないため。T さん 11/23 1:50）
+  - `customers/*`: お客様ごとのデータを持たないので、消すものはない
 - `api_version = "2026-01"`
 
 ## 2. 認証

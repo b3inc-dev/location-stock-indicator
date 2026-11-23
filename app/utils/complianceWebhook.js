@@ -63,8 +63,14 @@ export async function handleComplianceWebhook({ topic, shop, payload, db, isShop
         log(`[compliance] shop/redact for ${shopDomain}: app is installed again; skipped delete`);
         return { status: 200, handled: normalized, skipped: "reinstalled" };
       }
+      // 使用量の記録（Pro の従量を App Events で報告した行）もこの店の分を消す（T さん 11/23 1:50）。
+      // アンインストールの webhook では消さない（48 時間のうちに入れ直したとき、同じ期間を二重に報告しないため）。
+      // 片方が失敗したら投げて 500 にし、もう一度送ってもらう。どちらも何度消しても同じ結果になる。
+      const usage = await db.appUsageReport.deleteMany({ where: { shop: shopDomain } });
       const result = await db.session.deleteMany({ where: { shop: shopDomain } });
-      log(`[compliance] shop/redact for ${shopDomain}: sessions deleted`, result?.count ?? 0);
+      log(
+        `[compliance] shop/redact for ${shopDomain}: sessions deleted ${result?.count ?? 0}, usage reports deleted ${usage?.count ?? 0}`,
+      );
       return { status: 200, handled: normalized };
     }
     default: {

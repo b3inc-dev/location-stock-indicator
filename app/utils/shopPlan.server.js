@@ -15,6 +15,7 @@ import {
   requiresPlanSelection,
 } from "./planGate.js";
 import { resolvePlanDistribution } from "./planDistribution.js";
+import { computeProLocationUsage, pickUsagePeriodEnd, reportProLocationUsage } from "./appEventsUsage.server.js";
 import {
   getPartnerActiveSubscription,
   partnerSubscriptionToAdminShape,
@@ -35,6 +36,7 @@ const SHOP_PLAN_QUERY = `#graphql
         id
         name
         status
+        currentPeriodEnd
       }
     }
   }
@@ -52,7 +54,8 @@ export function getPlanDistribution(shop) {
  * プラン情報を取得する。
  * @param {object} admin - GraphQL を実行する admin オブジェクト
  * @param {string} [currentShop] - ショップドメイン
- * @param {object} [_options] - 互換のため受け取るだけ（以前の reportUsage。Managed Pricing では従量報告をしない）
+ * @param {{ reportUsage?: boolean }} [options] - reportUsage: true のときだけ Pro の従量（App Events API）を待たずに報告する。
+ *   管理画面のレイアウト（app.jsx）だけが true を渡す。ストアフロント（App Proxy）・保存の門番は渡さない（課金の副作用を付けない）
  * @returns {Promise<{
  *   distribution: "inhouse"|"public";
  *   plan: "lite"|"pro"|null;
@@ -69,19 +72,21 @@ export function getPlanDistribution(shop) {
  *   planCheckFailed?: boolean;
  *   locationPlanMismatch?: boolean;
  *   maxLocationsForPlan?: number;
+ *   proLocationUsage?: { units: number; unitPriceUsd: number; amountUsd: number; periodEnd: string|null; periodSource: "partner"|"admin"|null };
  *   planSource?: "partner"|"admin";
  * }>}
  */
-// eslint-disable-next-line no-unused-vars
-export async function getShopPlan(admin, currentShop, _options = {}) {
+export async function getShopPlan(admin, currentShop, options = {}) {
   const { distribution, forceInhouse } = getPlanDistribution(currentShop);
 
   let locationsCount = 0;
   let isDevelopmentStore = false;
   let planFromBilling = null;
+  let shopGid = null;
+  /** @type {Array<{ status?: string; currentPeriodEnd?: string|null }>} */
+  let activeSubs = [];
   /** Shopify から契約の一覧を読めたか（読めない＝未契約とは言えない） */
   let subscriptionsRead = false;
-  let shopGid = null;
 
   try {
     const resp = await admin.graphql(SHOP_PLAN_QUERY, { variables: { first: 250 } });
@@ -93,6 +98,7 @@ export async function getShopPlan(admin, currentShop, _options = {}) {
     const subs = d?.currentAppInstallation?.activeSubscriptions;
     if (Array.isArray(subs)) {
       subscriptionsRead = true;
+      activeSubs = subs;
       planFromBilling = getPlanFromActiveSubscriptions(subs);
     } else if (distribution === "public") {
       const errs = Array.isArray(data?.errors) ? data.errors.map((e) => e?.message).join("; ") : "";
@@ -106,6 +112,8 @@ export async function getShopPlan(admin, currentShop, _options = {}) {
   // 契約が見つかればそれを正にする。契約なしと答えたら Admin API の結果を使う（Admin に有効な契約があれば止めない）。
   // 失敗（429・timeout など）のときは今まで通り Admin API の結果だけで決める（読めなければ planCheckFailed）。
   let planSource = "admin";
+  /** Partner で契約が見つかったときの、その契約の今の請求期間の終わり（従量の報告に使う） */
+  let partnerPeriodEnd = null;
   if (distribution === "public") {
     const partnerConfig = readPartnerApiConfig();
     if (!partnerConfig.enabled) {
@@ -116,6 +124,7 @@ export async function getShopPlan(admin, currentShop, _options = {}) {
       const partner = await getPartnerActiveSubscription({ config: partnerConfig.config, shopGid, shop: currentShop });
       if (partner.ok && partner.subscription) {
         planSource = "partner";
+        partnerPeriodEnd = partner.subscription.currentPeriodEnd ?? null;
         subscriptionsRead = true;
         planFromBilling = getPlanFromActiveSubscriptions([partnerSubscriptionToAdminShape(partner.subscription, shopGid)]);
       } else if (partner.ok) {
@@ -160,6 +169,31 @@ export async function getShopPlan(admin, currentShop, _options = {}) {
     maxLocationsForPlan = maxForPlan;
   }
 
+  // Pro の従量（$2 × ロケーション数）。公開用・Pro のときだけ。1 請求期間に 1 回だけ App Events API で送る
+  // （送るか・失敗の記録は appEventsUsage.server.js。ここでは待たない）
+  let proLocationUsage;
+  if (distribution === "public" && !forceInhouse && plan === "pro") {
+    const usage = computeProLocationUsage(plan, locationsCount);
+    if (usage.units > 0) {
+      // プランを決めた契約の期間を使う（Partner で決めたのに Admin の期間を見ると、Admin に契約が出ない店で送れない）
+      const { periodEnd, periodSource } = pickUsagePeriodEnd({ planSource, partnerPeriodEnd, adminSubscriptions: activeSubs });
+      proLocationUsage = { units: usage.units, unitPriceUsd: usage.unitPriceUsd, amountUsd: usage.amountUsd, periodEnd, periodSource };
+      const shopForReport = String(currentShop ?? "").trim().toLowerCase();
+      if (options?.reportUsage === true && shopForReport) {
+        void import("../db.server.js")
+          .then(({ default: prisma }) =>
+            reportProLocationUsage(
+              { shop: shopForReport, shopGid, plan, locationsCount, periodEnd },
+              { store: prisma.appUsageReport }
+            )
+          )
+          .catch((e) => {
+            console.error("[getShopPlan] pro location usage report crashed:", e instanceof Error ? e.message : String(e));
+          });
+      }
+    }
+  }
+
   return {
     distribution,
     plan,
@@ -170,6 +204,7 @@ export async function getShopPlan(admin, currentShop, _options = {}) {
     ...(planRequired ? { planRequired: true } : {}),
     ...(planCheckFailed ? { planCheckFailed: true } : {}),
     ...(locationPlanMismatch ? { locationPlanMismatch: true, maxLocationsForPlan } : {}),
+    ...(proLocationUsage ? { proLocationUsage } : {}),
   };
 }
 

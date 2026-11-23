@@ -5,7 +5,8 @@
  * - プランと料金は Partner Dashboard で作る。アプリは appSubscriptionCreate を呼ばない。
  * - 店は Shopify のプラン選択ページ（admin.shopify.com/store/<店>/charges/<app handle>/pricing_plans）で選ぶ。
  * - アプリは currentAppInstallation.activeSubscriptions のプラン名（"Lite" / "Pro" を含む）を読んで機能を決める。
- * - Managed Pricing には従量課金（usage）が無いので、appUsageRecordCreate は使わない。
+ * - Billing API の従量（appUsageRecordCreate）は App Pricing の契約には使えないので使わない。
+ *   Pro の「1 ロケーション $2」は App Pricing の使用量メーターへ App Events API で送る（appEventsUsage.server.js）。
  */
 
 /**
