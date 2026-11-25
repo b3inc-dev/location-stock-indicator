@@ -23,12 +23,13 @@ T が上から順に押すための手順。**オンにする（外へ送る）�
 | 表示名 | Lite | Pro |
 | Billing | Monthly | Monthly |
 | 月額（USD） | 20 | 20 |
-| Free trial（日） | 7【T】 | 14【T】 |
+| Free trial（日） | 7 | 14 |
 | Redirect URL | `/app` | `/app` |
 | 使用量のメーター | なし | `pro_location`（2 章） |
 
 - **表示名と handle の両方に `lite` / `pro` を入れる**。アプリは契約名（Admin API）か handle（Partner API）に `Pro` / `Lite` が入っているかでプランを決める【事実: #48 の `getPlanFromActiveSubscriptions`、PLAN_SETTINGS_DESIGN 3.4】。
-- 各プランの「特徴」は ja.md / en.md 9 章の「使える機能」を貼る（日本語と英語）。
+- 無料体験の日数は T さんの決定（2026-11-22、#49）。
+- 各プランの「特徴」は ja.md 9 章の「使える機能」を貼る（最初は日本語だけで掲載する。英語の en.md 8 章は公開のあと。T さんの決定 2026-11-22、#49）。
 - Partner の条件で「Merchant must have online store」を選ぶ（4.3.1）。
 
 ## 2. Pro に使用量のメーターを作る
