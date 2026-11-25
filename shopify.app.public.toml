@@ -18,6 +18,11 @@ api_version = "2026-01"
   topics = [ "app/uninstalled" ]
   uri = "/webhooks/app/uninstalled"
 
+  # POS Lite の持ち帰りと配送（会計のあとに配送分を出荷元へ移し、持ち帰り分を履行する。設定が既定オフのあいだは何もしない）
+  [[webhooks.subscriptions]]
+  topics = [ "orders/paid" ]
+  uri = "/webhooks/orders/paid"
+
   # 必須コンプライアンス Webhook（App Store 審査用。HMAC は authenticate.webhook で検証）
   [[webhooks.subscriptions]]
   compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
@@ -25,7 +30,9 @@ api_version = "2026-01"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_inventory,read_locations,read_products,read_shipping,read_markets,write_app_proxy"
+# POS Lite（店頭受取・持ち帰りと配送）で read_orders・write_orders・read/write_merchant_managed_fulfillment_orders を足した（2026-11-23）。
+# 足すと、入れている店で権限の承認がもう一度要る。
+scopes = "read_inventory,read_locations,read_products,read_shipping,read_markets,write_app_proxy,read_orders,write_orders,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders"
 
 [auth]
 redirect_urls = [

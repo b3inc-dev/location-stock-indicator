@@ -73,6 +73,7 @@ export default function App() {
       <s-app-nav>
         <s-link href="/app/locations">ロケーション設定</s-link>
         <s-link href="/app/settings">在庫表示設定</s-link>
+        {shopPlan?.features?.storePickup && <s-link href="/app/pos-lite">店頭受取・配送</s-link>}
         {showAnalyticsLink && <s-link href="/app/analytics">分析</s-link>}
         {showPlanLink && <s-link href="/app/plan">料金プラン</s-link>}
       </s-app-nav>
