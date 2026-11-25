@@ -85,6 +85,17 @@
 実装: `app/utils/planGate.js`（純関数）、`getShopPlan` の `features.basicDisplay` / `planRequired`、`app.jsx` リダイレクト、App Proxy の fail-closed。  
 根拠: listing の Lite $20 と実装を一致させ、審査での「価格とゲート不一致」を避ける。
 
+### 3.4 Partner API で契約を読む（既定オフ・2026-11-22）
+
+shopify.dev の Shopify App Pricing の説明では、店の今の契約を確かめる正しい場所は **Partner API の `activeSubscription(appId:, shopId:)`**。Admin API の `currentAppInstallation.activeSubscriptions` に App Pricing の契約が出るかは書かれていない（未確認）。そこで `app/utils/partnerSubscription.server.js` で読めるようにした（DECISIONS D10。POS Stock・Review Q&A にも同じ形のファイル）。
+
+- **既定オフ**。公開用で `PARTNER_API_SUBSCRIPTION_ENABLED=1` と `PARTNER_API_TOKEN`・`PARTNER_API_ORG_ID`・`PARTNER_API_APP_ID` がそろったときだけ聞く。自社用は聞かない
+- 送り先: `POST https://partners.shopify.com/{Partner ID}/api/2026-10/graphql.json`、ヘッダー `X-Shopify-Access-Token`。Partner ID は **Partner Dashboard の URL の数字**（Dev Dashboard の数字＝organization ID ではない）。版は `PARTNER_API_VERSION` で変えられる
+- 引数は `gid://shopify/App/<数字>`・`gid://shopify/Shop/<数字>`（店の ID は Admin API の `shop { id }`）。権限は **Manage apps**。公開アプリだけで使える
+- 契約が見つかれば正（項目の `handle` を名前として今と同じ Pro/Lite の決まり。handle に `lite` / `pro` を入れる）。「契約なし」なら Admin API の結果。失敗（429・5 秒の timeout・権限など）なら Admin API だけで決め、両方読めなければ今まで通り `planCheckFailed`（App Proxy は fail-closed のまま）
+- App Proxy は商品ページのたびに `getShopPlan` を呼ぶので、店ごとに見つかった結果は 60 秒・契約なしは 15 秒覚え、同時の呼び出しは 1 回にまとめる（上限 1 クライアント 4 回/秒）。失敗した店は 30 秒聞き直さず Admin API だけで決める（商品ページが timeout の 5 秒を毎回待たない）。429 のあとは 10 秒どの店でも聞かない（2026-11-22 レビューで追加）。3 つのアプリは Partner API client を分ける（上限は client ごと）。トークンはログに出さない
+- 未確認: 開発ストアのテスト課金が Partner に出るか（出なければ Admin の結果を使う）
+
 ---
 
 ## 4. カスタムアプリ・公開アプリ・開発ストアの切り替え（POS Stock 同様）

@@ -27,6 +27,11 @@ export const loader = async ({ request }) => {
   const isPlanOrHome =
     path === "/app" || path === "/app/plan" || path.startsWith("/app/plan?");
 
+  // 公開アプリで契約を読めなかった: 未契約とは言わず、料金プランの画面で「確認できませんでした」を出す（fail-closed）
+  if (shopPlan.planCheckFailed && !isPlanOrHome) {
+    return redirect("/app/plan?check_failed=1");
+  }
+
   // 公開アプリでプラン未選択: ホームと料金プラン以外は選択を促す（無料開放しない）
   if (shopPlan.planRequired && !isPlanOrHome) {
     return redirect("/app/plan?required=1");
