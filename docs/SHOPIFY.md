@@ -59,6 +59,8 @@ Admin GraphQL API バージョン（アプリコード）: `ApiVersion.October25
 
 ## 5. 環境変数（コード／docs で参照されるもの）
 
+`PARTNER_API_*` は PR #48、`APP_EVENTS_*` は PR #50 のコード。どれも公開用の Render だけに入れる（自社用には入れない）。入れる順番は `docs/listing/partner-dashboard-steps.md`（PR #53）。
+
 | 変数 | 用途 | 参照箇所 |
 |------|------|----------|
 | `SHOPIFY_API_KEY` | API キー | `shopify.server.js`, refresh, `app.jsx` |
@@ -68,13 +70,18 @@ Admin GraphQL API バージョン（アプリコード）: `ApiVersion.October25
 | `SHOP_CUSTOM_DOMAIN` | カスタムショッピドメイン（任意） | `shopify.server.js` |
 | `APP_DISTRIBUTION` | `inhouse` で自社扱い | `shopPlan.server.js` / `APP_AND_RENDER_CONFIG.md` |
 | `CUSTOM_APP_STORE_IDS` | カンマ区切りで inhouse 扱いショップ | `shopPlan.server.js` |
-| `FORCE_PLAN_LITE` | `1` で Lite 強制 | `shopPlan.server.js` |
-| `SHOPIFY_APP_HANDLE` | プラン画面等（デフォルト `app`） | `app.plan.jsx` |
+| ~~`FORCE_PLAN_LITE`~~ | **#48 で使わなくなった**（開発ストアも App Pricing の契約で決める）。公開用・自社用の Render に残っていれば消してよい | — |
+| `SHOPIFY_APP_HANDLE` | 公開用アプリの handle。Shopify のプラン選択ページの URL に使う。**既定値なし**（無いと URL を作らず、料金プランの画面から移れない） | `billing.js`（`getPublicAppHandle`）, `app.plan.jsx` |
 | `PARTNER_API_SUBSCRIPTION_ENABLED` | `1` で契約を Partner API でも読む（既定オフ・公開用だけ） | `partnerSubscription.server.js` |
 | `PARTNER_API_TOKEN` | Partner API client のトークン（秘密。権限 Manage apps） | `partnerSubscription.server.js` |
 | `PARTNER_API_ORG_ID` | Partner Dashboard の URL の数字 | `partnerSubscription.server.js` |
 | `PARTNER_API_APP_ID` | 公開用アプリの ID（数字か `gid://shopify/App/…`） | `partnerSubscription.server.js` |
 | `PARTNER_API_VERSION` | 省略可。既定 `2026-10` | `partnerSubscription.server.js` |
+| `APP_EVENTS_USAGE_ENABLED` | `1` で Pro の従量を Shopify へ送る（既定オフ・公開用だけ。#50）。オフでも数は `AppUsageReport` に `disabled` で残る | `appEventsUsage.server.js` |
+| `APP_EVENTS_CLIENT_ID` / `APP_EVENTS_CLIENT_SECRET` | App Events API のトークン用（client_credentials）。**公開用アプリ自身の client ID と secret**（`SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET` と同じ値。秘密）。別に API キーを作らない。**未設定なら `SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET` を使う**ので入れなくてよい（入れるなら両方）。自社用のサーバーでは使わない（送らない） | `appEventsUsage.server.js` |
+| `APP_EVENTS_HANDLE_PRO` | 省略可。Pro のメーターの handle（既定 `pro_location`） | `appEventsUsage.server.js` |
+| `APP_EVENTS_USAGE_MAX_UNITS` | 省略可。アプリ側の上限（1 期間に送るロケーション数。既定 100）。超えたら送らず `over_limit` | `appEventsUsage.server.js` |
+| `APP_EVENTS_API_VERSION` | 省略可。既定 `2026-10` | `appEventsUsage.server.js` |
 | `DATABASE_URL` | docs 上 Prisma 用（スキーマ既定は `file:dev.sqlite`） | `DEPLOY_AND_SCOPES.md` |
 | `NODE_ENV` | production 等 | `db.server.js`, Dockerfile |
 | `PORT` / `FRONTEND_PORT` | サーバ／Vite | `vite.config.js` |

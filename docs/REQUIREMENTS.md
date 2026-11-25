@@ -111,7 +111,7 @@
 - **ナビ**（`app.jsx`）  
   ロケーション設定・在庫表示設定・分析・**料金プラン**（公開アプリ時のみ表示）。「ホーム」リンクはなし。アプリを開いたときの初期表示は `/app`（ホーム）。`shopPlan` を loader で取得し Outlet context に渡す。Lite でロケーション数が 10 を超えるときは `locationPlanMismatch` によりホーム・料金プラン以外へアクセスすると `/app/plan` にリダイレクト。
 - **料金プラン**（`app.plan.jsx`）  
-  Lite / Pro の説明・プラン選択・プラン別機能の紹介。カスタムアプリ時は「全機能をご利用いただけます」のみ表示。公開アプリ時はプラン不一致バナー・開発ストア案内・プランカード・「全てのプランで利用可能な機能」「Pro プランで利用可能な機能」を表示。「このプランを選択する」で Billing API の confirmationUrl へリダイレクト。設計・詳細は `docs/PLAN_SETTINGS_DESIGN.md`。
+  Lite / Pro の説明・プラン選択・プラン別機能の紹介。カスタムアプリ時は「全機能をご利用いただけます」のみ表示。公開アプリ時はプラン不一致バナー・開発ストア案内・プランカード・「全てのプランで利用可能な機能」「Pro プランで利用可能な機能」を表示。「このプランを選択する」で Shopify のプラン選択ページ（App Pricing）へ `_top` で移る（13.2）。設計・詳細は `docs/PLAN_SETTINGS_DESIGN.md`。
 - **在庫表示設定**（`app.settings.jsx`）  
   閾値（一番上）、在庫マーク、在庫数テキスト、ステータスラベル、メッセージ、注意書きのみ。並び順・クリック設定はなし（ロケーション名のリンクはロケーション設定で行う）。
 - **ロケーション設定**（`app.locations.jsx`）  
@@ -557,36 +557,60 @@
 
 ---
 
-## 13. Lite / Pro プラン（実装済み）
+## 13. Lite / Pro プラン（Shopify App Pricing。PR #48・#50）
+
+> この節は PR #48（App Pricing・Partner API で契約を読む）と PR #50（Pro の 1 か所 $2 の従量）の作り。**#48 → #50 → この docs の順に main へ入れる**。#50 が入るまでは 13.4 の従量は動かない。
 
 ### 13.1 プラン概要
 
 | プラン | 料金 | ロケーション数 | 利用可能な機能 |
 |--------|------|-----------------|----------------|
 | **Lite** | $20/月（定額） | 最大 10 | 基本表示のみ（エリア・近隣店舗・店舗受け取り・分析なし） |
-| **Pro** | $20/月 ＋ ロケーション数×$2/月（従量） | 制限なし | 全機能 |
+| **Pro** | $20/月 ＋ ロケーション数×$2/月（使用量のメーター `pro_location`） | 制限なし | 全機能 |
 
-- **カスタムアプリ**: 全機能利用可能（課金なし）。
-- **開発ストア**: 全機能利用可能（課金なし）。Lite の挙動を確認したい場合は環境変数 `FORCE_PLAN_LITE=1` で Lite 相当に強制可能（`docs/PLAN_SETTINGS_DESIGN.md` の「開発・検証用」参照）。
-- **公開アプリ**: 上記プランに従い課金・機能制限が有効。
+- 料金の形は **Shopify App Pricing**（2026-11-21 T の決定、#49）。プランと料金・無料体験は Partner Dashboard で作る。アプリは Billing API（`appSubscriptionCreate`・`appUsageRecordCreate`）を呼ばない。
+- **カスタムアプリ（自社用）**: 全機能利用可能（課金なし）。今まで通り。
+- **開発ストア**: 公開用では、本番の店と同じく App Pricing の契約で決める（Shopify のテスト課金なので請求されない）。以前の「開発ストアは契約なしで全機能」と `FORCE_PLAN_LITE` はやめた（#48）。Lite を試すときは開発ストアで Lite を選ぶ。
+- **公開アプリ**: 未契約（`plan === null`）は基本の在庫表示も出さない（無料開放しない）。契約を読めなかった（`planCheckFailed`）ときも出さない（fail-closed）。画面では「未契約」と「確認できませんでした」を分ける。
+- 無料体験は **Lite 7 日・Pro 14 日**（2026-11-22 T の決定、#49）。日数は Partner Dashboard のプランに入れる（アプリのコードには持たない）。
 
 ### 13.2 実装経路
 
 | 項目 | 内容 |
 |------|------|
-| **プラン判定** | `app/utils/shopPlan.server.js` の `getShopPlan` で、ショップのロケーション数・有効なサブスクリプション（`appSubscriptionCreate` で作成したプラン名）から `plan`（lite / pro / null）、`distribution`（inhouse / public）、`isDevelopmentStore`、`locationPlanMismatch`（Lite でロケーション数 > 10）などを算出。 |
-| **課金** | `app/utils/billing.js` で Lite/Pro の `createAppSubscription`（Lite: 定額のみ、Pro: 定額＋従量）、`reportUsageRecord`（Pro のロケーション数課金）、`getPlanFromActiveSubscriptions` などを実装。 |
-| **ルート共通** | `app/routes/app.jsx` の loader で `getShopPlan` を呼び、`shopPlan` を Outlet context に渡す。`locationPlanMismatch` のときは `/app`・`/app/plan` 以外へアクセスすると `/app/plan` にリダイレクト。 |
-| **ホーム** | `app._index.jsx` で「現在の料金プラン」「ロケーション数」カードを表示。公開時はプラン未選択・Lite 時にアップグレード誘導リンク。 |
-| **料金プランページ** | `app.plan.jsx` で Lite/Pro の説明・選択・機能一覧。公開時のみ「このプランを選択する」で Billing API の confirmationUrl へ遷移。 |
-| **ロケーション設定** | `app.locations.jsx` で `shopPlan` を参照。Pro 専用セクション（エリア/近隣店舗のデザイン、近隣店舗表示設定、店舗受け取りボタン）に Pro バッジを表示し、Lite 時は同じ内容をグレーアウト・編集不可。保存時は Lite のとき Pro 専用項目（`regionGroupId`、`excludeFromNearby`、店舗受け取り関連の `future`）を送らない／OFF で上書き。ロケーション一覧の「エリア」「近隣除外」列は Lite 時は表示のみ（編集不可・保存時も送信しない）。 |
-| **分析** | `app.analytics.jsx` で公開アプリかつ Lite のときは分析コンテンツを非表示にし、「分析は Pro プランでご利用いただけます」と料金プランへのリンクを表示。 |
-| **ストアフロント** | App Proxy（`app/routes/apps.location-stock.js`）内で `getShopPlan` を呼び、Lite のときは返す `config.future` の Pro 専用フラグ（エリア・近隣・店舗受け取りなど）を強制で `false` にし、テーマ側で Pro 機能が有効にならないようにする。 |
+| **プラン判定** | `app/utils/shopPlan.server.js` の `getShopPlan`。ロケーション数と、有効な契約（`currentAppInstallation.activeSubscriptions` の名前。Partner API がオンのときは 13.3）から `plan`（lite / pro / null）・`distribution`（inhouse / public）・`isDevelopmentStore`・`planCheckFailed`・`locationPlanMismatch`（Lite でロケーション数 > 10）を出す。プラン名に `Pro` → pro、`Lite` → lite。有効な契約があるのに名前から読めないときは lite（払っている店を止めない）。決まりは `app/utils/billing.js` の `getPlanFromActiveSubscriptions` |
+| **ゲート** | `app/utils/planGate.js`（純関数）: `isStorefrontInventoryAllowed`・`isProFeaturesAllowed`・`requiresPlanSelection`。`adminWriteBlockReason`（設定の保存を止める理由: `plan_check_failed` / `plan_required` / `location_plan_mismatch`）は `shopPlan.server.js` の `adminWritePlanBlock` から、設定を保存する action が呼ぶ。料金プランの画面の文は `app/utils/planNotice.js` |
+| **ルート共通** | `app/routes/app.jsx` の loader で `getShopPlan`。契約を読めなかった（`?check_failed=1`）・未契約（`?required=1`）・`locationPlanMismatch`（`?mismatch=1`）のときは、`/app`・`/app/plan` 以外を `/app/plan` へ回す |
+| **ホーム** | `app._index.jsx` で「現在の料金プラン」「ロケーション数」。読めなかったときは「契約の状態を確認できませんでした」。開発ストアは「テスト課金のため請求されません」 |
+| **料金プランページ** | `app.plan.jsx` で Lite / Pro の説明と、Shopify のプラン選択ページ（`https://admin.shopify.com/store/<店>/charges/<SHOPIFY_APP_HANDLE>/pricing_plans`）へのリンク（`target="_top"`）。URL は `billing.js` の `buildManagedPricingPlansUrl`。`SHOPIFY_APP_HANDLE` が無いと URL を作らない（既定値なし）。値段は画面に出さない（Shopify のページに出る） |
+| **ロケーション設定** | `app.locations.jsx`。Pro 専用セクション（エリア・近隣店舗・店舗受け取り）は Lite ではグレーアウト・編集不可。保存のとき Lite は Pro 専用項目を送らない／OFF で上書き。未契約・読めなかった・Lite の上限超えのときは `adminWritePlanBlock` で保存しない |
+| **分析** | `app.analytics.jsx`。公開アプリで Lite のときは中身を出さず、料金プランへの案内 |
+| **ストアフロント** | App Proxy（`app/routes/apps.location-stock.js`）で `getShopPlan`。未契約・読めなかったときは在庫を返さない（`plan_required` など）。Lite のときは `config.future` の Pro 専用フラグを `false` にする |
 
-### 13.3 参照
+### 13.3 契約を Partner API でも読む（既定オフ。#48・DECISIONS D10）
 
-- **設計・料金・機能一覧・開発ストアでの Lite 強制方法**: `docs/PLAN_SETTINGS_DESIGN.md`
-- **課金・サブスクリプションの詳細**: `app/utils/billing.js`、`app/utils/shopPlan.server.js`
+- `app/utils/partnerSubscription.server.js`。公開用で `PARTNER_API_SUBSCRIPTION_ENABLED=1` と `PARTNER_API_TOKEN`・`PARTNER_API_ORG_ID`・`PARTNER_API_APP_ID` がそろったときだけ、`activeSubscription(appId:, shopId:)` を聞く。
+- 見つかれば正（項目の `handle` を名前として 13.2 と同じ決まり。**Partner のプランの handle に `lite` / `pro` を入れる**）。「契約なし」なら Admin API の結果。失敗なら Admin API だけで決め、両方読めなければ `planCheckFailed`。
+- App Proxy から毎回呼ばれるので、店ごとに見つかった結果は 60 秒・契約なしは 15 秒覚える。失敗した店は 30 秒、429 のあとは 10 秒聞かない。詳細は `docs/PLAN_SETTINGS_DESIGN.md` 3.4。
+
+### 13.4 Pro の 1 か所 $2 の従量（#50）
+
+- `app/utils/appEventsUsage.server.js`。Pro の店で、**すべてのロケーション数**（10 か所を引かない）を単位として、App Events API（`POST https://api.shopify.com/app/{version}/events`）で 1 請求期間に 1 回送る（`computeProLocationUsage`）。メーターの handle は `pro_location`（`APP_EVENTS_HANDLE_PRO` で変えられる）。
+- 送るのは管理画面の `app/routes/app.jsx` の loader（`getShopPlan(..., { reportUsage: true })`）からだけ。ストアフロント（App Proxy）からは送らない。待たない。
+- 外へ送るのは `APP_EVENTS_USAGE_ENABLED=1` のときだけ（既定オフ）。オフでも数は DB の `AppUsageReport` に `disabled` で残す。
+- 1 店・1 請求期間に 1 行（`AppUsageReport` の一意）＋ Shopify の `idempotency_key` で 2 回送らない。失敗は `failed`（HTTP の番号・理由・回数）で残して同じキーで送り直す。
+- Shopify の App Pricing に上限（cap）は無いので、アプリ側の上限 `APP_EVENTS_USAGE_MAX_UNITS`（既定 100）を超えたら送らず `over_limit` で残す。
+- トークンは**公開用アプリ自身の client ID と client secret**で `POST https://api.shopify.com/auth/access_token`（client_credentials）から取る（https://shopify.dev/docs/apps/build/app-events/send-events。別に作る API キーではない）。`APP_EVENTS_CLIENT_ID` / `APP_EVENTS_CLIENT_SECRET` があればそれ、無ければ公開用の `SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET`（同じ値なので入れなくてよい。片方だけはエラー）。サーバーが自社用（`resolvePlanDistribution` が inhouse）なら鍵を使わず送らない（`resolveAppEventsCredentials`）。
+- 202 は「受け取った」だけ。請求に載ったかは Dev Dashboard の Logs（Type: App billing event）で見る。
+- 料金プランの画面に、ロケーション数と使用量を出す。
+- 決まっていないこと: `AppUsageReport` を `shop/redact` で消すか（個人情報は無い）。アンインストールの 24 時間後に期間が閉じ、それより後は送れない（`PERIOD_CLOSED`）。
+
+### 13.5 参照
+
+- 設計・料金・機能一覧: `docs/PLAN_SETTINGS_DESIGN.md`
+- Partner Dashboard と Render の手順: `docs/listing/partner-dashboard-steps.md`（PR #53）
+- コード: `app/utils/billing.js`、`app/utils/shopPlan.server.js`、`app/utils/planGate.js`、`app/utils/partnerSubscription.server.js`、`app/utils/appEventsUsage.server.js`（#50）
+- Shopify: https://shopify.dev/docs/apps/launch/billing/shopify-app-pricing/subscription-billing/setup-usage-charges
 
 ---
 
@@ -613,7 +637,7 @@
 | `/app/locations` | `app.locations.jsx` | ロケーション設定（並び順・エリア・近隣・店舗受け取り・一覧） |
 | `/app/settings` | `app.settings.jsx` | 在庫表示設定（閾値・マーク・ラベル・メッセージ・注意書き） |
 | `/app/analytics` | `app.analytics.jsx` | 分析（Pro 専用。エリア表示・近隣クリック・店舗受け取りクリック） |
-| `/app/plan` | `app.plan.jsx` | 料金プラン（Lite / Pro 選択・課金） |
+| `/app/plan` | `app.plan.jsx` | 料金プラン（Lite / Pro。Shopify のプラン選択ページへ移る） |
 | App Proxy | `apps.location-stock.js` | `/apps/location-stock?variant_id=xxx` 在庫＋config 返却、分析イベント受信 |
 
 ### 14.3 拡張機能
