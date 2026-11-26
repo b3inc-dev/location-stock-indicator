@@ -378,6 +378,15 @@ function isThrottleError(error) {
   return error?.extensions?.code === "THROTTLED" || error?.message === "Throttled";
 }
 
+async function readVersionedDelivery(session, query, variables) {
+  for (let attempt = 0; ; attempt++) {
+    const result = await graphqlAdminAtVersion(session, query, variables);
+    if (attempt > 0 || !result.errors?.length || !result.errors.every(isThrottleError)) return result;
+    // Match legacy's bounded retry only for wholly throttled read-only GraphQL.
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+}
+
 async function readDeliveryProfiles(admin, query = DELIVERY_PROFILES_QUERY, variables = {}) {
   for (let attempt = 0; ; attempt++) {
     try {
@@ -409,7 +418,7 @@ export async function loadLocationDeliveryFlags(admin, session, options = {}) {
   if (mds === true) {
     try {
       const marketsResult = await collectDeliveryPages(
-        (query, variables) => graphqlAdminAtVersion(session, query, variables),
+        (query, variables) => readVersionedDelivery(session, query, variables),
         MARKETS_DELIVERY_QUERY, "markets"
       );
       if (marketsResult.errors?.length) {
