@@ -164,7 +164,7 @@ describe("buildLocationDeliveryFlagsFromMarkets", () => {
 });
 
 describe("legacy delivery profile throttling", () => {
-  const success = { data: { deliveryProfiles: { nodes: [] } } };
+  const success = { data: { deliveryProfiles: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } } };
   const throttle = { errors: [{ extensions: { code: "THROTTLED" } }] };
 
   for (const [title, replies, source] of [
