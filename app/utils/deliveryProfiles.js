@@ -367,6 +367,14 @@ export async function detectMarketDrivenShipping(session) {
 }
 
 function isThrottleError(error) {
+  // The SDK message is only the first GraphQL error. Inspect the whole body
+  // before retrying, so [THROTTLED, ACCESS_DENIED] is never retried.
+  const nested = error?.body?.errors;
+  if (nested !== undefined) {
+    const errors = Array.isArray(nested) ? nested : nested?.graphQLErrors;
+    return Array.isArray(errors) && errors.length > 0 &&
+      errors.every((item) => item?.extensions?.code === "THROTTLED" || item?.message === "Throttled");
+  }
   return error?.extensions?.code === "THROTTLED" || error?.message === "Throttled";
 }
 
