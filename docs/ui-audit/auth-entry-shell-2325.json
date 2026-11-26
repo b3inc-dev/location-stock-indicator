@@ -1,0 +1,131 @@
+{
+  "app_id": 20,
+  "app": "Location Stock",
+  "fixed_sha": "12c5d5ae56199c6f57a15af01bb6e9bd0979b2be",
+  "recorded_at": "2026-11-26T14:41:38Z",
+  "owner": "Codex apps_secondary",
+  "scope": "Previously unlisted authentication/entry states and parent shell supplement. Source-only; not standalone screen count or UI-rule acceptance.",
+  "existing_coverage_sha": "cb160ae7c8a719395167195852c40ad7ba355970",
+  "existing_screen_ids": [
+    "APP-20-SOURCE--app-analytics",
+    "APP-20-SOURCE--app",
+    "APP-20-SOURCE-locations",
+    "APP-20-SOURCE-settings",
+    "APP-20-SOURCE-plan"
+  ],
+  "total_screens": null,
+  "custom_public_variants": "both need runtime verification",
+  "sources": [
+    {
+      "path": "app/routes/_index/route.jsx",
+      "blob_sha": "489550c870a3500371dc84edadd9474e46e6b7b4",
+      "url": "https://github.com/b3inc-dev/location-stock-indicator/blob/12c5d5ae56199c6f57a15af01bb6e9bd0979b2be/app/routes/_index/route.jsx"
+    },
+    {
+      "path": "app/routes/auth.login/route.jsx",
+      "blob_sha": "80da04a26c139a9fc5e1acc044a69ca7fac09d42",
+      "url": "https://github.com/b3inc-dev/location-stock-indicator/blob/12c5d5ae56199c6f57a15af01bb6e9bd0979b2be/app/routes/auth.login/route.jsx"
+    },
+    {
+      "path": "app/routes/app.jsx",
+      "blob_sha": "877cb7e6d249e89ab213bf482e6420054f68cce0",
+      "url": "https://github.com/b3inc-dev/location-stock-indicator/blob/12c5d5ae56199c6f57a15af01bb6e9bd0979b2be/app/routes/app.jsx"
+    },
+    {
+      "path": "app/components/OpenFromShopifyAdmin.jsx",
+      "blob_sha": "92b7ad25d41c573f3ff8ef0da731b37e002e041f",
+      "url": "https://github.com/b3inc-dev/location-stock-indicator/blob/12c5d5ae56199c6f57a15af01bb6e9bd0979b2be/app/components/OpenFromShopifyAdmin.jsx"
+    },
+    {
+      "path": "app/components/AppNavBar.jsx",
+      "blob_sha": "9bf1f4793d7d9c56e5e6bb9d0eb76fa912927489",
+      "url": "https://github.com/b3inc-dev/location-stock-indicator/blob/12c5d5ae56199c6f57a15af01bb6e9bd0979b2be/app/components/AppNavBar.jsx"
+    },
+    {
+      "path": "app/utils/appEntry.js",
+      "blob_sha": "c004165b34e916594e22736933202cd4fa85f1ba",
+      "url": "https://github.com/b3inc-dev/location-stock-indicator/blob/12c5d5ae56199c6f57a15af01bb6e9bd0979b2be/app/utils/appEntry.js"
+    }
+  ],
+  "observations": [
+    {
+      "stable_id": "APP-20-SOURCE-entry",
+      "name": "管理画面外の入口案内",
+      "route": "/",
+      "source_path": "app/routes/_index/route.jsx",
+      "states": [
+        "shop/host/embedded/id_tokenのいずれか非空→全queryを/appへredirect",
+        "entry param無し/空→Shopify管理画面から開く日英案内とadmin.shopify.comリンク",
+        "店domain入力欄なし"
+      ],
+      "checks": {
+        "code": "enumerated",
+        "automatic": "not executed",
+        "browser": "unverified",
+        "physical_device": "unverified"
+      }
+    },
+    {
+      "stable_id": "APP-20-SOURCE-auth-login",
+      "name": "認証入口",
+      "route": "/auth/login",
+      "source_path": "app/routes/auth.login/route.jsx",
+      "states": [
+        "shop query有り→library loginを呼ぶ/redirectはSDKのthrow依存",
+        "shop無し→同じ管理画面から開く案内",
+        "不正shop・認証失敗のSDK実状態は未確認"
+      ],
+      "checks": {
+        "code": "enumerated",
+        "automatic": "not executed",
+        "browser": "unverified",
+        "physical_device": "unverified"
+      }
+    },
+    {
+      "stable_id": "APP-20-SOURCE-app-shell",
+      "name": "既存管理画面の共通枠",
+      "route": "/app",
+      "route_note": "parent layout for existing child routes, not a newly created independent screen",
+      "source_path": "app/routes/app.jsx",
+      "states": [
+        "authenticate.admin後の既定OFFのoffline token migration分岐",
+        "public planRequired→home/plan以外は/app/plan?required=1",
+        "locationPlanMismatch→home/plan以外はmismatch=1",
+        "publicのみ料金、features.analyticsのみ分析、常時locations/settings",
+        "host s-app-navと常設fallback nav/AppNavBarViewへpathname/queryを渡す",
+        "navigation.loading→上端loading表示、idleで非表示",
+        "OutletへshopPlan、SDK ErrorBoundary/headersを委譲"
+      ],
+      "checks": {
+        "code": "enumerated",
+        "automatic": "not executed",
+        "browser": "unverified",
+        "physical_device": "unverified"
+      }
+    }
+  ],
+  "rule_comparison": {
+    "canonical_admin": "unverified",
+    "canonical_pos": "unverified",
+    "copy": "shop-point/staging UI_RULES v1.1 copy remains reference only; component comments are not rule authority",
+    "agreement": "unverified",
+    "difference_ids": [],
+    "ui_change_approval": false
+  },
+  "runtime_devices_not_verified": [
+    "PC",
+    "iPhone width",
+    "keyboard",
+    "scroll end",
+    "tab return",
+    "save/reopen",
+    "error retry",
+    "Shopify authenticated Store"
+  ],
+  "blocker": "Next operational requirements need authenticated real Store/scopes/MDS network/performance/device/rollout acceptance; this run forbids those operations. No source inventory or repeated CI is scored as implementation progress.",
+  "next_step": "Owner with existing Store/device approval verifies auth entry, public/custom plan redirects, navigation/loading/error states on fixed candidate; new UI rule differences require separate stable-ID confirmation.",
+  "score_delta_custom": 0,
+  "score_delta_public": 0,
+  "next_integration_owner_received": false
+}
