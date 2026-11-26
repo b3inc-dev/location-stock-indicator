@@ -69,3 +69,13 @@ test("fully read empty MDS includedLocations retains all-location rule",async()=
  await fixture(true,async()=>({data:{markets:page([{id:"m",delivery:{shipping:{isEnabled:true,optionDefinitions:page([{id:"o",includedLocations:page([])}])}}}])}}),
  async load=>{const r=await load();assert.equal(r.source,"markets");assert.equal(r.flags.get("fallback").hasShipping,true);});
 });
+
+test("HTTP failure with apparently valid GraphQL data is never treated as a complete MDS map",async()=>{
+ const original=globalThis.fetch;
+ globalThis.fetch=async(_url,init)=>{
+  const {query}=JSON.parse(init.body);
+  if(query.includes("ShopMarketDrivenShipping"))return Response.json({data:{shop:{features:{marketDrivenShipping:true}}}});
+  return Response.json({data:{markets:page([{id:"m",delivery:{shipping:{isEnabled:true,optionDefinitions:page([{id:"o",includedLocations:page([{id:"hidden"}])}])}}}])}},{status:500});
+ };
+ try{const r=await loadLocationDeliveryFlags({graphql:()=>{throw new Error("No stale legacy fallback");}},session);assert.equal(r.source,"none");assert.equal(r.flags.size,0);}finally{globalThis.fetch=original;}
+});

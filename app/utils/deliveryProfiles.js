@@ -329,6 +329,7 @@ export async function graphqlAdminAtVersion(
     },
     body: JSON.stringify({ query, variables }),
   });
+  if (res.ok === false) return { errors: [{ message: `versioned_graphql_http_${res.status}` }] };
   const json = await res.json().catch(() => null);
   if (!json) {
     return { errors: [{ message: `versioned_graphql_http_${res.status}` }] };
@@ -373,6 +374,7 @@ async function readDeliveryProfiles(admin, query = DELIVERY_PROFILES_QUERY, vari
   for (let attempt = 0; ; attempt++) {
     try {
       const response = await admin.graphql(query, { variables });
+      if (response.ok === false) throw new Error("delivery_page_http_error");
       const result = await response.json();
       if (attempt > 0 || !result.errors?.length || !result.errors.every(isThrottleError)) {
         return result;
