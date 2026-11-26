@@ -18,7 +18,7 @@ async function fixture(fail,check){
   if(wire.query.includes("ShopMarketDrivenShipping"))payload={data:{shop:{features:{marketDrivenShipping:false}}}};
   else if(wire.query.includes("DeliveryGroupLocations")){
    assert.deepEqual(wire.variables,{id:"g",after:"L250"});
-   payload=fail?{data:{node:{locations:page([{id:"partial"}])}},errors:[{message:"synthetic denied",extensions:{code:"ACCESS_DENIED"}},{message:"Throttled",extensions:{code:"THROTTLED"}}]}:{data:{node:{locations:page([{id:"l250"}])}}};
+   payload=fail?{data:{node:{locations:page([{id:"partial"}])}},errors:fail==="throttle-first"?[{message:"Throttled",extensions:{code:"THROTTLED"}},{message:"synthetic denied",extensions:{code:"ACCESS_DENIED"}}]:[{message:"synthetic denied",extensions:{code:"ACCESS_DENIED"}},{message:"Throttled",extensions:{code:"THROTTLED"}}]}:{data:{node:{locations:page([{id:"l250"}])}}};
   }else{
    assert.match(wire.query,/query DeliveryProfilesForLocations/);
    payload={data:{deliveryProfiles:page([{id:"p",profileLocationGroups:[{locationGroup:{id:"g",locations:page(Array.from({length:250},(_,i)=>({id:"l"+i})),"L250")},locationGroupZones:page([{zone:{id:"z",name:"Domestic"},methodDefinitions:page([method])}])}]}])}};
@@ -41,4 +41,8 @@ test("actual Shopify GraphQL SDK serializes parent cursor and receives all 251 d
 });
 test("actual SDK mixed GraphQL error after page1 cannot publish partial delivery flags",async()=>{
  await fixture(true,async(r,calls)=>{assert.equal(r.source,"none");assert.equal(r.flags.size,0);assert.equal(calls.length,3);});
+});
+
+test("LOC-SDK-MIXED-THROTTLE-001: throttle-first mixed SDK errors are not retried",async()=>{
+ await fixture("throttle-first",async(r,calls)=>{assert.equal(r.source,"none");assert.equal(r.flags.size,0);assert.equal(calls.length,3,"mixed SDK errors must not be retried");});
 });
