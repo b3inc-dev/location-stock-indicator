@@ -28,7 +28,7 @@ test("LOC-DELIVERY-251-001: legacy group locations collects 251 with its own cur
 test("legacy root, zone and method connections use independent parent cursors",async()=>{
  const p=profile(page([{id:"l1"}]));p.profileLocationGroups[0].locationGroupZones={edges:[{cursor:"Z1",node:{zone:{id:"z1",name:"x"},methodDefinitions:page([{...method,active:false}],"M1")}}],pageInfo:{hasNextPage:true,endCursor:"Z1"}};
  await fixture(false,async(q,v)=>{
-  if(q.includes("DeliveryZoneMethods")){assert.equal(v.zoneAfter,null);assert.equal(v.after,"M1");return {data:{deliveryProfile:{profileLocationGroups:[{locationGroupZones:page([{zone:{id:"z1"},methodDefinitions:page([method])}])}]}}};}
+  if(q.includes("DeliveryZoneMethods")){assert.equal(v.zoneAfter,null);assert.equal(v.after,"M1");return {data:{deliveryProfile:{profileLocationGroups:[{locationGroup:{id:"g"},locationGroupZones:page([{zone:{id:"z1"},methodDefinitions:page([method])}])}]}}};}
   if(q.includes("DeliveryGroupZones")){assert.equal(v.after,"Z1");assert.equal(v.group,"g");return {data:{deliveryProfile:{profileLocationGroups:[{locationGroup:{id:"g"},locationGroupZones:page([zone("z2")])}]}}};}
   if(v?.after==="P1")return {data:{deliveryProfiles:page([])}};
   return {data:{deliveryProfiles:page([p],"P1")}};

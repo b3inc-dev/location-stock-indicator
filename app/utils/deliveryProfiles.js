@@ -463,7 +463,7 @@ const ZONE_PAGE_QUERY = `query DeliveryGroupZones($id: ID!, $group: ID!, $after:
       methodDefinitions(first:50) { ${PAGE} nodes { ${METHOD} } } } } } } }
 }`;
 const METHOD_PAGE_QUERY = `query DeliveryZoneMethods($id: ID!, $group: ID!, $zoneAfter: String, $after: String) {
-  deliveryProfile(id:$id) { profileLocationGroups(locationGroupId:$group) {
+  deliveryProfile(id:$id) { profileLocationGroups(locationGroupId:$group) { locationGroup { id }
     locationGroupZones(first:1, after:$zoneAfter) { edges { cursor node { zone { id }
       methodDefinitions(first:50, after:$after) { ${PAGE} nodes { ${METHOD} } } } } } } }
 }`;
@@ -504,7 +504,7 @@ async function completeConnection(initial, nextPage) {
 }
 function onlyGroup(data, id) {
   const groups=data?.deliveryProfile?.profileLocationGroups;
-  const g=groups?.find(g=>g.locationGroup?.id===id) ?? (groups?.length===1?groups[0]:null);
+  const g=groups?.find(g=>g.locationGroup?.id===id);
   if(!g) throw new Error("delivery_group_missing");
   return g;
 }
@@ -514,7 +514,8 @@ async function collectDeliveryPages(read, query, root) {
   const nodes=[];
   for(const {node:entity} of rows){
     if(root==="deliveryProfiles"){
-      for(const group of entity.profileLocationGroups??[]){
+      if(!Array.isArray(entity.profileLocationGroups))throw new Error("delivery_groups_missing");
+      for(const group of entity.profileLocationGroups){
         const groupId=group.locationGroup?.id;
         const locations=await completeConnection(group.locationGroup?.locations,async after=>{
           if(!groupId)throw new Error("delivery_group_id_missing");
