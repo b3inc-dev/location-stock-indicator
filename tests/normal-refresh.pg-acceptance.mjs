@@ -33,7 +33,7 @@ async function syntheticFetch(input, init) {
     return Response.json({ access_token: "synthetic-new-access-0221", scope: "read_products", expires_in: 3600,
       refresh_token: "synthetic-new-refresh-0221", refresh_token_expires_in: 86400 });
   }
-  assert.equal(url.pathname, "/admin/api/2025-10/graphql.json");
+  assert.equal(url.pathname, "/admin/api/2026-07/graphql.json");
   assert.equal(f.kind, "refreshable");
   assert.equal(req.headers.get("x-shopify-access-token"), "synthetic-new-access-0221");
   assert.match(body.query, /query ComplianceInstallProbe/); assert.doesNotMatch(body.query, /\bmutation\b/i);

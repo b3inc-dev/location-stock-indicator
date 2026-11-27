@@ -35,7 +35,7 @@ async function syntheticFetch(input, init) {
   const f = fixtures.find((x) => x.shop === url.hostname);
   assert.ok(f, "Only these exact synthetic tenant endpoints are permitted");
   assert.equal(req.method, "POST");
-  assert.equal(url.pathname, "/admin/api/2025-10/graphql.json");
+  assert.equal(url.pathname, "/admin/api/2026-07/graphql.json");
   assert.equal(req.headers.get("x-shopify-access-token"), f.token);
   const wire = JSON.parse(await req.text());
   assert.match(wire.query, /query ComplianceInstallProbe/);
