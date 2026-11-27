@@ -37,4 +37,4 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: npm run setup
-      - run: node --test --test-concurrency=1 --test-reporter=tap tests/isolated-pg-guard.test.mjs tests/app-proxy-auth.pg-acceptance.mjs tests/app-proxy-session-inventory.pg-acceptance.mjs
+      - run: node --test --test-concurrency=1 --test-reporter=tap tests/isolated-pg-guard.test.mjs tests/app-proxy-auth.pg-acceptance.mjs tests/app-proxy-session-inventory.pg-acceptance.mjs tests/compliance-reinstall.pg-acceptance.mjs
