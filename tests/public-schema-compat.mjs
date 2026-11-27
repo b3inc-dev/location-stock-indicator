@@ -33,7 +33,8 @@ try {
       .map((s) => s.replace(/\u001b\[[0-9;]*m/g, "").slice(0, 240));
     results.push({ version, exit: r.status, signal: r.signal, category, diagnostics,
       official_public_endpoint: "https://shopify.dev/admin-graphql-direct-proxy/" + version,
-      credentials_used: false, real_store: false });
+      credentials_used: false, real_store: false,
+      error_excerpt: r.status === 0 ? [] : text.replace(/\u001b\[[0-9;]*m/g, "").split("\n").map((s) => s.trim()).filter(Boolean).slice(-10).map((s) => s.slice(0, 300)) });
   }
 } finally {
   await writeFile(".graphqlrc.js", source); await rm(work, { recursive: true, force: true });
