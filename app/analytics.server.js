@@ -23,14 +23,6 @@ function getDayKey(dateStr) {
 export const MAX_DAY_BYTES = 120_000;
 export const SIZE_LIMIT_REASON = "size_limit";
 
-const EMPTY_DAY = {
-  areaDisplayCount: 0,
-  nearbyClickCount: 0,
-  nearbyDisplayByLocation: {},
-  orderPickClickCount: 0,
-  orderPickByLocation: {},
-};
-
 function ensureDay(obj) {
   return {
     areaDisplayCount: Number(obj?.areaDisplayCount) || 0,
@@ -54,10 +46,6 @@ function incrementLocationMap(map, locationId, delta = 1) {
   next[id] = (next[id] || 0) + delta;
   return next;
 }
-
-const SHOP_ID_QUERY = `#graphql
-  query ShopId { shop { id } }
-`;
 
 const METAFIELD_GET_QUERY = `#graphql
   query AnalyticsMetafield($key: String!) {
