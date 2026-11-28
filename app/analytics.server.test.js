@@ -170,3 +170,49 @@ test("a 90-day range is read in a few batched queries", async () => {
   assert.deepEqual(rows, []);
   assert.ok(reads <= 2, `reads=${reads}`);
 });
+
+test("exhausted digest conflicts preserve counters and isolate later events and days", async () => {
+  const otherDate = "2026-01-16";
+  const otherKey = "analytics_2026_01_16";
+  const initial = {
+    [dayKey]: { value: JSON.stringify({ areaDisplayCount: 7, nearbyClickCount: 2 }), compareDigest: "existing-day" },
+    [otherKey]: { value: JSON.stringify({ areaDisplayCount: 11 }), compareDigest: "other-day" },
+  };
+  const f = fixture({ initial });
+  let rejectTargetDay = true;
+  let rejectedWrites = 0;
+  const client = {
+    async graphql(query, options) {
+      const update = options.variables.metafields?.[0];
+      if (update?.key === dayKey && rejectTargetDay) {
+        rejectedWrites++;
+        return { json: async () => ({ data: { metafieldsSet: {
+          metafields: [], userErrors: [{ code: "STALE_OBJECT" }],
+        } } }) };
+      }
+      return f.client.graphql(query, options);
+    },
+  };
+  const record = (d, type) => recordAnalyticsEvent(client, "fixture", d, type);
+  await assert.rejects(record(date, "area_display"), { message: "Analytics update conflicted" });
+  assert.equal(rejectedWrites, 3, "a rejected event must stop at the existing retry limit");
+  assert.equal(f.writes(), 0, "no synthetic mutation was committed");
+  assert.deepEqual(f.fields, initial, "rejected attempts must not alter stored counters or digests");
+
+  await record(otherDate, "area_display");
+  assert.equal(f.day(otherKey).areaDisplayCount, 12, "one conflicted day must not block another day");
+  assert.deepEqual(f.fields[dayKey], initial[dayKey]);
+
+  rejectTargetDay = false;
+  await record(date, "nearby_click");
+  assert.equal(f.day().areaDisplayCount, 7, "a later event must not silently replay the rejected increment");
+  assert.equal(f.day().nearbyClickCount, 3, "a later independent event can persist after contention stops");
+  assert.equal(f.day(otherKey).areaDisplayCount, 12);
+  assert.equal(f.writes(), 2);
+  const rows = await getAnalyticsDailyData(client, "fixture", date, otherDate);
+  assert.deepEqual(rows.map(({ date: d, areaDisplayCount, nearbyClickCount }) =>
+    ({ date: d, areaDisplayCount, nearbyClickCount })), [
+    { date, areaDisplayCount: 7, nearbyClickCount: 3 },
+    { date: otherDate, areaDisplayCount: 12, nearbyClickCount: 0 },
+  ], "reader-visible totals retain other writes and expose the rejected increment as unrecorded");
+});
