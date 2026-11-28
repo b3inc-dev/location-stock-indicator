@@ -25,6 +25,16 @@ module.exports = {
   extends: ["eslint:recommended"],
 
   overrides: [
+    // The existing test command runs these files with Node. ESLint ES6 alone
+    // does not declare globalThis; keep the runtime environment scoped to tests.
+    {
+      files: ["app/utils/*.test.js", "app/analytics.server.test.js"],
+      env: {
+        node: true,
+        es2021: true,
+      },
+    },
+
     // React
     {
       files: ["**/*.{js,jsx,ts,tsx}"],
